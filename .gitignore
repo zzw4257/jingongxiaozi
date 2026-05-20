@@ -1,0 +1,14 @@
+node_modules/
+dist/
+src-tauri/target/
+.DS_Store
+*.log
+env.txt
+.playwright-mcp/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/app/.cxx/
+src-tauri/gen/android/app/src/main/jniLibs/
+output/*.apk
+output/*.idsig
+qa/android-screenshots/*.png
+kiosk-*.png

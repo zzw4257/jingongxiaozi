@@ -10,5 +10,6 @@ src-tauri/gen/android/app/.cxx/
 src-tauri/gen/android/app/src/main/jniLibs/
 output/*.apk
 output/*.idsig
+build/android-release/
 qa/android-screenshots/*.png
 kiosk-*.png

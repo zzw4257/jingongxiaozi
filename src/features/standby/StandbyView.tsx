@@ -1,9 +1,10 @@
-import { BookOpenText, MapPinned, MessageCircle, Sparkles, Volume2 } from "lucide-react";
+import { BookOpenText, MapPinned, MessageCircle } from "lucide-react";
 import mapBuildingPin from "../../assets/ui/map-building-pin.png";
 import robotExpert from "../../assets/ui/robot-expert.png";
 import robotListening from "../../assets/ui/robot-listening.png";
 import robotSpeaking from "../../assets/ui/robot-speaking.png";
 import robotStandby from "../../assets/ui/robot-standby.png";
+import { AudioStatus } from "../../shared/AudioStatus";
 import type { AppState } from "../../shared/appTypes";
 
 type Props = {
@@ -32,6 +33,7 @@ export function StandbyView({ state, onOpenMap, onOpenChat, onOpenExpert }: Prop
         <span className="eyebrow">{listening ? "正在聆听" : "待机中"}</span>
         <h2>{listening ? "我在听" : "金工小子"}</h2>
         <p>{listening ? state.listeningHint ?? "等待后端判断下一步展示模式" : "触摸屏幕或靠近说话即可开始。"}</p>
+        <AudioStatus audio={state.audio} />
       </div>
       <div className="launcher-grid" aria-label="内置应用入口">
         <button className="launcher-card primary" onClick={(event) => { event.stopPropagation(); onOpenMap(); }}>
@@ -52,17 +54,6 @@ export function StandbyView({ state, onOpenMap, onOpenChat, onOpenExpert }: Prop
           <span>专家问答</span>
           <small>检索答案与引用展示</small>
         </button>
-      </div>
-      <div className="asset-slots">
-        <div>
-          <Sparkles size={18} />
-          表情贴图槽位
-        </div>
-        <div>
-          <Volume2 size={18} />
-          语音状态槽位
-        </div>
-        <div>情绪状态槽位</div>
       </div>
     </div>
   );

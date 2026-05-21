@@ -1,13 +1,15 @@
 import robotExpert from "../../assets/ui/robot-expert.png";
-import type { Citation } from "../../shared/appTypes";
+import { AudioStatus } from "../../shared/AudioStatus";
+import type { AudioChainState, Citation } from "../../shared/appTypes";
 
 type Props = {
   answer: string;
   keywords: string[];
   citations: Citation[];
+  audio: AudioChainState;
 };
 
-export function ExpertView({ answer, keywords, citations }: Props) {
+export function ExpertView({ answer, keywords, citations, audio }: Props) {
   return (
     <div className="response-screen expert-screen">
       <img className="expert-asset" src={robotExpert} alt="" draggable={false} />
@@ -20,6 +22,7 @@ export function ExpertView({ answer, keywords, citations }: Props) {
             <span key={keyword}>{keyword}</span>
           ))}
         </div>
+        <AudioStatus audio={audio} compact />
       </article>
       <div className="citation-list">
         {citations.map((citation) => (

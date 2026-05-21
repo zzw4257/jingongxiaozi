@@ -613,6 +613,92 @@ button {
   border-radius: 999px;
 }
 
+.audio-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 11px 15px;
+  color: #24415f;
+  background: rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(201, 218, 238, 0.92);
+  border-radius: 999px;
+  box-shadow: 0 12px 26px rgba(43, 78, 126, 0.1);
+}
+
+.audio-status.active {
+  color: #075dcf;
+  background: rgba(235, 246, 255, 0.88);
+  border-color: rgba(139, 190, 255, 0.86);
+}
+
+.audio-status-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: #ffffff;
+  background: #0b6cff;
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(7, 91, 212, 0.26);
+}
+
+.audio-status-body {
+  display: grid;
+  gap: 4px;
+  min-width: 160px;
+}
+
+.audio-status-body span {
+  max-width: 280px;
+  overflow: hidden;
+  color: inherit;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audio-meter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+}
+
+.audio-meter i {
+  width: 4px;
+  height: 14px;
+  background: currentColor;
+  border-radius: 999px;
+  opacity: 0.52;
+  transform-origin: center;
+}
+
+.audio-status.active .audio-meter i {
+  animation: audioMeterPulse 940ms ease-in-out infinite;
+}
+
+.audio-status.compact {
+  margin-top: 16px;
+  padding: 8px 11px;
+}
+
+.audio-status.compact .audio-status-icon {
+  width: 28px;
+  height: 28px;
+}
+
+.audio-status.compact .audio-status-body {
+  min-width: 128px;
+}
+
+@keyframes audioMeterPulse {
+  0%, 100% { opacity: 0.36; }
+  50% { opacity: 1; transform: scaleY(1.55); }
+}
+
 .response-screen {
   align-content: center;
   gap: 18px;
@@ -1700,6 +1786,32 @@ button {
   display: none;
 }
 
+.kiosk-shell.immersive-mode.mode-listening .standby-copy {
+  position: absolute;
+  left: 50%;
+  bottom: clamp(116px, 16vh, 158px);
+  display: grid;
+  justify-items: center;
+  width: min(760px, 72vw);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.kiosk-shell.immersive-mode.mode-listening .standby-copy .eyebrow,
+.kiosk-shell.immersive-mode.mode-listening .standby-copy h2 {
+  display: none;
+}
+
+.kiosk-shell.immersive-mode.mode-listening .standby-copy p {
+  max-width: 100%;
+  overflow: hidden;
+  color: #24415f;
+  font-size: clamp(18px, 2.4vw, 30px);
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .kiosk-shell.immersive-mode .robot-head {
   width: min(62vw, 1160px);
   height: auto;
@@ -2292,7 +2404,7 @@ button {
   position: absolute;
   top: clamp(22px, 5vh, 58px);
   left: 50%;
-  width: clamp(160px, 22vw, 250px);
+  width: clamp(132px, 10vw, 190px);
   height: auto;
   aspect-ratio: 23 / 15;
   border-radius: 36px;
@@ -2301,11 +2413,12 @@ button {
 }
 
 .kiosk-shell.immersive-mode .response-card {
-  width: min(88vw, 1160px);
-  max-height: min(62vh, 620px);
+  width: min(82vw, 1480px);
+  max-height: min(58vh, 560px);
   max-width: none;
   padding: 0;
-  margin-top: clamp(110px, 18vh, 170px);
+  margin-top: clamp(86px, 14vh, 132px);
+  margin-bottom: clamp(132px, 16vh, 168px);
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -2324,9 +2437,12 @@ button {
   max-height: 100%;
   margin: 0;
   overflow: hidden;
-  font-size: clamp(34px, 5.1vw, 64px);
-  line-height: 1.35;
+  font-size: clamp(34px, 4vh, 48px);
+  line-height: 1.28;
   text-wrap: balance;
+  display: -webkit-box;
+  -webkit-line-clamp: 5;
+  -webkit-box-orient: vertical;
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.65);
   stroke-width: 5px;
@@ -2335,6 +2451,19 @@ button {
 .kiosk-shell.immersive-mode .spoken-card .eyebrow,
 .kiosk-shell.immersive-mode .keyword-row {
   display: none;
+}
+
+.kiosk-shell.immersive-mode .response-card .audio-status {
+  position: fixed;
+  left: 50%;
+  bottom: clamp(40px, 6vh, 66px);
+  margin: 0;
+  transform: translateX(-50%);
+}
+
+.kiosk-shell.immersive-mode .standby-copy .audio-status {
+  margin-top: 14px;
+  pointer-events: auto;
 }
 
 .kiosk-shell .expert-screen {
@@ -2353,7 +2482,7 @@ button {
   position: absolute;
   top: clamp(20px, 4vh, 48px);
   left: 50%;
-  width: clamp(150px, 20vw, 240px);
+  width: clamp(132px, 10vw, 190px);
   transform: translateX(-50%);
   opacity: 0.95;
 }
@@ -2367,9 +2496,10 @@ button {
 }
 
 .kiosk-shell.immersive-mode .expert-answer-card {
-  width: min(90vw, 1180px);
-  max-height: min(64vh, 630px);
-  margin-top: clamp(110px, 18vh, 170px);
+  width: min(82vw, 1480px);
+  max-height: min(58vh, 560px);
+  margin-top: clamp(86px, 14vh, 132px);
+  margin-bottom: clamp(132px, 16vh, 168px);
   padding: 0;
   border: 0;
   background: transparent;
@@ -2399,6 +2529,19 @@ button {
 .kiosk-shell .directive-panel.floating {
   right: 304px;
   bottom: 94px;
+}
+
+.qa-hotspot {
+  position: fixed;
+  top: 0;
+  right: 0;
+  z-index: 1200;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  opacity: 0;
+  border: 0;
+  background: transparent;
 }
 
 @media (max-width: 1120px) {

@@ -1,4 +1,12 @@
-import type { AppState, BackendDirective } from "../shared/appTypes";
+import { DEFAULT_AUDIO_STATE } from "../shared/appTypes";
+import type { AppState, AudioChainState, BackendDirective } from "../shared/appTypes";
+
+function audioState(patch?: Partial<AudioChainState>): AudioChainState {
+  return {
+    ...DEFAULT_AUDIO_STATE,
+    ...patch,
+  };
+}
 
 export function applyBackendDirective(directive: BackendDirective): AppState {
   switch (directive.type) {
@@ -7,6 +15,20 @@ export function applyBackendDirective(directive: BackendDirective): AppState {
         mode: "standby",
         phase: "idle",
         emotion: directive.emotion ?? "neutral",
+        audio: audioState({ source: "backend", message: "待机" }),
+      };
+    case "wake":
+      return {
+        mode: "standby",
+        phase: "listening",
+        emotion: "wake",
+        listeningHint: directive.hint ?? "检测到近场声音，正在唤醒",
+        audio: audioState({
+          input: "wake",
+          source: "backend",
+          level: directive.level,
+          message: directive.hint ?? "检测到近场声音",
+        }),
       };
     case "listening":
       return {
@@ -14,12 +36,36 @@ export function applyBackendDirective(directive: BackendDirective): AppState {
         phase: "listening",
         emotion: "listening",
         listeningHint: directive.hint ?? "正在聆听",
+        audio: audioState({
+          input: "listening",
+          source: "backend",
+          level: directive.level,
+          message: directive.hint ?? "正在聆听",
+        }),
+      };
+    case "processing":
+      return {
+        mode: "standby",
+        phase: "listening",
+        emotion: "processing",
+        listeningHint: directive.hint ?? "正在理解你的需求",
+        audio: audioState({
+          input: "processing",
+          source: "backend",
+          message: directive.hint ?? "正在理解",
+        }),
       };
     case "chat":
       return {
         mode: "chat",
         answer: directive.answer,
         keywords: directive.keywords ?? [],
+        audio: audioState({
+          output: "speaking",
+          source: "backend",
+          message: "普通问答播报",
+          ...directive.audio,
+        }),
       };
     case "expert":
       return {
@@ -27,19 +73,38 @@ export function applyBackendDirective(directive: BackendDirective): AppState {
         answer: directive.answer,
         keywords: directive.keywords ?? [],
         citations: directive.citations ?? [],
+        audio: audioState({
+          output: "speaking",
+          source: "backend",
+          message: "专家回答播报",
+          ...directive.audio,
+        }),
       };
     case "map":
       return {
         mode: "map",
         request: directive.request,
+        audio: audioState({
+          source: "backend",
+          message: "打开地图导航",
+          ...directive.audio,
+        }),
       };
   }
 }
 
 export const mockDirectives: Array<{ label: string; directive: BackendDirective }> = [
   {
+    label: "后端：近场唤醒",
+    directive: { type: "wake", level: 0.82, hint: "检测到近场声音" },
+  },
+  {
     label: "后端：进入聆听",
-    directive: { type: "listening", hint: "我在听，请说出需求" },
+    directive: { type: "listening", level: 0.64, hint: "我在听，请说出需求" },
+  },
+  {
+    label: "后端：理解中",
+    directive: { type: "processing", hint: "正在判断是问答、专家检索还是地图导航" },
   },
   {
     label: "后端：普通问答",

@@ -155,6 +155,16 @@ export function App() {
         </button>
       )}
 
+      {immersive && appState.mode !== "map" && !(appState.mode === "standby" && appState.phase === "idle") && (
+        <button className="kiosk-nav-peek app-switch-entry" onClick={() => setNavOpen(true)} aria-label="打开模块切换" title="打开模块切换">
+          <span className="peek-dot" />
+        </button>
+      )}
+
+      {immersive && navOpen && appState.mode !== "map" && (
+        <button className="kiosk-nav-backdrop" aria-label="关闭模块切换" onClick={() => setNavOpen(false)} />
+      )}
+
       {displayMode === "desktop" && (
         <button className={debugOpen ? "debug-fab active" : "debug-fab"} onClick={() => setDebugOpen((open) => !open)} title="后端指令模拟">
           {debugOpen ? <X size={24} /> : <Bug size={24} />}

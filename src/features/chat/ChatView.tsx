@@ -1,11 +1,14 @@
 import robotSpeaking from "../../assets/ui/robot-speaking.png";
+import { AudioStatus } from "../../shared/AudioStatus";
+import type { AudioChainState } from "../../shared/appTypes";
 
 type Props = {
   answer: string;
   keywords: string[];
+  audio: AudioChainState;
 };
 
-export function ChatView({ answer, keywords }: Props) {
+export function ChatView({ answer, keywords, audio }: Props) {
   return (
     <div className="response-screen chat-display-screen">
       <div className="response-avatar" aria-hidden="true">
@@ -19,6 +22,7 @@ export function ChatView({ answer, keywords }: Props) {
             <span key={keyword}>{keyword}</span>
           ))}
         </div>
+        <AudioStatus audio={audio} compact />
       </article>
     </div>
   );

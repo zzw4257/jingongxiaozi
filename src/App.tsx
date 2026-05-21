@@ -6,17 +6,19 @@ import { ExpertView } from "./features/expert/ExpertView";
 import { MapApp } from "./features/map/MapApp";
 import { StandbyView } from "./features/standby/StandbyView";
 import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
-import { DEFAULT_APP_STATE } from "./shared/appTypes";
+import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 
 export function App() {
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
   const [debugOpen, setDebugOpen] = useState(false);
   const [displayMode, setDisplayMode] = useState<"kiosk" | "desktop">("kiosk");
   const [navOpen, setNavOpen] = useState(false);
+  const [qaDirectiveIndex, setQaDirectiveIndex] = useState(0);
 
   const activeMode = appState.mode;
   const activeRail = appState.mode === "standby" && appState.phase === "listening" ? "listening" : activeMode;
   const immersive = displayMode === "kiosk";
+  const qaHotspotEnabled = import.meta.env.VITE_QA_HOTSPOT === "1";
 
   useEffect(() => {
     setNavOpen(false);
@@ -33,7 +35,7 @@ export function App() {
   };
 
   const openMapManual = () => {
-    setAppState({ mode: "map" });
+    setAppState({ mode: "map", audio: { ...DEFAULT_AUDIO_STATE, source: "touch", message: "手动打开地图" } });
   };
 
   const openChatManual = () => {
@@ -41,6 +43,7 @@ export function App() {
       type: "chat",
       answer: "这里是常态对话展示模式。后续由后端返回回答、核心词和语音输出状态。",
       keywords: ["常态对话", "核心词", "后端返回"],
+      audio: { source: "touch", output: "speaking", message: "手动调试播报" },
     });
   };
 
@@ -49,6 +52,7 @@ export function App() {
       type: "expert",
       answer: "这里是专家问答展示模式。后续由文档检索服务返回答案与引用信息。",
       keywords: ["专家问答", "文档检索"],
+      audio: { source: "touch", output: "speaking", message: "手动调试专家播报" },
       citations: [{ title: "检索引用占位", source: "本地 mock", excerpt: "等待后端接入真实引用。" }],
     });
   };
@@ -58,9 +62,22 @@ export function App() {
   };
 
   useEffect(() => {
-    (window as typeof window & { jingongOpenMap?: () => void }).jingongOpenMap = openMapManual;
+    const apiWindow = window as typeof window & {
+      jingongOpenMap?: () => void;
+      jingongApplyDirective?: (directive: BackendDirective) => void;
+    };
+    apiWindow.jingongOpenMap = openMapManual;
+    apiWindow.jingongApplyDirective = handleDirective;
+
+    const onDirective = (event: Event) => {
+      const directive = (event as CustomEvent<BackendDirective>).detail;
+      if (directive) handleDirective(directive);
+    };
+    window.addEventListener("jingong:directive", onDirective);
     return () => {
-      delete (window as typeof window & { jingongOpenMap?: () => void }).jingongOpenMap;
+      delete apiWindow.jingongOpenMap;
+      delete apiWindow.jingongApplyDirective;
+      window.removeEventListener("jingong:directive", onDirective);
     };
   }, []);
 
@@ -119,32 +136,22 @@ export function App() {
 
       <section className="app-content">
         {appState.mode === "standby" && <StandbyView state={appState} onOpenMap={openMapManual} onOpenChat={openChatManual} onOpenExpert={openExpertManual} />}
-        {appState.mode === "chat" && <ChatView answer={appState.answer} keywords={appState.keywords} />}
-        {appState.mode === "expert" && <ExpertView answer={appState.answer} keywords={appState.keywords} citations={appState.citations} />}
+        {appState.mode === "chat" && <ChatView answer={appState.answer} keywords={appState.keywords} audio={appState.audio} />}
+        {appState.mode === "expert" && <ExpertView answer={appState.answer} keywords={appState.keywords} citations={appState.citations} audio={appState.audio} />}
         {appState.mode === "map" && <MapApp initialRequest={appState.request} entrySource={appState.request ? "backend" : "manual"} onExit={() => setAppState(DEFAULT_APP_STATE)} />}
       </section>
 
-      {immersive && (
+      {immersive && appState.mode === "standby" && appState.phase === "idle" && (
         <button
-          className={activeMode === "standby" ? "kiosk-nav-peek standby-entry" : "kiosk-nav-peek"}
+          className="kiosk-nav-peek standby-entry"
           onClick={() => {
-            if (activeMode === "standby") {
-              openMapManual();
-              return;
-            }
-            setNavOpen((open) => !open);
+            openMapManual();
           }}
-          aria-label={activeMode === "standby" ? "打开地图导航" : navOpen ? "收起模块入口" : "展开模块入口"}
-          title={activeMode === "standby" ? "打开地图导航" : navOpen ? "收起模块入口" : "展开模块入口"}
+          aria-label="打开地图导航"
+          title="打开地图导航"
         >
-          {activeMode === "standby" ? (
-            <>
-              <MapPinned size={22} />
-              <span>地图导航</span>
-            </>
-          ) : (
-            <span className="peek-dot" aria-hidden="true" />
-          )}
+          <MapPinned size={22} />
+          <span>地图导航</span>
         </button>
       )}
 
@@ -171,6 +178,18 @@ export function App() {
             MapDirect: 去 108 钳工
           </button>
         </aside>
+      )}
+
+      {qaHotspotEnabled && immersive && (
+        <button
+          className="qa-hotspot"
+          aria-label="QA 指令循环"
+          onClick={() => {
+            const item = mockDirectives[qaDirectiveIndex % mockDirectives.length];
+            handleDirective(item.directive);
+            setQaDirectiveIndex((index) => index + 1);
+          }}
+        />
       )}
     </main>
   );

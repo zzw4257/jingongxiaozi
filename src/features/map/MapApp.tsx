@@ -2,7 +2,6 @@ import { ArrowLeft, Compass, Layers, Map as MapIcon, Maximize2, RotateCcw, Route
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PointerEvent } from "react";
 import mapLayered from "../../assets/ui/map-layered.png";
-import roomCardAsset from "../../assets/ui/room-card.png";
 import routeStairs from "../../assets/ui/route-stairs.png";
 import type { MapDirectRequest } from "../../shared/appTypes";
 import { areaLabels, jingongMapData } from "./data/mapData";
@@ -73,12 +72,13 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
   const [zoom, setZoom] = useState(1);
   const [viewAngle, setViewAngle] = useState(0);
   const [detailRoomId, setDetailRoomId] = useState<string | undefined>();
-  const [mobileSheet, setMobileSheet] = useState<"none" | "route" | "layers" | "room" | "debug">("none");
+  const [mobileSheet, setMobileSheet] = useState<"none" | "route" | "layers" | "debug">("none");
   const orbitDrag = useRef<{ pointerId: number; startX: number; startAngle: number; moved: boolean } | undefined>();
   const suppressRoomTapUntil = useRef(0);
 
   useEffect(() => {
     setSession(defaultSession(entrySource, initialRequest));
+    setMobileSheet("none");
   }, [entrySource, initialRequest]);
 
   const startRoomId = session.startRoomId ?? (session.targetRoomId ? jingongMapData.defaultStartRoomId : undefined);
@@ -90,6 +90,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
   const selectedRoom = getRoomById(jingongMapData, session.selectedRoomId);
   const targetRoom = getRoomById(jingongMapData, session.targetRoomId);
   const startRoom = getRoomById(jingongMapData, startRoomId);
+  const mobileSheetOpen = mobileSheet !== "none";
 
   const rooms = useMemo(() => {
     return jingongMapData.rooms.filter((room) => {
@@ -112,7 +113,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
   const handleRoomClick = (room: MapRoom) => {
     if (orbitDrag.current?.moved || Date.now() < suppressRoomTapUntil.current) return;
     setSession((current) => ({ ...current, selectedRoomId: room.id }));
-    setMobileSheet("room");
+    setMobileSheet("none");
   };
 
   const handleRoomDoubleClick = (room: MapRoom) => {
@@ -139,6 +140,8 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
       announce: [],
     }));
   };
+
+  const formatRoomLabel = (room: MapRoom) => `${room.floor} · ${room.roomNo} ${room.name} · ${areaLabels[room.area]}`;
 
   const detailRoom = getRoomById(jingongMapData, detailRoomId);
 
@@ -182,7 +185,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
   };
 
   return (
-    <div className="map-app">
+    <div className={`map-app ${mobileSheetOpen ? "mobile-sheet-open" : ""}`}>
       <div className="map-mobile-rail" aria-label="地图快捷操作">
         {onExit && (
           <button onClick={onExit} title="返回待机">
@@ -448,7 +451,6 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
               <strong>
                 {mobileSheet === "route" && "路线导航"}
                 {mobileSheet === "layers" && "视图与楼层"}
-                {mobileSheet === "room" && "空间信息"}
                 {mobileSheet === "debug" && "调试"}
               </strong>
               <button className="icon-button" onClick={() => setMobileSheet("none")} title="关闭">
@@ -487,7 +489,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
                   <select value={startRoomId ?? ""} onChange={(event) => updateRouteEndpoint("startRoomId", event.target.value)}>
                     <option value="">使用默认 101</option>
                     {jingongMapData.rooms.map((room) => (
-                      <option key={room.id} value={room.id}>{room.roomNo} {room.name}</option>
+                      <option key={room.id} value={room.id}>{formatRoomLabel(room)}</option>
                     ))}
                   </select>
                 </label>
@@ -496,7 +498,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
                   <select value={session.targetRoomId ?? ""} onChange={(event) => updateRouteEndpoint("targetRoomId", event.target.value)}>
                     <option value="">未选择</option>
                     {jingongMapData.rooms.map((room) => (
-                      <option key={room.id} value={room.id}>{room.roomNo} {room.name}</option>
+                      <option key={room.id} value={room.id}>{formatRoomLabel(room)}</option>
                     ))}
                   </select>
                 </label>
@@ -514,22 +516,6 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
                   <p className="sheet-empty">选择终点后显示推荐路线。</p>
                 )}
                 <button className="sheet-danger" onClick={clearRoute}>清除路线</button>
-              </div>
-            )}
-
-            {mobileSheet === "room" && selectedRoom && (
-              <div className="mobile-room-content">
-                <img className="sheet-asset sheet-room-asset" src={roomCardAsset} alt="" draggable={false} />
-                <span className="badge">{areaLabels[selectedRoom.area]}</span>
-                <h3>{selectedRoom.roomNo} {selectedRoom.name}</h3>
-                <p>{selectedRoom.description}</p>
-                <div className="tag-row">
-                  {selectedRoom.tags.map((tag) => <span key={tag}>{tag}</span>)}
-                </div>
-                <div className="room-actions">
-                  <button onClick={() => setDetailRoomId(selectedRoom.id)}>查看详情</button>
-                  <button className="primary-action" onClick={startNavigationToSelected}>开始导航</button>
-                </div>
               </div>
             )}
           </section>

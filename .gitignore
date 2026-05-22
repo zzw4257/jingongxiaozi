@@ -12,4 +12,6 @@ output/*.apk
 output/*.idsig
 build/android-release/
 qa/android-screenshots/*.png
+qa/screenshots/*.png
 kiosk-*.png
+models/*.skb

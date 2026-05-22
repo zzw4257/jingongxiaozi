@@ -1,9 +1,9 @@
-import { BookOpenText, Bot, Bug, MapPinned, MessageCircle, Mic2, MonitorSmartphone, RotateCcw, X } from "lucide-react";
+import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, RotateCcw, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { applyBackendDirective, mockDirectives } from "./backend-bridge/directives";
 import { ChatView } from "./features/chat/ChatView";
 import { ExpertView } from "./features/expert/ExpertView";
-import { MapApp } from "./features/map/MapApp";
+import { MapShell } from "./features/map3d/MapShell";
 import { StandbyView } from "./features/standby/StandbyView";
 import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
@@ -23,12 +23,6 @@ export function App() {
   useEffect(() => {
     setNavOpen(false);
   }, [activeRail]);
-
-  useEffect(() => {
-    if (displayMode === "kiosk") {
-      setDebugOpen(false);
-    }
-  }, [appState.mode, displayMode]);
 
   const handleDirective = (directive: BackendDirective) => {
     setAppState(applyBackendDirective(directive));
@@ -138,7 +132,7 @@ export function App() {
         {appState.mode === "standby" && <StandbyView state={appState} onOpenMap={openMapManual} onOpenChat={openChatManual} onOpenExpert={openExpertManual} />}
         {appState.mode === "chat" && <ChatView answer={appState.answer} keywords={appState.keywords} audio={appState.audio} />}
         {appState.mode === "expert" && <ExpertView answer={appState.answer} keywords={appState.keywords} citations={appState.citations} audio={appState.audio} />}
-        {appState.mode === "map" && <MapApp initialRequest={appState.request} entrySource={appState.request ? "backend" : "manual"} onExit={() => setAppState(DEFAULT_APP_STATE)} />}
+        {appState.mode === "map" && <MapShell initialRequest={appState.request} entrySource={appState.request ? "backend" : "manual"} onExit={() => setAppState(DEFAULT_APP_STATE)} />}
       </section>
 
       {immersive && appState.mode === "standby" && appState.phase === "idle" && (
@@ -155,14 +149,49 @@ export function App() {
         </button>
       )}
 
-      {immersive && appState.mode !== "map" && !(appState.mode === "standby" && appState.phase === "idle") && (
-        <button className="kiosk-nav-peek app-switch-entry" onClick={() => setNavOpen(true)} aria-label="打开模块切换" title="打开模块切换">
-          <span className="peek-dot" />
+      {immersive && appState.mode !== "map" && (
+        <button className="app-drawer-handle" onClick={() => setNavOpen(true)} aria-label="打开应用抽屉" title="打开应用抽屉">
+          <ChevronRight size={22} />
         </button>
       )}
 
       {immersive && navOpen && appState.mode !== "map" && (
         <button className="kiosk-nav-backdrop" aria-label="关闭模块切换" onClick={() => setNavOpen(false)} />
+      )}
+
+      {immersive && navOpen && appState.mode !== "map" && (
+        <aside className="app-drawer-panel" aria-label="内置应用抽屉">
+          <div className="app-drawer-title">
+            <strong>金工小子</strong>
+            <button className="icon-button" onClick={() => setNavOpen(false)} title="关闭">
+              <X size={18} />
+            </button>
+          </div>
+          <button className={activeRail === "standby" ? "drawer-item active" : "drawer-item"} onClick={() => { setAppState(DEFAULT_APP_STATE); setNavOpen(false); }}>
+            <Bot size={22} />
+            <span>待机表情</span>
+          </button>
+          <button className={activeRail === "listening" ? "drawer-item active" : "drawer-item"} onClick={() => { handleDirective({ type: "listening", hint: "我在听，请说出需求" }); setNavOpen(false); }}>
+            <Mic2 size={22} />
+            <span>聆听状态</span>
+          </button>
+          <button className={activeMode === "map" ? "drawer-item primary active" : "drawer-item primary"} onClick={() => { openMapManual(); setNavOpen(false); }}>
+            <MapPinned size={22} />
+            <span>3D 精确模型地图</span>
+          </button>
+          <button className={activeMode === "chat" ? "drawer-item active" : "drawer-item"} onClick={() => { openChatManual(); setNavOpen(false); }}>
+            <MessageCircle size={22} />
+            <span>对话展示</span>
+          </button>
+          <button className={activeMode === "expert" ? "drawer-item active" : "drawer-item"} onClick={() => { openExpertManual(); setNavOpen(false); }}>
+            <BookOpenText size={22} />
+            <span>专家问答</span>
+          </button>
+          <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
+            <Bug size={22} />
+            <span>后端调试</span>
+          </button>
+        </aside>
       )}
 
       {displayMode === "desktop" && (
@@ -171,13 +200,18 @@ export function App() {
         </button>
       )}
 
-      {displayMode === "desktop" && debugOpen && (
+      {debugOpen && (
         <aside className="directive-panel floating" aria-label="后端指令调试">
           <div className="panel-title">
             <span>后端指令模拟</span>
-            <button className="icon-button" onClick={() => setAppState(DEFAULT_APP_STATE)} title="回到待机">
-              <RotateCcw size={17} />
-            </button>
+            <span className="panel-actions">
+              <button className="icon-button" onClick={() => setAppState(DEFAULT_APP_STATE)} title="回到待机">
+                <RotateCcw size={17} />
+              </button>
+              <button className="icon-button" onClick={() => setDebugOpen(false)} title="关闭调试">
+                <X size={17} />
+              </button>
+            </span>
           </div>
           {mockDirectives.map((item) => (
             <button key={item.label} className="directive-button" onClick={() => handleDirective(item.directive)}>

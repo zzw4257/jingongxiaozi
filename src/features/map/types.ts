@@ -124,7 +124,7 @@ export type MapSessionState = {
   targetRoomId?: string;
   routeId?: string;
   viewMode: "2d" | "2_5d";
-  layerMode: "single" | "twoFloor" | "allFloors" | "exploded";
+  layerMode: "single" | "twoFloor" | "allFloors" | "exploded" | "section";
   activeFloor?: FloorId;
   announce: string[];
 };

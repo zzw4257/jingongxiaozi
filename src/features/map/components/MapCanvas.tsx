@@ -70,6 +70,10 @@ const ISO_TARGETS: Record<MapSessionState["layerMode"], Record<FloorId, { base: 
     "1F": { base: [112, 392], scale: 0.48, zLift: 0 },
     "2F": { base: [244, 198], scale: 0.48, zLift: 62 },
   },
+  section: {
+    "1F": { base: [102, 382], scale: 0.49, zLift: 0 },
+    "2F": { base: [222, 190], scale: 0.49, zLift: 62 },
+  },
 };
 
 function orbitView(angleDegrees: number): { skew: Point; offset: Point; yaw: number } {

@@ -2106,8 +2106,76 @@ button {
   touch-action: none;
 }
 
+.map3d-label-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+}
+
+.map3d-label {
+  position: absolute;
+  max-width: 138px;
+  min-height: 28px;
+  padding: 6px 10px;
+  overflow: hidden;
+  color: #16263c;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(191, 205, 224, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 8px 18px rgba(20, 53, 94, 0.16);
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.05;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: auto;
+  transform: translate(-50%, -50%);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.map3d-label.teaching {
+  border-color: rgba(96, 168, 94, 0.58);
+}
+
+.map3d-label.processing {
+  border-color: rgba(238, 137, 67, 0.6);
+}
+
+.map3d-label.lab {
+  border-color: rgba(167, 116, 215, 0.58);
+}
+
+.map3d-label.office {
+  border-color: rgba(222, 171, 55, 0.58);
+}
+
+.map3d-label.service {
+  border-color: rgba(76, 130, 210, 0.58);
+}
+
+.map3d-label.active,
+.map3d-label.target {
+  max-width: 168px;
+  color: #ffffff;
+  background: #0b6cff;
+  border-color: #0b6cff;
+}
+
+.map3d-label.target {
+  background: #ff3f6c;
+  border-color: #ff3f6c;
+}
+
+.map3d-label.start {
+  color: #ffffff;
+  background: #18a058;
+  border-color: #18a058;
+}
+
 .map3d-status-chip,
-.map3d-room-chip {
+.map3d-room-chip,
+.map3d-route-chip {
   position: absolute;
   left: max(16px, env(safe-area-inset-left));
   z-index: 8;
@@ -2122,6 +2190,10 @@ button {
   border: 1px solid rgba(207, 222, 241, 0.94);
   border-radius: 999px;
   box-shadow: 0 10px 26px rgba(20, 53, 94, 0.12);
+}
+
+.map3d-status-chip,
+.map3d-room-chip {
   pointer-events: none;
 }
 
@@ -2134,18 +2206,37 @@ button {
   font-weight: 950;
 }
 
+.map3d-route-chip {
+  bottom: max(18px, env(safe-area-inset-bottom));
+  left: clamp(190px, 24vw, 240px);
+  max-width: min(340px, calc(100vw - 330px));
+  color: #ffffff;
+  background: #0b6cff;
+  border-color: #0b6cff;
+  font-weight: 950;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
 .map3d-status-chip span,
-.map3d-room-chip span {
+.map3d-room-chip span,
+.map3d-route-chip span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 950;
 }
 
-.map3d-status-chip small {
+.map3d-status-chip small,
+.map3d-route-chip small {
   color: #5e7189;
   font-size: 12px;
   font-weight: 800;
+}
+
+.map3d-route-chip small {
+  color: rgba(255, 255, 255, 0.84);
+  white-space: nowrap;
 }
 
 .map3d-rail {
@@ -2257,6 +2348,20 @@ button {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
+}
+
+.route-mode-banner {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 8px 11px;
+  color: #075dcf;
+  background: #edf5ff;
+  border: 1px solid #cfe2ff;
+  border-radius: 18px;
+  font-size: 13px;
+  font-weight: 950;
 }
 
 .route-material-summary div,
@@ -2381,6 +2486,25 @@ button {
 
 .material-grid.two {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.material-grid.four {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.material-mini-chip {
+  min-height: 38px;
+  color: #233855;
+  background: #f8fbff;
+  border: 1px solid #d8e4f3;
+  border-radius: 16px;
+  font-weight: 950;
+}
+
+.material-mini-chip.active {
+  color: #ffffff;
+  background: #0b6cff;
+  border-color: #0b6cff;
 }
 
 .material-tile {
@@ -2522,6 +2646,45 @@ button {
 
   .material-grid.two {
     gap: 7px;
+  }
+
+  .material-grid.four {
+    gap: 6px;
+  }
+
+  .material-mini-chip {
+    min-height: 32px;
+    border-radius: 14px;
+    font-size: 12px;
+  }
+
+  .route-mode-banner {
+    min-height: 32px;
+    padding: 6px 9px;
+    border-radius: 15px;
+    font-size: 12px;
+  }
+
+  .map3d-label {
+    max-width: 104px;
+    min-height: 24px;
+    padding: 5px 8px;
+    font-size: 10px;
+  }
+
+  .map3d-label.active,
+  .map3d-label.target {
+    max-width: 132px;
+  }
+
+  .map3d-route-chip {
+    left: 178px;
+    max-width: calc(100vw - 284px);
+    min-height: 36px;
+  }
+
+  .map3d-route-chip small {
+    display: none;
   }
 
   .route-material-summary div {

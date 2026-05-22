@@ -10,6 +10,7 @@ import {
   Navigation,
   Route,
   ScanLine,
+  Sparkles,
   Trash2,
   X,
 } from "lucide-react";
@@ -20,8 +21,8 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { MapDirectRequest } from "../../shared/appTypes";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
 import { calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
-import type { FloorId, MapRoom, MapSessionState, RouteResult } from "../map/types";
-import { mapPointToModel, modelAlignment } from "./modelAlignment";
+import type { AreaType, FloorId, MapRoom, MapSessionState, Point, RouteResult, StairGeometry } from "../map/types";
+import { floorBaseY, mapPointToModel, modelAlignment } from "./modelAlignment";
 
 type Props = {
   initialRequest?: MapDirectRequest;
@@ -33,8 +34,40 @@ type Props = {
 type PanelId = "none" | "route" | "layers" | "view" | "room" | "debug";
 type CameraMode = "perspective" | "orthographic";
 type LoadState = "loading" | "ready" | "fallback" | "error";
+type CameraPreset = "overview" | "lowIso" | "top" | "route";
+type LabelAnchor = {
+  roomId: string;
+  text: string;
+  floor: FloorId;
+  priority: number;
+  active: boolean;
+  start: boolean;
+  target: boolean;
+  position: THREE.Vector3;
+};
+type LabelLayout = LabelAnchor & {
+  x: number;
+  y: number;
+  visible: boolean;
+};
 
-const DEFAULT_LAYER: MapSessionState["layerMode"] = "allFloors";
+const DEFAULT_LAYER: MapSessionState["layerMode"] = "exploded";
+const roomColor: Record<AreaType, number> = {
+  teaching: 0x7fc76f,
+  processing: 0xff9b59,
+  lab: 0xb98be6,
+  office: 0xffc857,
+  service: 0x74a7f2,
+  other: 0xd7dde7,
+};
+const roomCssClass: Record<AreaType, string> = {
+  teaching: "teaching",
+  processing: "processing",
+  lab: "lab",
+  office: "office",
+  service: "service",
+  other: "other",
+};
 
 const defaultSession = (entrySource: "manual" | "backend", request?: MapDirectRequest): MapSessionState => ({
   entrySource,
@@ -66,52 +99,6 @@ const visibleRoomsForSession = (session: MapSessionState): MapRoom[] =>
     if (session.layerMode === "single" && session.activeFloor) return room.floor === session.activeFloor;
     return true;
   });
-
-function makeTextSprite(text: string, active: boolean) {
-  const canvas = document.createElement("canvas");
-  const context = canvas.getContext("2d");
-  if (!context) return new THREE.Sprite();
-
-  const fontSize = active ? 28 : 22;
-  context.font = `900 ${fontSize}px system-ui, PingFang SC, sans-serif`;
-  const width = Math.ceil(context.measureText(text).width + 28);
-  const height = active ? 48 : 40;
-  canvas.width = Math.max(96, width) * 2;
-  canvas.height = height * 2;
-  context.scale(2, 2);
-  context.font = `900 ${fontSize}px system-ui, PingFang SC, sans-serif`;
-  context.textBaseline = "middle";
-  context.lineJoin = "round";
-
-  context.fillStyle = active ? "rgba(11, 108, 255, 0.94)" : "rgba(255, 255, 255, 0.9)";
-  context.strokeStyle = active ? "rgba(255, 255, 255, 0.76)" : "rgba(184, 199, 219, 0.96)";
-  context.lineWidth = 2;
-  const radius = 16;
-  const w = canvas.width / 2;
-  const h = canvas.height / 2;
-  context.beginPath();
-  context.moveTo(radius, 1);
-  context.lineTo(w - radius, 1);
-  context.quadraticCurveTo(w - 1, 1, w - 1, radius);
-  context.lineTo(w - 1, h - radius);
-  context.quadraticCurveTo(w - 1, h - 1, w - radius, h - 1);
-  context.lineTo(radius, h - 1);
-  context.quadraticCurveTo(1, h - 1, 1, h - radius);
-  context.lineTo(1, radius);
-  context.quadraticCurveTo(1, 1, radius, 1);
-  context.closePath();
-  context.fill();
-  context.stroke();
-
-  context.fillStyle = active ? "#ffffff" : "#17253a";
-  context.fillText(text, 17, h / 2 + 1);
-
-  const texture = new THREE.CanvasTexture(canvas);
-  texture.anisotropy = 4;
-  const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true, depthTest: false }));
-  sprite.scale.set((canvas.width / 2) / 132, (canvas.height / 2) / 132, 1);
-  return sprite;
-}
 
 const overviewLabelRoomIds = new Set([
   "101",
@@ -149,6 +136,69 @@ function createCamera(mode: CameraMode, width: number, height: number): THREE.Pe
   const camera = new THREE.PerspectiveCamera(modelAlignment.defaultCamera.fov, aspect, 0.05, 220);
   camera.position.fromArray(modelAlignment.defaultCamera.position);
   return camera;
+}
+
+function shapeFromPolygon(polygon: Point[], floor: FloorId, session: MapSessionState) {
+  const first = mapPointToModel(polygon[0], floor, { layerMode: session.layerMode, activeFloor: session.activeFloor });
+  const shape = new THREE.Shape();
+  shape.moveTo(first[0], first[2]);
+  polygon.slice(1).forEach((point) => {
+    const [x, , z] = mapPointToModel(point, floor, { layerMode: session.layerMode, activeFloor: session.activeFloor });
+    shape.lineTo(x, z);
+  });
+  shape.closePath();
+  return shape;
+}
+
+function extrudedPolygonMesh(
+  polygon: Point[],
+  floor: FloorId,
+  session: MapSessionState,
+  height: number,
+  material: THREE.Material,
+) {
+  const shape = shapeFromPolygon(polygon, floor, session);
+  const geometry = new THREE.ExtrudeGeometry(shape, {
+    depth: height,
+    bevelEnabled: false,
+  });
+  geometry.rotateX(Math.PI / 2);
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.position.y = floorBaseY(floor, { layerMode: session.layerMode, activeFloor: session.activeFloor });
+  return mesh;
+}
+
+function floorVisibility(roomFloor: FloorId, session: MapSessionState) {
+  return !(session.layerMode === "single" && session.activeFloor && roomFloor !== session.activeFloor);
+}
+
+function stairCenter(polygon: Point[]): Point {
+  const total = polygon.reduce<Point>((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
+  return [total[0] / polygon.length, total[1] / polygon.length];
+}
+
+function stairIsOnRoute(stair: StairGeometry, route?: RouteResult) {
+  if (!route) return false;
+  return route.steps.some(
+    (step) =>
+      step.kind.includes("stair") &&
+      ((step.fromNodeId === stair.lowerNodeId && step.toNodeId === stair.upperNodeId) ||
+        (step.fromNodeId === stair.upperNodeId && step.toNodeId === stair.lowerNodeId)),
+  );
+}
+
+function tubeBetween(a: THREE.Vector3, b: THREE.Vector3, radius: number, material: THREE.Material) {
+  const curve = new THREE.LineCurve3(a, b);
+  return new THREE.Mesh(new THREE.TubeGeometry(curve, 16, radius, 8, false), material);
+}
+
+function routePointToVector(point: { floor: FloorId; point: Point; kind: string }, session: MapSessionState) {
+  const [x, y, z] = mapPointToModel(point.point, point.floor, {
+    layerMode: session.layerMode,
+    activeFloor: session.activeFloor,
+    lift: modelAlignment.routeLift,
+  });
+  return new THREE.Vector3(x, y, z);
 }
 
 function updateCameraSize(camera: THREE.Camera, width: number, height: number) {
@@ -195,6 +245,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const [cameraMode, setCameraMode] = useState<CameraMode>("perspective");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [statusText, setStatusText] = useState("正在加载 3D 精确模型");
+  const [labelLayout, setLabelLayout] = useState<LabelLayout[]>([]);
+  const [activeCameraPreset, setActiveCameraPreset] = useState<CameraPreset>("overview");
 
   const hostRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
@@ -202,14 +254,17 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const cameraRef = useRef<THREE.Camera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const modelRootRef = useRef<THREE.Object3D | null>(null);
+  const semanticModelRootRef = useRef<THREE.Group | null>(null);
   const semanticRootRef = useRef<THREE.Group | null>(null);
   const routeRootRef = useRef<THREE.Group | null>(null);
   const interactiveObjectsRef = useRef<THREE.Object3D[]>([]);
+  const labelAnchorsRef = useRef<LabelAnchor[]>([]);
+  const labelSignatureRef = useRef("");
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     setSession(defaultSession(entrySource, initialRequest));
-    setPanel(initialRequest?.targetRoomId ? "route" : "none");
+    setPanel("none");
     setRoutePage("setup");
   }, [entrySource, initialRequest]);
 
@@ -224,22 +279,97 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const startRoom = getRoomById(jingongMapData, startRoomId);
   const visibleRooms = useMemo(() => visibleRoomsForSession(session), [session]);
 
-  const fitCamera = useCallback(() => {
+  const applyCameraPreset = useCallback((preset: CameraPreset, syncState = true) => {
     const camera = cameraRef.current;
     const controls = controlsRef.current;
     if (!camera || !controls) return;
-    const target = new THREE.Vector3(...modelAlignment.defaultCamera.target);
+    const presets: Record<CameraPreset, { position: THREE.Vector3; target: THREE.Vector3; zoom?: number; fov?: number }> = {
+      overview: {
+        position: new THREE.Vector3(...modelAlignment.defaultCamera.position),
+        target: new THREE.Vector3(...modelAlignment.defaultCamera.target),
+        fov: modelAlignment.defaultCamera.fov,
+        zoom: 0.9,
+      },
+      lowIso: {
+        position: new THREE.Vector3(6.8, 2.65, 7.6),
+        target: new THREE.Vector3(0.04, 0.64, 0.06),
+        fov: 33,
+        zoom: 1,
+      },
+      top: {
+        position: new THREE.Vector3(0.1, 9.2, 0.1),
+        target: new THREE.Vector3(0, 0, 0),
+        fov: 32,
+        zoom: 0.76,
+      },
+      route: {
+        position: new THREE.Vector3(4.2, 3.55, 5.3),
+        target: new THREE.Vector3(0.24, 0.7, 0.2),
+        fov: 31,
+        zoom: 1.08,
+      },
+    };
+    const next = presets[preset];
     if (camera instanceof THREE.OrthographicCamera) {
-      camera.position.set(7.6, 7.8, 7.6);
-      camera.zoom = 0.92;
+      camera.position.copy(next.position);
+      camera.zoom = next.zoom ?? 0.92;
       camera.updateProjectionMatrix();
     } else if (camera instanceof THREE.PerspectiveCamera) {
-      camera.position.fromArray(modelAlignment.defaultCamera.position);
-      camera.fov = modelAlignment.defaultCamera.fov;
+      camera.position.copy(next.position);
+      camera.fov = next.fov ?? modelAlignment.defaultCamera.fov;
       camera.updateProjectionMatrix();
     }
-    controls.target.copy(target);
+    controls.target.copy(next.target);
     controls.update();
+    if (syncState) setActiveCameraPreset(preset);
+  }, []);
+
+  const fitCamera = useCallback(() => {
+    applyCameraPreset("overview");
+  }, [applyCameraPreset]);
+
+  const updateLabels = useCallback(() => {
+    const host = hostRef.current;
+    const camera = cameraRef.current;
+    if (!host || !camera) return;
+    const width = host.clientWidth;
+    const height = host.clientHeight;
+    const projected = labelAnchorsRef.current
+      .map((anchor) => {
+        const vector = anchor.position.clone().project(camera);
+        return {
+          ...anchor,
+          x: (vector.x * 0.5 + 0.5) * width,
+          y: (-vector.y * 0.5 + 0.5) * height,
+          visible: vector.z > -1 && vector.z < 1,
+        };
+      })
+      .sort((a, b) => b.priority - a.priority);
+
+    const occupied: Array<{ x: number; y: number; width: number; height: number }> = [];
+    const laidOut = projected.map((label) => {
+      const widthHint = label.active || label.target || label.start ? 128 : 92;
+      const heightHint = 30;
+      const box = { x: label.x - widthHint / 2, y: label.y - heightHint / 2, width: widthHint, height: heightHint };
+      const outside = box.x < 8 || box.y < 8 || box.x + box.width > width - 84 || box.y + box.height > height - 8;
+      const collides = occupied.some(
+        (item) =>
+          box.x < item.x + item.width &&
+          box.x + box.width > item.x &&
+          box.y < item.y + item.height &&
+          box.y + box.height > item.y,
+      );
+      const visible = label.visible && !outside && (!collides || label.priority >= 90);
+      if (visible) occupied.push(box);
+      return { ...label, visible };
+    });
+    const signature = laidOut
+      .filter((label) => label.visible)
+      .map((label) => `${label.roomId}:${Math.round(label.x)}:${Math.round(label.y)}:${label.active ? 1 : 0}:${label.start ? 1 : 0}:${label.target ? 1 : 0}`)
+      .join("|");
+    if (signature === labelSignatureRef.current) return;
+    labelSignatureRef.current = signature;
+    setLabelLayout(laidOut);
   }, []);
 
   const attachControls = useCallback(() => {
@@ -252,13 +382,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     controls.dampingFactor = 0.08;
     controls.enablePan = true;
     controls.enableZoom = true;
-    controls.rotateSpeed = 0.62;
+    controls.rotateSpeed = 0.82;
     controls.zoomSpeed = 0.9;
     controls.panSpeed = 0.72;
-    controls.minDistance = 3;
+    controls.minDistance = 2.2;
     controls.maxDistance = 34;
-    controls.minPolarAngle = 0.18;
-    controls.maxPolarAngle = Math.PI * 0.47;
+    controls.minPolarAngle = 0.12;
+    controls.maxPolarAngle = Math.PI * 0.58;
     controls.touches = {
       ONE: THREE.TOUCH.ROTATE,
       TWO: THREE.TOUCH.DOLLY_PAN,
@@ -273,8 +403,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     if (!host) return undefined;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0xf4f8fd);
-    scene.fog = new THREE.Fog(0xf4f8fd, 18, 46);
+    scene.background = new THREE.Color(0xf7f9fc);
+    scene.fog = new THREE.Fog(0xf7f9fc, 19, 48);
     sceneRef.current = scene;
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
@@ -290,19 +420,23 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     attachControls();
     fitCamera();
 
-    scene.add(new THREE.HemisphereLight(0xffffff, 0x9fb3ca, 1.35));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-    sun.position.set(5, 8, 6);
+    scene.add(new THREE.HemisphereLight(0xffffff, 0x879ab2, 1.02));
+    const sun = new THREE.DirectionalLight(0xffffff, 1.78);
+    sun.position.set(4, 9, 6);
     sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
     scene.add(sun);
     const fill = new THREE.DirectionalLight(0x9fc8ff, 0.52);
     fill.position.set(-6, 4, -5);
     scene.add(fill);
+    const rim = new THREE.DirectionalLight(0xffffff, 0.54);
+    rim.position.set(-3, 6, 8);
+    scene.add(rim);
 
-    const grid = new THREE.GridHelper(14, 14, 0x8da7c5, 0xd3dfed);
+    const grid = new THREE.GridHelper(12, 12, 0xabc0d7, 0xe0e8f2);
     grid.position.y = -0.03;
     grid.material.transparent = true;
-    grid.material.opacity = 0.42;
+    grid.material.opacity = 0.22;
     scene.add(grid);
 
     const loader = new GLTFLoader();
@@ -327,7 +461,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           box.getSize(size);
           box.getCenter(center);
           const maxAxis = Math.max(size.x, size.y, size.z, 1);
-          const scale = 9.4 / maxAxis;
+          const scale = 8.6 / maxAxis;
 
           model.position.sub(center);
           model.scale.setScalar(scale);
@@ -339,10 +473,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             if (mesh.material) {
               materialList(mesh.material).forEach((material) => {
                 material.side = THREE.DoubleSide;
+                material.transparent = true;
+                material.opacity = 0.52;
+                material.depthWrite = false;
                 material.needsUpdate = true;
               });
             }
           });
+          model.position.y = -0.015;
           scene.add(model);
           modelRootRef.current = model;
           setLoadState(fallback ? "fallback" : "ready");
@@ -375,6 +513,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     let frame = 0;
     const animate = () => {
       controlsRef.current?.update();
+      updateLabels();
       if (cameraRef.current) renderer.render(scene, cameraRef.current);
       frame = requestAnimationFrame(animate);
     };
@@ -393,11 +532,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       cameraRef.current = null;
       controlsRef.current = null;
       modelRootRef.current = null;
+      semanticModelRootRef.current = null;
       semanticRootRef.current = null;
       routeRootRef.current = null;
       interactiveObjectsRef.current = [];
+      labelAnchorsRef.current = [];
+      labelSignatureRef.current = "";
     };
-  }, [attachControls, fitCamera]);
+  }, [attachControls, fitCamera, updateLabels]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -407,29 +549,29 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const camera = createCamera(cameraMode, host.clientWidth, host.clientHeight);
     cameraRef.current = camera;
     attachControls();
-    fitCamera();
-  }, [attachControls, cameraMode, fitCamera]);
+    applyCameraPreset(activeCameraPreset, false);
+  }, [activeCameraPreset, applyCameraPreset, attachControls, cameraMode]);
 
   useEffect(() => {
     const renderer = rendererRef.current;
     const model = modelRootRef.current;
     if (!renderer || !model) return;
 
-    const faded = session.layerMode === "single" || session.layerMode === "section";
+    const faded = session.layerMode === "single" || session.layerMode === "section" || session.layerMode === "exploded";
     model.traverse((child) => {
       const mesh = child as THREE.Mesh;
       if (!mesh.isMesh || !mesh.material) return;
       materialList(mesh.material).forEach((material) => {
-        material.transparent = faded;
-        material.opacity = faded ? 0.34 : 1;
-        material.depthWrite = !faded;
+        material.transparent = true;
+        material.opacity = faded ? 0.18 : 0.44;
+        material.depthWrite = false;
         material.needsUpdate = true;
       });
     });
 
     renderer.clippingPlanes =
       session.layerMode === "section"
-        ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.42)]
+        ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.74)]
         : [];
   }, [session.layerMode]);
 
@@ -441,58 +583,225 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       scene.remove(semanticRootRef.current);
       disposeObject(semanticRootRef.current);
     }
-
-    const root = new THREE.Group();
-    root.name = "semantic-hotspots";
-    const floorMaterial = new THREE.MeshBasicMaterial({
-      color: 0x5f8cc8,
-      transparent: true,
-      opacity: session.layerMode === "single" ? 0.16 : 0.1,
-      side: THREE.DoubleSide,
-      depthWrite: false,
-    });
-    for (const floor of jingongMapData.floors) {
-      if (session.layerMode === "single" && session.activeFloor !== floor.id) continue;
-      const shape = new THREE.Shape(floor.outline.map((point) => new THREE.Vector2(...mapPointToModel(point, floor.id).filter((_, index) => index !== 1) as [number, number])));
-      const geometry = new THREE.ShapeGeometry(shape);
-      geometry.rotateX(Math.PI / 2);
-      const mesh = new THREE.Mesh(geometry, floorMaterial.clone());
-      mesh.position.y = floor.id === "2F" ? modelAlignment.hotspotLift * 0.08 : 0.02;
-      root.add(mesh);
+    if (semanticModelRootRef.current) {
+      scene.remove(semanticModelRootRef.current);
+      disposeObject(semanticModelRootRef.current);
     }
 
-    const roomMaterial = new THREE.MeshBasicMaterial({ color: 0x0b6cff, transparent: true, opacity: 0.14, depthWrite: false });
-    const selectedMaterial = new THREE.MeshBasicMaterial({ color: 0xff3f6c, transparent: true, opacity: 0.42, depthWrite: false });
-    const startMaterial = new THREE.MeshBasicMaterial({ color: 0x18a058, transparent: true, opacity: 0.48, depthWrite: false });
+    const building = new THREE.Group();
+    building.name = "semantic-building";
+    const markers = new THREE.Group();
+    markers.name = "semantic-markers";
+    const labels: LabelAnchor[] = [];
     const interactive: THREE.Object3D[] = [];
+    const activeRoomId = session.selectedRoomId;
+    const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
+
+    const corridorMaterial = new THREE.MeshStandardMaterial({
+      color: 0xe8eef6,
+      roughness: 0.78,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.92,
+    });
+    const floorEdgeMaterial = new THREE.LineBasicMaterial({ color: 0xb5c4d6, transparent: true, opacity: 0.86 });
+    const outerWallMaterial = new THREE.MeshStandardMaterial({
+      color: 0xf4f7fb,
+      roughness: 0.82,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.96,
+    });
+    const innerWallMaterial = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      roughness: 0.88,
+      metalness: 0,
+      transparent: true,
+      opacity: 0.72,
+    });
+
+    for (const floor of jingongMapData.floors) {
+      if (!floorVisibility(floor.id, session)) continue;
+      const slab = extrudedPolygonMesh(
+        floor.outline,
+        floor.id,
+        session,
+        modelAlignment.slabThickness,
+        new THREE.MeshStandardMaterial({
+          color: floor.id === "1F" ? 0xf1f5fb : 0xeaf1fa,
+          roughness: 0.74,
+          metalness: 0.02,
+        }),
+      );
+      slab.name = `${floor.id}-semantic-slab`;
+      slab.receiveShadow = true;
+      building.add(slab);
+
+      const outlinePoints = [...floor.outline, floor.outline[0]].map((point) => {
+        const [x, y, z] = mapPointToModel(point, floor.id, { ...modelOptions, lift: modelAlignment.slabThickness + 0.012 });
+        return new THREE.Vector3(x, y, z);
+      });
+      building.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(outlinePoints), floorEdgeMaterial.clone()));
+
+      floor.corridorPolygons.forEach((corridor, index) => {
+        const corridorMesh = extrudedPolygonMesh(corridor, floor.id, session, 0.012, corridorMaterial.clone());
+        corridorMesh.name = `${floor.id}-corridor-${index}`;
+        corridorMesh.position.y += modelAlignment.slabThickness + 0.01;
+        building.add(corridorMesh);
+      });
+
+      labels.push({
+        roomId: `floor-${floor.id}`,
+        text: floor.label,
+        floor: floor.id,
+        priority: 18,
+        active: false,
+        start: false,
+        target: false,
+        position: new THREE.Vector3(...mapPointToModel(floor.outline[0], floor.id, { ...modelOptions, lift: 0.42 })),
+      });
+    }
 
     for (const room of visibleRooms) {
-      const [x, y, z] = mapPointToModel(room.center, room.floor);
-      const active = room.id === session.selectedRoomId || room.id === session.targetRoomId;
+      const active = room.id === activeRoomId;
+      const target = room.id === session.targetRoomId;
       const start = room.id === startRoomId;
-      const radius = active || start ? 0.22 : 0.14;
+      const material = new THREE.MeshStandardMaterial({
+        color: active || target ? 0x0b6cff : start ? 0x19a15f : roomColor[room.area],
+        roughness: 0.62,
+        metalness: 0.02,
+        transparent: true,
+        opacity: active || target || start ? 0.88 : 0.66,
+      });
+      const roomMesh = extrudedPolygonMesh(room.polygon, room.floor, session, 0.05, material);
+      roomMesh.position.y += modelAlignment.slabThickness + 0.025;
+      roomMesh.name = `room-${room.id}`;
+      roomMesh.userData.roomId = room.id;
+      roomMesh.castShadow = true;
+      roomMesh.receiveShadow = true;
+      building.add(roomMesh);
+      interactive.push(roomMesh);
+
+      const linePoints = [...room.polygon, room.polygon[0]].map((point) => {
+        const [x, y, z] = mapPointToModel(point, room.floor, {
+          ...modelOptions,
+          lift: modelAlignment.slabThickness + 0.088,
+        });
+        return new THREE.Vector3(x, y, z);
+      });
+      building.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), floorEdgeMaterial.clone()));
+
+      const [x, y, z] = mapPointToModel(room.center, room.floor, { ...modelOptions, lift: modelAlignment.hotspotLift + 0.13 });
       const hotspot = new THREE.Mesh(
-        new THREE.CylinderGeometry(radius, radius, 0.045, 24),
-        active ? selectedMaterial.clone() : start ? startMaterial.clone() : roomMaterial.clone(),
+        new THREE.CylinderGeometry(active || target || start ? 0.12 : 0.075, active || target || start ? 0.12 : 0.075, 0.05, 24),
+        new THREE.MeshStandardMaterial({
+          color: target ? 0xff3f6c : start ? 0x18a058 : active ? 0x0b6cff : 0xffffff,
+          emissive: target ? 0x5a0012 : active ? 0x06236b : 0x000000,
+          roughness: 0.42,
+          metalness: 0.02,
+        }),
       );
-      hotspot.position.set(x, y + modelAlignment.hotspotLift, z);
+      hotspot.position.set(x, y, z);
       hotspot.userData.roomId = room.id;
-      root.add(hotspot);
+      hotspot.castShadow = true;
+      markers.add(hotspot);
       interactive.push(hotspot);
 
       if (shouldShowRoomLabel(room, session, startRoomId)) {
-        const labelSprite = makeTextSprite(compactRoomName(room), active || start);
-        labelSprite.position.set(x, y + modelAlignment.hotspotLift + (active || start ? 0.42 : 0.28), z);
-        labelSprite.userData.roomId = room.id;
-        root.add(labelSprite);
-        interactive.push(labelSprite);
+        labels.push({
+          roomId: room.id,
+          text: compactRoomName(room),
+          floor: room.floor,
+          priority: active || target || start ? 100 : overviewLabelRoomIds.has(room.id) ? 60 : 32,
+          active,
+          start,
+          target,
+          position: new THREE.Vector3(x, y + (active || target || start ? 0.24 : 0.16), z),
+        });
       }
     }
 
-    semanticRootRef.current = root;
+    for (const wall of jingongMapData.walls) {
+      if (!floorVisibility(wall.floor, session)) continue;
+      const height = wall.kind === "outer" ? modelAlignment.outerWallHeight : modelAlignment.wallHeight;
+      const start = new THREE.Vector3(...mapPointToModel(wall.from, wall.floor, { ...modelOptions, lift: modelAlignment.slabThickness + height / 2 }));
+      const end = new THREE.Vector3(...mapPointToModel(wall.to, wall.floor, { ...modelOptions, lift: modelAlignment.slabThickness + height / 2 }));
+      const length = start.distanceTo(end);
+      if (length < 0.001) continue;
+      const geometry = new THREE.BoxGeometry(length, height, wall.kind === "outer" ? 0.032 : 0.018);
+      const mesh = new THREE.Mesh(geometry, wall.kind === "outer" ? outerWallMaterial.clone() : innerWallMaterial.clone());
+      const midpoint = start.clone().add(end).multiplyScalar(0.5);
+      mesh.position.copy(midpoint);
+      mesh.rotation.y = -Math.atan2(end.z - start.z, end.x - start.x);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      building.add(mesh);
+    }
+
+    const stairMaterial = new THREE.MeshStandardMaterial({
+      color: 0xd3994e,
+      roughness: 0.58,
+      metalness: 0.02,
+      transparent: true,
+      opacity: 0.94,
+    });
+    const stairActiveMaterial = new THREE.MeshStandardMaterial({
+      color: 0x0b6cff,
+      emissive: 0x072766,
+      roughness: 0.46,
+      metalness: 0.02,
+    });
+    for (const stair of jingongMapData.stairs) {
+      const onRoute = stairIsOnRoute(stair, route);
+      const lowerVisible = floorVisibility(stair.lowerFloor, session);
+      const upperVisible = floorVisibility(stair.upperFloor, session);
+      if (lowerVisible) {
+        const lower = extrudedPolygonMesh(stair.lowerLanding, stair.lowerFloor, session, 0.075, (onRoute ? stairActiveMaterial : stairMaterial).clone());
+        lower.position.y += modelAlignment.slabThickness + 0.08;
+        lower.name = `${stair.id}-lower`;
+        building.add(lower);
+      }
+      if (upperVisible) {
+        const upper = extrudedPolygonMesh(stair.upperLanding, stair.upperFloor, session, 0.075, (onRoute ? stairActiveMaterial : stairMaterial).clone());
+        upper.position.y += modelAlignment.slabThickness + 0.08;
+        upper.name = `${stair.id}-upper`;
+        building.add(upper);
+      }
+      if (lowerVisible && upperVisible && (session.layerMode !== "single" || onRoute)) {
+        const lowerPoint = stairCenter(stair.lowerLanding);
+        const upperPoint = stairCenter(stair.upperLanding);
+        const lowerVector = new THREE.Vector3(...mapPointToModel(lowerPoint, stair.lowerFloor, { ...modelOptions, lift: 0.22 }));
+        const upperVector = new THREE.Vector3(...mapPointToModel(upperPoint, stair.upperFloor, { ...modelOptions, lift: 0.22 }));
+        const stairLine = tubeBetween(lowerVector, upperVector, onRoute ? 0.042 : 0.025, (onRoute ? stairActiveMaterial : stairMaterial).clone());
+        stairLine.name = `${stair.id}-rise`;
+        building.add(stairLine);
+      }
+      const labelPoint = upperVisible ? stairCenter(stair.upperLanding) : stairCenter(stair.lowerLanding);
+      labels.push({
+        roomId: stair.id,
+        text: stair.access === "internal" ? stair.label.replace("内部楼梯", "内梯") : stair.label,
+        floor: upperVisible ? stair.upperFloor : stair.lowerFloor,
+        priority: onRoute ? 92 : stair.access === "internal" ? 44 : 40,
+        active: onRoute,
+        start: false,
+        target: false,
+        position: new THREE.Vector3(
+          ...mapPointToModel(labelPoint, upperVisible ? stair.upperFloor : stair.lowerFloor, {
+            ...modelOptions,
+            lift: onRoute ? 0.72 : 0.52,
+          }),
+        ),
+      });
+    }
+
+    semanticModelRootRef.current = building;
+    semanticRootRef.current = markers;
     interactiveObjectsRef.current = interactive;
-    scene.add(root);
-  }, [session.activeFloor, session.layerMode, session.selectedRoomId, session.targetRoomId, startRoomId, visibleRooms]);
+    labelAnchorsRef.current = labels;
+    scene.add(building);
+    scene.add(markers);
+    updateLabels();
+  }, [route, session.activeFloor, session.layerMode, session.selectedRoomId, session.targetRoomId, startRoomId, updateLabels, visibleRooms]);
 
   useEffect(() => {
     const scene = sceneRef.current;
@@ -505,33 +814,60 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const root = new THREE.Group();
     root.name = "route-overlay";
     if (route && route.points.length > 1) {
-      const points = route.points.map((routePoint) => {
-        const [x, y, z] = mapPointToModel(routePoint.point, routePoint.floor);
-        return new THREE.Vector3(x, y + modelAlignment.routeLift, z);
+      const points = route.points.map((routePoint) => routePointToVector(routePoint, session));
+      const routeMaterial = new THREE.MeshStandardMaterial({
+        color: 0x0b6cff,
+        emissive: 0x063a9f,
+        roughness: 0.35,
+        metalness: 0.02,
       });
-      const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.08);
-      const tube = new THREE.Mesh(
-        new THREE.TubeGeometry(curve, Math.max(8, points.length * 18), 0.045, 10, false),
-        new THREE.MeshBasicMaterial({ color: 0x0b6cff }),
+      const haloMaterial = new THREE.MeshBasicMaterial({ color: 0x9dccff, transparent: true, opacity: 0.36 });
+      const curve = new THREE.CatmullRomCurve3(points, false, "catmullrom", 0.04);
+      const halo = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, Math.max(10, points.length * 20), 0.082, 12, false),
+        haloMaterial,
       );
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, Math.max(10, points.length * 20), 0.034, 10, false), routeMaterial);
+      root.add(halo);
       root.add(tube);
+      points.forEach((point, index) => {
+        if (index === 0 || index === points.length - 1) return;
+        const pulse = new THREE.Mesh(
+          new THREE.SphereGeometry(0.065, 18, 12),
+          new THREE.MeshStandardMaterial({
+            color: route.points[index].kind.includes("stair") ? 0xffb547 : 0xffffff,
+            emissive: route.points[index].kind.includes("stair") ? 0x6b3600 : 0x0b6cff,
+            roughness: 0.38,
+          }),
+        );
+        pulse.position.copy(point);
+        root.add(pulse);
+      });
 
       const start = getRoomById(jingongMapData, route.startRoomId);
       const target = getRoomById(jingongMapData, route.targetRoomId);
       [start, target].forEach((room, index) => {
         if (!room) return;
-        const [x, y, z] = mapPointToModel(room.center, room.floor);
+        const [x, y, z] = mapPointToModel(room.center, room.floor, {
+          layerMode: session.layerMode,
+          activeFloor: session.activeFloor,
+          lift: 0.58,
+        });
         const pin = new THREE.Mesh(
           index === 0 ? new THREE.CylinderGeometry(0.13, 0.13, 0.32, 18) : new THREE.ConeGeometry(0.18, 0.46, 24),
-          new THREE.MeshBasicMaterial({ color: index === 0 ? 0x18a058 : 0xff3f6c }),
+          new THREE.MeshStandardMaterial({
+            color: index === 0 ? 0x18a058 : 0xff3f6c,
+            emissive: index === 0 ? 0x063b1f : 0x5f0018,
+            roughness: 0.4,
+          }),
         );
-        pin.position.set(x, y + 0.7, z);
+        pin.position.set(x, y, z);
         root.add(pin);
       });
     }
     routeRootRef.current = root;
     scene.add(root);
-  }, [route]);
+  }, [route, session.activeFloor, session.layerMode]);
 
   const pickRoom = useCallback((clientX: number, clientY: number) => {
     const renderer = rendererRef.current;
@@ -607,7 +943,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
   const applyMapDirect = (request: MapDirectRequest) => {
     setSession(defaultSession("backend", request));
-    setPanel("route");
+    setPanel("none");
     setRoutePage("setup");
   };
 
@@ -615,10 +951,35 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const loadLabel =
     loadState === "ready" ? "3D 精确模型" : loadState === "fallback" ? "STL 备用模型" : loadState === "error" ? "语义导航模式" : "模型加载中";
 
+  const selectRoomFromLabel = (roomId: string) => {
+    const room = getRoomById(jingongMapData, roomId);
+    if (!room) return;
+    setSession((current) => ({ ...current, selectedRoomId: room.id }));
+    setPanel("room");
+  };
+
   return (
     <div className={`map3d-app panel-${panel}`}>
       <section className="map3d-stage" aria-label="3D 精确模型地图">
         <div className="map3d-canvas-host" ref={hostRef} onPointerDown={handleCanvasPointerDown} onPointerUp={handleCanvasPointerUp} />
+        <div className="map3d-label-layer" aria-hidden="true">
+          {labelLayout
+            .filter((label) => label.visible)
+            .map((label) => {
+              const room = getRoomById(jingongMapData, label.roomId);
+              return (
+                <button
+                  key={`${label.roomId}-${label.x.toFixed(0)}-${label.y.toFixed(0)}`}
+                  className={`map3d-label ${label.active ? "active" : ""} ${label.start ? "start" : ""} ${label.target ? "target" : ""} ${room ? roomCssClass[room.area] : "utility"}`}
+                  style={{ left: label.x, top: label.y }}
+                  onClick={() => selectRoomFromLabel(label.roomId)}
+                  tabIndex={-1}
+                >
+                  {label.text}
+                </button>
+              );
+            })}
+        </div>
         <div className="map3d-status-chip">
           <Box size={17} />
           <span>{loadLabel}</span>
@@ -628,6 +989,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           <Crosshair size={17} />
           <span>{selectedRoom ? compactRoomName(selectedRoom) : "金工中心总览"}</span>
         </div>
+        {route && panel === "none" && (
+          <button className="map3d-route-chip" onClick={() => openPanel("route")} title="打开路线面板">
+            <Route size={17} />
+            <span>{targetRoom ? compactRoomName(targetRoom) : "路线"}</span>
+            <small>{route.totalMeters}m · {formatSeconds(route.estimatedSeconds)}</small>
+          </button>
+        )}
       </section>
 
       <nav className="map3d-rail" aria-label="地图操作栏">
@@ -680,6 +1048,10 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             <div className="map3d-panel-page">
               {routePage === "setup" ? (
                 <>
+                  <div className="route-mode-banner">
+                    <Sparkles size={18} />
+                    <span>{route ? "路线已贴合语义拓扑显示在 3D 模型上" : "选择终点后，默认从 101 生成路线"}</span>
+                  </div>
                   <div className="material-field">
                     <span>起点</span>
                     <select value={startRoomId ?? ""} onChange={(event) => updateRouteEndpoint("startRoomId", event.target.value)}>
@@ -799,6 +1171,20 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                   <ScanLine size={20} />
                   <strong>正交</strong>
                   <span>接近平面审图视角</span>
+                </button>
+              </div>
+              <div className="material-grid four camera-preset-grid">
+                <button className={activeCameraPreset === "overview" ? "material-mini-chip active" : "material-mini-chip"} onClick={() => applyCameraPreset("overview")}>
+                  总览
+                </button>
+                <button className={activeCameraPreset === "lowIso" ? "material-mini-chip active" : "material-mini-chip"} onClick={() => applyCameraPreset("lowIso")}>
+                  低角
+                </button>
+                <button className={activeCameraPreset === "top" ? "material-mini-chip active" : "material-mini-chip"} onClick={() => applyCameraPreset("top")}>
+                  俯视
+                </button>
+                <button className={activeCameraPreset === "route" ? "material-mini-chip active" : "material-mini-chip"} onClick={() => applyCameraPreset("route")}>
+                  路线
                 </button>
               </div>
               <div className="view-nudge-grid">

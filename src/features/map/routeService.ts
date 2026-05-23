@@ -39,8 +39,9 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
   if (!startRoom || !targetRoom) return undefined;
 
   const { nodes, adjacency } = buildGraph(data);
-  const startNodeId = startRoom.doorNodeId;
-  const targetNodeId = targetRoom.doorNodeId;
+  const startNodeId = `center-${startRoom.id}`;
+  const targetNodeId = `center-${targetRoom.id}`;
+  if (!nodes.has(startNodeId) || !nodes.has(targetNodeId)) return undefined;
   const distances = new Map<string, number>();
   const previous = new Map<string, { nodeId: string; edge: NavEdge; weight: number }>();
   const unvisited = new Set(nodes.keys());
@@ -104,13 +105,18 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
   const totalMeters = Math.round(distances.get(targetNodeId) ?? 0);
   const estimatedSeconds = Math.max(20, Math.round((totalMeters / 0.8) + steps.filter((step) => step.kind.includes("stair")).length * 18));
   const points = pathNodeIds
-    .map((nodeId) => nodes.get(nodeId))
-    .filter(Boolean)
-    .map((navNode) => ({
-      floor: navNode!.floor,
-      point: navNode!.point,
-      kind: (steps.find((step) => step.toNodeId === navNode!.id)?.kind ?? "corridor") as NavEdge["kind"],
-    }));
+    .map((nodeId, index) => {
+      const navNode = nodes.get(nodeId);
+      if (!navNode) return undefined;
+      const leadingStep = steps.find((step) => step.toNodeId === nodeId);
+      return {
+        nodeId,
+        floor: navNode.floor,
+        point: navNode.point,
+        kind: index === 0 ? navNode.kind : leadingStep?.kind ?? navNode.kind,
+      };
+    })
+    .filter(Boolean) as RouteResult["points"];
 
   const floorChanges = steps.filter((step) => step.kind === "stair" || step.kind === "internal-stair");
   const notableSteps = compactRouteSteps(steps);
@@ -139,7 +145,15 @@ export function compactRouteSteps(steps: RouteStep[]): string[] {
   let walkMeters = 0;
 
   for (const step of steps) {
-    if (step.kind === "corridor" || step.kind === "door") {
+    if (step.kind === "corridor" || step.kind === "door" || step.kind === "room-entry") {
+      if (step.note?.includes("二层半")) {
+        if (walkMeters > 0) {
+          lines.push(`沿走廊前进约 ${walkMeters} 米。`);
+          walkMeters = 0;
+        }
+        lines.push(step.note);
+        continue;
+      }
       walkMeters += step.distanceMeters;
       continue;
     }

@@ -25,7 +25,7 @@ function assimpInfo(file) {
     return match ? Number(match[1]) : undefined;
   };
   const point = (label) => {
-    const match = output.match(new RegExp(`${label}\\s+\\(([-\\d.]+)\\s+([-\d.]+)\\s+([-\d.]+)\\)`));
+    const match = output.match(new RegExp(`${label}\\s+\\(([-\\d.]+)\\s+([-\\d.]+)\\s+([-\\d.]+)\\)`));
     return match ? [Number(match[1]), Number(match[2]), Number(match[3])] : undefined;
   };
   return {
@@ -37,6 +37,25 @@ function assimpInfo(file) {
     minPoint: point("Minimum point"),
     maxPoint: point("Maximum point"),
     centerPoint: point("Center point"),
+  };
+}
+
+function assimpRuntimeInfo(file) {
+  if (!existsSync(file)) return undefined;
+  const info = assimpInfo(file);
+  const size =
+    info.minPoint && info.maxPoint
+      ? [
+          info.maxPoint[0] - info.minPoint[0],
+          info.maxPoint[1] - info.minPoint[1],
+          info.maxPoint[2] - info.minPoint[2],
+        ]
+      : undefined;
+  const maxAxis = size ? Math.max(...size.map((value) => Math.abs(value)), 1) : undefined;
+  return {
+    ...info,
+    bboxSize: size,
+    runtimeCenteredScale: maxAxis ? 8.6 / maxAxis : undefined,
   };
 }
 
@@ -57,6 +76,7 @@ const manifest = {
       format: "glb2",
       role: "visual-model",
       info: assimpInfo(sources.primary3ds),
+      runtimeInfo: assimpRuntimeInfo(runtime.primaryGlb),
     },
     fallback: {
       ...fileInfo(runtime.fallbackGlb),
@@ -64,6 +84,7 @@ const manifest = {
       format: "glb2",
       role: "low-fidelity-geometry",
       info: assimpInfo(sources.fallbackStl),
+      runtimeInfo: assimpRuntimeInfo(runtime.fallbackGlb),
     },
   },
   calibrationSources: {
@@ -74,6 +95,7 @@ const manifest = {
     note: "Map3D uses modelAlignment.ts for runtime centering, scaling, axis correction, and semantic overlay alignment.",
     unit: "source-model-units",
     upAxis: "auto-corrected-to-y-up-in-runtime",
+    runtimeFit: "GLB bbox is centered at runtime and scaled by 8.6 / maxAxis; semantic overlay must match modelAlignment/modelCalibration.",
   },
 };
 

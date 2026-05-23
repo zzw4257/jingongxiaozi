@@ -3,6 +3,8 @@ import type { MapDirectRequest } from "../../shared/appTypes";
 export type FloorId = "1F" | "2F";
 
 export type AreaType = "teaching" | "processing" | "lab" | "office" | "service" | "other";
+export type SpaceKind = "room" | "corridor" | "service" | "restroom" | "storage" | "reserved" | "stair" | "void";
+export type GeometrySource = "model" | "cad" | "reference" | "inferred";
 
 export type Point = [number, number];
 
@@ -26,8 +28,28 @@ export type DoorSegment = {
   id: string;
   floor: FloorId;
   point: Point;
+  from: Point;
+  to: Point;
   width: number;
+  normal: Point;
   connects: [string, string];
+  source: GeometrySource;
+  wallId?: string;
+  nodeId: string;
+  label?: string;
+};
+
+export type MapSpace = {
+  id: string;
+  label: string;
+  floor: FloorId;
+  kind: SpaceKind;
+  polygon: Point[];
+  center: Point;
+  source: GeometrySource;
+  navigable: boolean;
+  description: string;
+  labelPriority?: number;
 };
 
 export type StairGeometry = {
@@ -73,7 +95,7 @@ export type NavNode = {
   id: string;
   floor: FloorId;
   point: Point;
-  kind: "corridor" | "door" | "stair" | "room-center";
+  kind: "corridor" | "door" | "stair" | "room-center" | "space-center";
   label?: string;
 };
 
@@ -81,8 +103,47 @@ export type NavEdge = {
   from: string;
   to: string;
   distance?: number;
-  kind: "corridor" | "door" | "stair" | "internal-stair";
+  kind: "corridor" | "door" | "stair" | "internal-stair" | "room-entry";
   note?: string;
+};
+
+export type CenterlineSegment = {
+  id: string;
+  floor: FloorId;
+  from: string;
+  to: string;
+  kind: "corridor" | "stair-approach" | "service";
+  source: GeometrySource;
+};
+
+export type CalibrationPoint = {
+  id: string;
+  label: string;
+  floor: FloorId;
+  mapPoint: Point;
+  modelPoint: [number, number, number];
+  role: "outline" | "stair" | "door" | "corridor" | "platform";
+  source: GeometrySource;
+  tolerance: number;
+};
+
+export type ModelCalibration = {
+  sourcePriority: GeometrySource[];
+  controlPoints: CalibrationPoint[];
+  maxError: number;
+  averageError: number;
+  modelScale: number;
+  mapCenter: Point;
+  rotationRadians: number;
+  floorHeight: number;
+  runtimeFit: {
+    rawBBoxMin: [number, number, number];
+    rawBBoxMax: [number, number, number];
+    rawBBoxCenter: [number, number, number];
+    rawBBoxSize: [number, number, number];
+    centeredScale: number;
+  };
+  note: string;
 };
 
 export type MapData = {
@@ -90,9 +151,12 @@ export type MapData = {
   defaultStartRoomId: string;
   floors: FloorGeometry[];
   rooms: MapRoom[];
+  spaces: MapSpace[];
   walls: WallSegment[];
   doors: DoorSegment[];
   stairs: StairGeometry[];
+  centerlines: CenterlineSegment[];
+  calibration: ModelCalibration;
   nodes: NavNode[];
   edges: NavEdge[];
 };
@@ -113,7 +177,7 @@ export type RouteResult = {
   totalMeters: number;
   estimatedSeconds: number;
   steps: RouteStep[];
-  points: Array<{ floor: FloorId; point: Point; kind: NavEdge["kind"] }>;
+  points: Array<{ nodeId: string; floor: FloorId; point: Point; kind: NavEdge["kind"] | NavNode["kind"] }>;
   announceLines: string[];
 };
 
@@ -124,7 +188,7 @@ export type MapSessionState = {
   targetRoomId?: string;
   routeId?: string;
   viewMode: "2d" | "2_5d";
-  layerMode: "single" | "twoFloor" | "allFloors" | "exploded" | "section";
+  layerMode: "single" | "twoFloor" | "allFloors" | "exploded" | "section" | "raised202";
   activeFloor?: FloorId;
   announce: string[];
 };

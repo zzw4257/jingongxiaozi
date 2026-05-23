@@ -13,5 +13,6 @@ output/*.idsig
 build/android-release/
 qa/android-screenshots/*.png
 qa/screenshots/*.png
+qa/alignment/*.json
 kiosk-*.png
 models/*.skb

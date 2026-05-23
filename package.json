@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "check:model": "node scripts/verify-model-assets.mjs",
-    "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs",
+    "check:alignment": "node scripts/verify-alignment.mjs",
+    "qa:map-report": "node scripts/generate-map-qa-report.mjs",
+    "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs && node scripts/verify-alignment.mjs && node scripts/generate-map-qa-report.mjs",
     "qa:mobile": "node scripts/qa-mobile-layout.mjs"
   },
   "dependencies": {

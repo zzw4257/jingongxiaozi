@@ -36,10 +36,10 @@ const viewPresets: Array<{
 }> = [
   {
     id: "overview",
-    title: "2.5D 分层总览",
-    description: "默认展示上下层错位关系，适合跨层路线和建筑浏览。",
+    title: "2.5D 物理总览",
+    description: "默认按真实上下位置对齐，适合确认楼梯、门洞和跨层路线。",
     viewMode: "2_5d",
-    layerMode: "exploded",
+    layerMode: "allFloors",
   },
   {
     id: "one-floor",
@@ -95,6 +95,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
   const rooms = useMemo(() => {
     return jingongMapData.rooms.filter((room) => {
       if (areaFilter !== "all" && room.area !== areaFilter) return false;
+      if (session.layerMode === "raised202") return room.floor === "2F" && room.id.startsWith("202");
       if (session.layerMode === "single" && session.activeFloor && room.floor !== session.activeFloor) return false;
       if (session.layerMode === "twoFloor") return room.floor === "1F" || room.floor === "2F";
       return true;
@@ -205,7 +206,7 @@ export function MapApp({ initialRequest, entrySource, onExit }: Props) {
           <Compass size={22} />
           <span>视角</span>
         </button>
-        <button onClick={() => { setZoom(1); setViewAngle(0); setSession((current) => ({ ...current, viewMode: "2_5d", layerMode: "exploded", activeFloor: undefined })); }} title="回到总览">
+        <button onClick={() => { setZoom(1); setViewAngle(0); setSession((current) => ({ ...current, viewMode: "2_5d", layerMode: "allFloors", activeFloor: undefined })); }} title="回到总览">
           <Maximize2 size={22} />
           <span>总览</span>
         </button>

@@ -74,6 +74,10 @@ const ISO_TARGETS: Record<MapSessionState["layerMode"], Record<FloorId, { base: 
     "1F": { base: [102, 382], scale: 0.49, zLift: 0 },
     "2F": { base: [222, 190], scale: 0.49, zLift: 62 },
   },
+  raised202: {
+    "1F": { base: [102, 382], scale: 0.49, zLift: 0 },
+    "2F": { base: [118, 104], scale: 0.82, zLift: 0 },
+  },
 };
 
 function orbitView(angleDegrees: number): { skew: Point; offset: Point; yaw: number } {
@@ -110,7 +114,7 @@ const polygonCenter = (polygon: Point[]): Point => {
 };
 
 function flatProject(point: Point, floor: FloorId, layerMode: Props["layerMode"]): Point {
-  const target = layerMode === "single" ? FLAT_SINGLE_TARGETS[floor] : FLAT_SPLIT_TARGETS[floor];
+  const target = layerMode === "single" || layerMode === "raised202" ? FLAT_SINGLE_TARGETS[floor] : FLAT_SPLIT_TARGETS[floor];
   return [
     target.base[0] + (point[0] - WORLD_BOUNDS.minX) * target.scale,
     target.base[1] + (point[1] - WORLD_BOUNDS.minY) * target.scale,
@@ -167,6 +171,50 @@ function wallFacePoints(wall: WallSegment, viewMode: Props["viewMode"], layerMod
 
 function roomById(roomId?: string): MapRoom | undefined {
   return jingongMapData.rooms.find((room) => room.id === roomId);
+}
+
+function splitWallByDoors(wall: WallSegment, doors: DoorSegment[]): Array<{ from: Point; to: Point }> {
+  const dx = wall.to[0] - wall.from[0];
+  const dy = wall.to[1] - wall.from[1];
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq < 1) return [{ from: wall.from, to: wall.to }];
+
+  const cuts = doors
+    .filter((door) => door.floor === wall.floor)
+    .map((door) => {
+      const endpoints = [door.from, door.to].map((point) => {
+        const t = ((point[0] - wall.from[0]) * dx + (point[1] - wall.from[1]) * dy) / lengthSq;
+        const projected: Point = [wall.from[0] + dx * t, wall.from[1] + dy * t];
+        const distance = Math.hypot(projected[0] - point[0], projected[1] - point[1]);
+        return { t, distance };
+      });
+      const min = Math.max(0, Math.min(endpoints[0].t, endpoints[1].t));
+      const max = Math.min(1, Math.max(endpoints[0].t, endpoints[1].t));
+      return { min, max, distance: Math.max(endpoints[0].distance, endpoints[1].distance) };
+    })
+    .filter((cut) => cut.distance < 2.2 && cut.max - cut.min > 0.01)
+    .sort((a, b) => a.min - b.min);
+
+  if (cuts.length === 0) return [{ from: wall.from, to: wall.to }];
+
+  const segments: Array<{ from: Point; to: Point }> = [];
+  let cursor = 0;
+  for (const cut of cuts) {
+    if (cut.min > cursor + 0.012) {
+      segments.push({
+        from: [wall.from[0] + dx * cursor, wall.from[1] + dy * cursor],
+        to: [wall.from[0] + dx * cut.min, wall.from[1] + dy * cut.min],
+      });
+    }
+    cursor = Math.max(cursor, cut.max);
+  }
+  if (cursor < 0.988) {
+    segments.push({
+      from: [wall.from[0] + dx * cursor, wall.from[1] + dy * cursor],
+      to: wall.to,
+    });
+  }
+  return segments;
 }
 
 function routeDisplayPoints(route: RouteResult | undefined, viewMode: Props["viewMode"], layerMode: Props["layerMode"], rotation = 0): Point[] {
@@ -231,17 +279,25 @@ function renderFloor(floor: FloorGeometry, viewMode: Props["viewMode"], layerMod
 
 function renderWalls(walls: WallSegment[], viewMode: Props["viewMode"], layerMode: Props["layerMode"], rotation = 0) {
   if (viewMode === "2d") {
-    return walls.map((wall) => {
-      const [a, b] = wallFacePoints(wall, viewMode, layerMode, rotation);
-      return <line key={wall.id} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} className={`wall-line ${wall.kind}`} />;
-    });
+    return walls.flatMap((wall) =>
+      splitWallByDoors(wall, jingongMapData.doors).map((segment, index) => {
+        const [a, b] = [segment.from, segment.to].map((point) => projectPoint(point, wall.floor, viewMode, layerMode, rotation));
+        return <line key={`${wall.id}-${index}`} x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} className={`wall-line ${wall.kind}`} />;
+      }),
+    );
   }
 
   return walls
     .filter((wall) => wall.kind !== "inner" || wall.thickness > 1)
-    .map((wall) => (
-      <polygon key={wall.id} points={pointList(wallFacePoints(wall, viewMode, layerMode, rotation))} className={`wall-face ${wall.kind}`} />
-    ));
+    .flatMap((wall) =>
+      splitWallByDoors(wall, jingongMapData.doors).map((segment, index) => (
+        <polygon
+          key={`${wall.id}-${index}`}
+          points={pointList(wallFacePoints({ ...wall, from: segment.from, to: segment.to }, viewMode, layerMode, rotation))}
+          className={`wall-face ${wall.kind}`}
+        />
+      )),
+    );
 }
 
 function renderDoors(doors: DoorSegment[], visibleRooms: MapRoom[], viewMode: Props["viewMode"], layerMode: Props["layerMode"], rotation = 0) {
@@ -249,8 +305,15 @@ function renderDoors(doors: DoorSegment[], visibleRooms: MapRoom[], viewMode: Pr
   return doors
     .filter((door) => visibleRoomIds.has(door.connects[0]))
     .map((door) => {
+      const from = projectPoint(door.from, door.floor, viewMode, layerMode, rotation);
+      const to = projectPoint(door.to, door.floor, viewMode, layerMode, rotation);
       const point = projectPoint(door.point, door.floor, viewMode, layerMode, rotation);
-      return <circle key={door.id} cx={point[0]} cy={point[1]} r={viewMode === "2d" ? 4 : 5} className="door-gap" />;
+      return (
+        <g key={door.id} className={`door-symbol ${door.source}`}>
+          <line x1={from[0]} y1={from[1]} x2={to[0]} y2={to[1]} className="door-gap-line" />
+          <circle cx={point[0]} cy={point[1]} r={viewMode === "2d" ? 2.8 : 3.5} className="door-node-dot" />
+        </g>
+      );
     });
 }
 

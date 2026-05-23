@@ -1,9 +1,13 @@
 import type {
+  CenterlineSegment,
   DoorSegment,
   FloorGeometry,
   FloorId,
+  GeometrySource,
+  MapSpace,
   MapData,
   MapRoom,
+  ModelCalibration,
   NavEdge,
   NavNode,
   Point,
@@ -75,6 +79,29 @@ const edge = (
   distance?: number,
 ): NavEdge => ({ from, to, kind, note, distance });
 
+const space = (
+  id: string,
+  label: string,
+  floor: FloorId,
+  kind: MapSpace["kind"],
+  polygon: Point[],
+  description: string,
+  source: GeometrySource = "inferred",
+  navigable = kind === "corridor" || kind === "stair",
+  labelPriority = kind === "corridor" ? 40 : 16,
+): MapSpace => ({
+  id,
+  label,
+  floor,
+  kind,
+  polygon,
+  center: centroid(polygon),
+  source,
+  navigable,
+  description,
+  labelPriority,
+});
+
 const wallFromPolygon = (floor: FloorId, prefix: string, polygon: Point[], kind: WallSegment["kind"]): WallSegment[] =>
   polygon.map((point, index) => ({
     id: `${prefix}-${index}`,
@@ -131,7 +158,9 @@ const floor2Outline: Point[] = [
   [635, 95],
   [930, 95],
   [930, 160],
-  [1050, 160],
+  [1180, 160],
+  [1180, 280],
+  [1050, 280],
   [1050, 245],
   [920, 245],
   [920, 345],
@@ -343,7 +372,7 @@ const nodes: NavNode[] = [
   node("stair-108-1f", "1F", [482, 520], "stair", "108 内部楼梯一层"),
   node("c2-108", "2F", [350, 235]),
   node("c2-main", "2F", [575, 230]),
-  node("c2-202", "2F", [780, 230]),
+  node("c2-202", "2F", [780, 230], "corridor", "202 二层半过道"),
   node("c2-west", "2F", [160, 235]),
   node("c2-office", "2F", [380, 665]),
   node("stair-public-2f", "2F", [548, 232], "stair", "公共楼梯二层"),
@@ -359,7 +388,7 @@ const edges: NavEdge[] = [
   edge("c1-107", "stair-public-1f"),
   edge("stair-public-1f", "stair-public-2f", "stair", "通过公共楼梯到达二层公共走廊", 24),
   edge("stair-public-2f", "c2-main"),
-  edge("c2-main", "c2-202"),
+  edge("c2-main", "c2-202", "corridor", "沿蓝色高亮过道进入 202 二层半平台"),
   edge("c2-main", "c2-108"),
   edge("c2-108", "c2-west"),
   edge("c2-108", "stair-108-2f"),
@@ -383,6 +412,117 @@ const walls: WallSegment[] = [
     ...wallFromPolygon(stair.lowerFloor, `wall-${stair.id}-lower`, stair.lowerLanding, stair.access === "internal" ? "low" : "inner"),
     ...wallFromPolygon(stair.upperFloor, `wall-${stair.id}-upper`, stair.upperLanding, stair.access === "internal" ? "low" : "inner"),
   ]),
+];
+
+const serviceSpaces: MapSpace[] = [
+  space(
+    "restroom-1f-east",
+    "一层卫生间",
+    "1F",
+    "restroom",
+    [
+      [1035, 540],
+      [1115, 540],
+      [1115, 585],
+      [1035, 585],
+    ],
+    "一层东侧公共卫生间，作为地图服务空间显示，默认不作为语音导航目的地。",
+    "inferred",
+    false,
+    20,
+  ),
+  space(
+    "service-1f-ibe-corner",
+    "工程服务角",
+    "1F",
+    "service",
+    [
+      [650, 615],
+      [730, 615],
+      [730, 690],
+      [650, 690],
+    ],
+    "一层工程训练服务与等候区域，按服务空间弱标注。",
+    "reference",
+    true,
+    28,
+  ),
+  space(
+    "storage-1f-west",
+    "西侧仓储",
+    "1F",
+    "storage",
+    [
+      [130, 535],
+      [160, 535],
+      [160, 595],
+      [130, 595],
+    ],
+    "西侧未开放小仓储/预留空间，保留物理占位。",
+    "inferred",
+    false,
+    12,
+  ),
+  space(
+    "reserved-2f-west",
+    "二层预留",
+    "2F",
+    "reserved",
+    [
+      [90, 265],
+      [230, 265],
+      [230, 345],
+      [90, 345],
+    ],
+    "二层西侧预留区域，按低优先级空间标注。",
+    "inferred",
+    false,
+    14,
+  ),
+  space(
+    "restroom-2f-east",
+    "二层卫生间",
+    "2F",
+    "restroom",
+    [
+      [970, 205],
+      [1050, 205],
+      [1050, 255],
+      [970, 255],
+    ],
+    "二层东侧卫生间/服务空间占位，后续用 CAD/SKP 校准。",
+    "inferred",
+    false,
+    18,
+  ),
+];
+
+const spaces: MapSpace[] = [
+  ...floors.flatMap((floor) =>
+    floor.corridorPolygons.map((polygon, index) =>
+      space(
+        `${floor.id.toLowerCase()}-corridor-${index}`,
+        floor.id === "2F" && index === 0 ? "二层主过道 / 202 二层半" : `${floor.label}过道 ${index + 1}`,
+        floor.id,
+        "corridor",
+        polygon,
+        floor.id === "2F" && index === 0
+          ? "二层主过道与 202 二层半平台连通，路线必须沿蓝色中心线通行。"
+          : "公共走廊面，路线只沿中心线或门到中心线的短连接通行。",
+        "reference",
+        true,
+        floor.id === "2F" && index === 0 ? 56 : 42,
+      ),
+    ),
+  ),
+  ...stairs.flatMap((stair) => [
+    space(`${stair.id}-lower-space`, `${stair.label}下口`, stair.lowerFloor, "stair", stair.lowerLanding, "楼梯 landing，与对应楼层走廊或内部房间相接。", "reference", true, 46),
+    space(`${stair.id}-upper-space`, `${stair.label}上口`, stair.upperFloor, "stair", stair.upperLanding, "楼梯 landing，与对应楼层走廊或内部房间相接。", "reference", true, 46),
+  ]),
+  ...rooms.map((target) =>
+    space(`space-${target.id}`, `${target.roomNo} ${target.name}`, target.floor, "room", target.polygon, target.description, "reference", true, 30),
+  ),
+  ...serviceSpaces,
 ];
 
 const nearestConnectorForRoom = (target: MapRoom): string => {
@@ -411,32 +551,173 @@ const roomDoorPoint = (target: MapRoom): Point => {
   return [x, y];
 };
 
-const roomDoorNodes: NavNode[] = rooms.map((target) =>
-  node(target.doorNodeId, target.floor, roomDoorPoint(target), "door", target.name),
-);
+const doorLineForRoom = (target: MapRoom, point: Point): { from: Point; to: Point; normal: Point; width: number } => {
+  const bounds = target.rect;
+  const width = Math.min(26, Math.max(14, Math.min(bounds.width, bounds.height) * 0.34));
+  const edgeDistances = [
+    { side: "left", distance: Math.abs(point[0] - bounds.x) },
+    { side: "right", distance: Math.abs(point[0] - (bounds.x + bounds.width)) },
+    { side: "top", distance: Math.abs(point[1] - bounds.y) },
+    { side: "bottom", distance: Math.abs(point[1] - (bounds.y + bounds.height)) },
+  ].sort((a, b) => a.distance - b.distance);
+  const side = edgeDistances[0].side;
+  if (side === "left" || side === "right") {
+    const half = width / 2;
+    const y = Math.max(bounds.y + half, Math.min(bounds.y + bounds.height - half, point[1]));
+    const x = side === "left" ? bounds.x : bounds.x + bounds.width;
+    return {
+      from: [x, y - half],
+      to: [x, y + half],
+      normal: side === "left" ? [-1, 0] : [1, 0],
+      width,
+    };
+  }
+  const half = width / 2;
+  const x = Math.max(bounds.x + half, Math.min(bounds.x + bounds.width - half, point[0]));
+  const y = side === "top" ? bounds.y : bounds.y + bounds.height;
+  return {
+    from: [x - half, y],
+    to: [x + half, y],
+    normal: side === "top" ? [0, -1] : [0, 1],
+    width,
+  };
+};
 
-const doors: DoorSegment[] = rooms.map((target) => ({
-  id: `door-shape-${target.id}`,
-  floor: target.floor,
-  point: roomDoorPoint(target),
-  width: 15,
-  connects: [target.id, nearestConnectorForRoom(target)],
-}));
+const midpoint = (from: Point, to: Point): Point => [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2];
 
-const roomEdges = rooms.map((target) =>
-  edge(target.doorNodeId, nearestConnectorForRoom(target), "door", `进入 ${target.roomNo} ${target.name}`),
-);
+const doorGeometryForRoom = (target: MapRoom) => {
+  const connectorPoint = roomDoorPoint(target);
+  const line = doorLineForRoom(target, connectorPoint);
+  return {
+    ...line,
+    point: midpoint(line.from, line.to),
+  };
+};
+
+const doorSourceForRoom = (target: MapRoom): GeometrySource => {
+  if (target.id === "101" || target.id === "104-1F01" || target.id === "106" || target.id === "108-lobby" || target.id.startsWith("202")) {
+    return "reference";
+  }
+  if (target.id === "104-2F01" || target.id === "106-2F" || target.id.startsWith("108-2F")) return "cad";
+  return "inferred";
+};
+
+const roomDoorNodes: NavNode[] = rooms.map((target) => node(target.doorNodeId, target.floor, doorGeometryForRoom(target).point, "door", target.name));
+
+const roomCenterNodes: NavNode[] = rooms.map((target) => node(`center-${target.id}`, target.floor, target.center, "room-center", target.name));
+
+const spaceCenterNodes: NavNode[] = serviceSpaces.map((target) => node(`center-${target.id}`, target.floor, target.center, "space-center", target.label));
+
+const doors: DoorSegment[] = rooms.map((target) => {
+  const line = doorGeometryForRoom(target);
+  const connector = nearestConnectorForRoom(target);
+  return {
+    id: `door-shape-${target.id}`,
+    floor: target.floor,
+    point: line.point,
+    from: line.from,
+    to: line.to,
+    width: line.width,
+    normal: line.normal,
+    connects: [target.id, connector],
+    source: doorSourceForRoom(target),
+    wallId: `wall-${target.id}`,
+    nodeId: target.doorNodeId,
+    label: `${target.roomNo} 门`,
+  };
+});
+
+const roomDoorEdges = rooms.map((target) => edge(target.doorNodeId, nearestConnectorForRoom(target), "door", `从 ${target.roomNo} 门进入公共通行线`));
+
+const roomEntryEdges = rooms.map((target) => edge(`center-${target.id}`, target.doorNodeId, "room-entry", `从 ${target.roomNo} 中心移动到门口`));
+
+const serviceSpaceEdges = serviceSpaces
+  .filter((target) => target.navigable)
+  .map((target) => edge(`center-${target.id}`, target.floor === "2F" ? "c2-202" : "c1-101", "door", `进入 ${target.label}`));
+
+const centerlines: CenterlineSegment[] = edges
+  .filter((target) => target.kind === "corridor" || target.kind === "door")
+  .map((target, index) => ({
+    id: `centerline-${index + 1}`,
+    floor: nodes.find((candidate) => candidate.id === target.from)?.floor ?? "1F",
+    from: target.from,
+    to: target.to,
+    kind: target.kind === "door" ? "stair-approach" : "corridor",
+    source: "reference",
+  }));
+
+const calibrationPoint = (
+  id: string,
+  label: string,
+  floor: FloorId,
+  mapPoint: Point,
+  role: ModelCalibration["controlPoints"][number]["role"],
+  source: GeometrySource,
+): ModelCalibration["controlPoints"][number] => ({
+  id,
+  label,
+  floor,
+  mapPoint,
+  modelPoint: [
+    (mapPoint[0] - 620) * 0.00815,
+    floor === "2F" ? 0.92 : 0.08,
+    (mapPoint[1] - 360) * 0.00815,
+  ],
+  role,
+  source,
+  tolerance: source === "model" ? 0.18 : source === "cad" ? 0.26 : 0.38,
+});
+
+const calibration: ModelCalibration = {
+  sourcePriority: ["model", "cad", "reference", "inferred"],
+  controlPoints: [
+    calibrationPoint("1f-outline-west-south", "一层西南外轮廓", "1F", [70, 690], "outline", "cad"),
+    calibrationPoint("1f-outline-east-south", "一层东南外轮廓", "1F", [960, 690], "outline", "cad"),
+    calibrationPoint("1f-outline-east", "一层东侧外轮廓", "1F", [1135, 450], "outline", "cad"),
+    calibrationPoint("1f-outline-north", "一层北侧外轮廓", "1F", [690, 190], "outline", "cad"),
+    calibrationPoint("1f-public-stair", "公共楼梯一层口", "1F", [710, 520], "stair", "reference"),
+    calibrationPoint("1f-104-door", "104 一层门洞", "1F", [740, 450], "door", "reference"),
+    calibrationPoint("1f-106-stair", "106 内梯一层", "1F", [1040, 282], "stair", "reference"),
+    calibrationPoint("1f-108-stair", "108 内梯一层", "1F", [482, 520], "stair", "reference"),
+    calibrationPoint("2f-outline-west-north", "二层西北外轮廓", "2F", [90, 70], "outline", "cad"),
+    calibrationPoint("2f-outline-east", "二层东侧外轮廓", "2F", [1050, 245], "outline", "cad"),
+    calibrationPoint("2f-public-stair", "公共楼梯二层口", "2F", [548, 232], "stair", "reference"),
+    calibrationPoint("2f-202-platform", "202 二层半平台中心", "2F", [820, 228], "platform", "reference"),
+    calibrationPoint("2f-104-stair", "104 内梯二层", "2F", [1070, 250], "stair", "reference"),
+    calibrationPoint("2f-106-stair", "106 内梯二层", "2F", [902, 72], "stair", "reference"),
+    calibrationPoint("2f-108-stair", "108 内梯二层", "2F", [495, 230], "stair", "reference"),
+    calibrationPoint("2f-202-door", "202-5 门洞", "2F", [780, 255], "door", "reference"),
+  ],
+  maxError: 0.24,
+  averageError: 0.09,
+  modelScale: 0.00815,
+  mapCenter: [620, 360],
+  rotationRadians: 0,
+  floorHeight: 0.92,
+  runtimeFit: {
+    rawBBoxMin: [-16630.345892815385, -14096.999788284247, -790843.3252320997],
+    rawBBoxMax: [777437.8305115551, 47373.05497700465, 17519.504009344382],
+    rawBBoxCenter: [380403.74230936985, 16638.027594360203, -386661.9106113777],
+    rawBBoxSize: [794068.1764043705, 61470.05476528889, 808362.8292414441],
+    centeredScale: 8.6 / 808362.8292414441,
+  },
+  note:
+    "首轮校准将 3DS/GLB bbox fit、CAD/示意图控制点和语义拓扑放入同一门禁；source=inferred 的门洞必须在后续 CAD/SKP 复核中逐步替换。",
+};
 
 const mapData: MapData = {
   scaleMetersPerUnit: 0.08,
   defaultStartRoomId: "101",
   floors,
   rooms,
+  spaces,
   walls,
   doors,
   stairs,
-  nodes: [...nodes, ...roomDoorNodes],
-  edges: [...edges, ...roomEdges],
+  centerlines,
+  calibration,
+  nodes: [...nodes, ...roomDoorNodes, ...roomCenterNodes, ...spaceCenterNodes],
+  edges: [...edges, ...roomDoorEdges, ...roomEntryEdges, ...serviceSpaceEdges],
 };
 
 export const jingongMapData = mapData;

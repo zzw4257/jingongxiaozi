@@ -46,9 +46,10 @@ export function floorBaseY(floor: FloorId, options: TransformOptions = {}): numb
   const layerMode = options.layerMode ?? "allFloors";
   if (layerMode === "single" || layerMode === "raised202") return 0.08;
 
-  const normalY = floor === "2F" ? modelAlignment.floorHeight : 0.08;
+  const visualFloorHeight = layerMode === "section" ? modelAlignment.floorHeight * 1.18 : modelAlignment.floorHeight * 1.08;
+  const normalY = floor === "2F" ? visualFloorHeight : 0.08;
   if (layerMode === "exploded" && floor === "2F") {
-    return normalY + modelAlignment.explodeHeight;
+    return modelAlignment.floorHeight + modelAlignment.explodeHeight;
   }
   return normalY;
 }
@@ -150,7 +151,7 @@ export const modelAlignment = {
   mapCenter: MAP_CENTER,
   modelScale: MODEL_SCALE,
   floorHeight: 0.92,
-  explodeHeight: 1.55,
+  explodeHeight: 2.18,
   slabThickness: 0.045,
   wallHeight: 0.38,
   outerWallHeight: 0.54,

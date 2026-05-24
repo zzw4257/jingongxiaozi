@@ -71,7 +71,7 @@ type LabelAnchor = {
   start: boolean;
   target: boolean;
   position: THREE.Vector3;
-  variant?: "room" | "compact-room" | "corridor" | "stair" | "floor" | "note" | "route";
+  variant?: "room" | "compact-room" | "corridor" | "stair" | "floor" | "note" | "route" | "door";
 };
 type LabelLayout = LabelAnchor & {
   x: number;
@@ -87,6 +87,18 @@ type HeadingLayout = {
 const DEFAULT_LAYER: MapSessionState["layerMode"] = "allFloors";
 const TAP_SELECT_THRESHOLD = 16;
 const labelDensityRank: Record<LabelDensity, number> = { far: 0, mid: 1, near: 2 };
+const singleFloorFocus: Record<FloorId, { position: THREE.Vector3; target: THREE.Vector3; zoom: number }> = {
+  "1F": {
+    position: new THREE.Vector3(5.4, 7.15, 6.85),
+    target: new THREE.Vector3(-0.15, 0.36, 0.46),
+    zoom: 0.86,
+  },
+  "2F": {
+    position: new THREE.Vector3(5.15, 7.25, 6.55),
+    target: new THREE.Vector3(-0.1, 0.52, -0.18),
+    zoom: 0.84,
+  },
+};
 const roomColor: Record<AreaType, number> = {
   teaching: 0x7fc76f,
   processing: 0xff9b59,
@@ -197,6 +209,27 @@ function densityVariant(label: LabelAnchor, density: LabelDensity): LabelAnchor[
   if (label.variant !== "room") return label.variant;
   if (label.active || label.target || label.start || density === "near") return "room";
   return "compact-room";
+}
+
+function isSingleFloorFocusMode(session: MapSessionState) {
+  return session.layerMode === "single" || session.layerMode === "raised202";
+}
+
+function layerChipTitle(session: MapSessionState) {
+  if (session.layerMode === "single" && session.activeFloor === "1F") return "一层精看";
+  if (session.layerMode === "single" && session.activeFloor === "2F") return "二层精看";
+  if (session.layerMode === "raised202") return "202 二层半";
+  if (session.layerMode === "exploded") return "爆炸分层";
+  if (session.layerMode === "section") return "剖切导览";
+  return "全楼总览";
+}
+
+function layerChipHint(session: MapSessionState) {
+  if (session.layerMode === "single") return "门洞、走廊和房间边界已增强";
+  if (session.layerMode === "raised202") return "聚焦 202 高平台";
+  if (session.layerMode === "exploded") return "拉开层距看上下楼";
+  if (session.layerMode === "section") return "淡化模型看内部路线";
+  return "右侧可切路线/图层";
 }
 
 function routeLabelNudge(roomId: string): { x: number; y: number } {
@@ -812,6 +845,27 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     applyCameraPreset(route ? "route" : "overview");
   }, [applyCameraPreset, route]);
 
+  const focusSingleFloor = useCallback((floor: FloorId) => {
+    const camera = cameraRef.current;
+    const controls = controlsRef.current;
+    if (!camera || !controls) return;
+    const preset = singleFloorFocus[floor];
+    if (camera instanceof THREE.PerspectiveCamera) {
+      camera.position.copy(preset.position);
+      camera.fov = 34;
+      camera.up.set(0, 1, 0);
+      camera.updateProjectionMatrix();
+    } else if (camera instanceof THREE.OrthographicCamera) {
+      camera.position.set(0, 10.6, 0.001);
+      camera.zoom = preset.zoom;
+      camera.up.set(0, 0, -1);
+      camera.updateProjectionMatrix();
+    }
+    controls.target.copy(preset.target);
+    controls.update();
+    setActiveCameraPreset("free");
+  }, []);
+
   const markCameraFree = useCallback(() => {
     setActiveCameraPreset((current) => (current === "free" ? current : "free"));
   }, []);
@@ -901,7 +955,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               : label.variant === "corridor"
                 ? 112
                 : 92;
-      const heightHint = label.variant === "compact-room" ? 24 : label.variant === "route" ? 32 : 30;
+      const heightHint = label.variant === "compact-room" ? 24 : label.variant === "door" ? 22 : label.variant === "route" ? 32 : 30;
       const box = { x: label.x - widthHint / 2, y: label.y - heightHint / 2, width: widthHint, height: heightHint };
       const outside = box.x < 8 || box.y < 8 || box.x + box.width > width - 84 || box.y + box.height > height - 8;
       const isCompactRoom = label.variant === "compact-room";
@@ -1147,12 +1201,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const model = modelRootRef.current;
     if (!renderer || !model) return;
 
+    const singleFocus = isSingleFloorFocusMode(session);
     const modelOpacity =
-      session.layerMode === "section"
+      singleFocus
+        ? 0.12
+        : session.layerMode === "section"
         ? 0.32
-        : session.layerMode === "single" || session.layerMode === "raised202"
-          ? 0.56
-          : session.layerMode === "exploded"
+        : session.layerMode === "exploded"
             ? 0.62
             : 0.7;
     model.traverse((child) => {
@@ -1169,7 +1224,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     renderer.clippingPlanes =
       session.layerMode === "section"
         ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.74)]
-        : [];
+        : singleFocus
+          ? [new THREE.Plane(new THREE.Vector3(0, -1, 0), 0.56)]
+          : [];
   }, [session.layerMode]);
 
   useEffect(() => {
@@ -1193,13 +1250,16 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const interactive: THREE.Object3D[] = [];
     const activeRoomId = session.selectedRoomId;
     const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
+    const singleFocus = isSingleFloorFocusMode(session);
 
     const corridorMaterial = new THREE.MeshStandardMaterial({
-      color: 0xb9e3f6,
+      color: singleFocus ? 0x63d4ff : 0xb9e3f6,
+      emissive: singleFocus ? 0x064866 : 0x000000,
+      emissiveIntensity: singleFocus ? 0.18 : 0,
       roughness: 0.78,
       metalness: 0.02,
       transparent: true,
-      opacity: 0.72,
+      opacity: singleFocus ? 0.96 : 0.72,
     });
     const raisedCorridorMaterial = new THREE.MeshStandardMaterial({
       color: 0x6bd4ff,
@@ -1226,7 +1286,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       transparent: true,
       opacity: 0.38,
     });
-    const floorEdgeMaterial = new THREE.LineBasicMaterial({ color: 0x7d8fa3, transparent: true, opacity: 0.72 });
+    const floorEdgeMaterial = new THREE.LineBasicMaterial({ color: singleFocus ? 0x52677f : 0x7d8fa3, transparent: true, opacity: singleFocus ? 0.92 : 0.72 });
     const floorShadowMaterial = new THREE.MeshBasicMaterial({
       color: 0x9aabbf,
       transparent: true,
@@ -1243,13 +1303,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       opacity: 0.88,
     });
     const centerlineMaterial = new THREE.MeshStandardMaterial({
-      color: 0x0b6cff,
+      color: singleFocus ? 0x005fd6 : 0x0b6cff,
       emissive: 0x073c9b,
       emissiveIntensity: 0.18,
       roughness: 0.34,
       metalness: 0.02,
       transparent: true,
-      opacity: 0.94,
+      opacity: singleFocus ? 1 : 0.94,
     });
     const doorMaterial = new THREE.MeshStandardMaterial({
       color: 0xffffff,
@@ -1266,18 +1326,18 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       metalness: 0.02,
     });
     const outerWallMaterial = new THREE.MeshStandardMaterial({
-      color: 0xc7d2df,
+      color: singleFocus ? 0x8fa2b7 : 0xc7d2df,
       roughness: 0.78,
       metalness: 0.02,
       transparent: true,
-      opacity: 0.98,
+      opacity: singleFocus ? 1 : 0.98,
     });
     const innerWallMaterial = new THREE.MeshStandardMaterial({
-      color: 0xe8eef5,
+      color: singleFocus ? 0xc5d0dc : 0xe8eef5,
       roughness: 0.88,
       metalness: 0,
       transparent: true,
-      opacity: 0.94,
+      opacity: singleFocus ? 0.98 : 0.94,
     });
     const lowWallMaterial = new THREE.MeshStandardMaterial({
       color: 0xc7d1dd,
@@ -1338,7 +1398,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           corridor,
           floor.id,
           session,
-          isRaisedCorridor ? 0.02 : 0.014,
+          singleFocus ? 0.032 : isRaisedCorridor ? 0.02 : 0.014,
           (isRaisedCorridor ? raisedCorridorMaterial : corridorMaterial).clone(),
           corridorLift,
           `${floor.id}-corridor-${index}`,
@@ -1379,7 +1439,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             ...mapPointToModel(corridorCenter, floor.id, {
               ...modelOptions,
               semanticId: `${floor.id}-corridor-${index}`,
-              lift: modelAlignment.slabThickness + 0.2 + corridorLift,
+              lift: modelAlignment.slabThickness + (singleFocus ? 0.3 : 0.2) + corridorLift,
             }),
           ),
         });
@@ -1426,7 +1486,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         fullText: mapSpace.label,
         minDensity: "near",
         floor: mapSpace.floor,
-        priority: mapSpace.labelPriority ?? 16,
+        priority: singleFocus ? (mapSpace.labelPriority ?? 16) + 22 : mapSpace.labelPriority ?? 16,
         active: false,
         start: false,
         target: false,
@@ -1495,14 +1555,15 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const roomIsRouteContext = Boolean(route && (room.id === route.startRoomId || room.id === route.targetRoomId));
       const hideRoomLabelForRouteEndpoint = Boolean(route && (room.id === route.startRoomId || room.id === route.targetRoomId));
       const subduedSemanticFill = session.layerMode === "allFloors" && !emphasizedRoom && !roomIsRouteContext;
+      const singleRoomFill = singleFocus && !emphasizedRoom;
       const material = new THREE.MeshStandardMaterial({
         color: active || target ? 0x0b6cff : start ? 0x19a15f : subduedSemanticFill ? 0xf2f5f8 : roomColor[room.area],
-        roughness: subduedSemanticFill ? 0.84 : 0.62,
+        roughness: subduedSemanticFill || singleRoomFill ? 0.78 : 0.62,
         metalness: 0.02,
         transparent: true,
-        opacity: active || target || start ? 0.9 : subduedSemanticFill ? 0.26 : 0.56,
+        opacity: active || target || start ? 0.9 : singleRoomFill ? 0.64 : subduedSemanticFill ? 0.26 : 0.56,
       });
-      const roomMesh = extrudedPolygonMesh(room.polygon, room.floor, session, emphasizedRoom ? (raisedLift > 0 ? 0.08 : 0.06) : 0.018, material, raisedLift, room.id);
+      const roomMesh = extrudedPolygonMesh(room.polygon, room.floor, session, emphasizedRoom ? (raisedLift > 0 ? 0.08 : 0.06) : singleFocus ? 0.03 : 0.018, material, raisedLift, room.id);
       roomMesh.position.y += modelAlignment.slabThickness + (subduedSemanticFill ? 0.012 : 0.025);
       roomMesh.name = `room-${room.id}`;
       roomMesh.userData.roomId = room.id;
@@ -1559,9 +1620,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           text: forceFullLabel ? fullLabel : room.roomNo,
           compactText: compactLabel,
           fullText: fullLabel,
-          minDensity: roomMinDensity(room, session, startRoomId, Boolean(route)),
+          minDensity: singleFocus ? "far" : roomMinDensity(room, session, startRoomId, Boolean(route)),
           floor: room.floor,
-          priority: active || target || start ? 100 : isRaised202RoomId(room.id) ? 68 : overviewLabelRoomIds.has(room.id) ? 60 : 34,
+          priority: active || target || start ? 100 : singleFocus ? 62 : isRaised202RoomId(room.id) ? 68 : overviewLabelRoomIds.has(room.id) ? 60 : 34,
           active,
           start,
           target,
@@ -1574,13 +1635,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     for (const wall of jingongMapData.walls) {
       if (!floorVisibility(wall.floor, session)) continue;
       const raisedLift = raised202LiftForPoint(wall.from, wall.floor) || raised202LiftForPoint(wall.to, wall.floor);
-      const height = wall.kind === "outer" ? modelAlignment.outerWallHeight : modelAlignment.wallHeight;
+      const height = wall.kind === "outer" ? modelAlignment.outerWallHeight * (singleFocus ? 0.52 : 1) : modelAlignment.wallHeight * (singleFocus ? 0.42 : 1);
       for (const segment of splitWallSegments(wall, jingongMapData.doors)) {
         const start = new THREE.Vector3(...mapPointToModel(segment.from, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
         const end = new THREE.Vector3(...mapPointToModel(segment.to, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
         const length = start.distanceTo(end);
         if (length < 0.001) continue;
-        const geometry = new THREE.BoxGeometry(length, height, wall.kind === "outer" ? 0.04 : wall.kind === "low" ? 0.024 : 0.02);
+        const geometry = new THREE.BoxGeometry(length, height, singleFocus ? (wall.kind === "outer" ? 0.055 : 0.036) : wall.kind === "outer" ? 0.04 : wall.kind === "low" ? 0.024 : 0.02);
         const wallMaterial = wall.kind === "outer" ? outerWallMaterial.clone() : wall.kind === "low" ? lowWallMaterial.clone() : innerWallMaterial.clone();
         const mesh = new THREE.Mesh(geometry, wallMaterial);
         const midpoint = start.clone().add(end).multiplyScalar(0.5);
@@ -1613,9 +1674,26 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         }),
       );
       const material = withOpacity(centerlineMaterial.clone(), onRouteCenterline ? 0.96 : 0.22);
-      const tube = tubeBetween(start, end, onRouteCenterline ? 0.024 : centerline.kind === "stair-approach" ? 0.016 : 0.012, material);
+      const tube = tubeBetween(start, end, onRouteCenterline ? 0.024 : singleFocus ? 0.018 : centerline.kind === "stair-approach" ? 0.016 : 0.012, material);
       tube.name = centerline.id;
       building.add(tube);
+      if (singleFocus && !route && centerline.kind === "corridor") {
+        const midpoint = start.clone().lerp(end, 0.5);
+        labels.push({
+          roomId: `centerline-${centerline.id}`,
+          text: "通行线",
+          compactText: "通行",
+          fullText: "通行线",
+          minDensity: "near",
+          floor: fromNode.floor,
+          priority: 28,
+          active: false,
+          start: false,
+          target: false,
+          variant: "corridor",
+          position: midpoint.add(new THREE.Vector3(0, 0.18, 0)),
+        });
+      }
     }
 
     for (const door of jingongMapData.doors) {
@@ -1632,6 +1710,22 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         lift: modelAlignment.slabThickness + 0.17 + raised202LiftForPoint(door.point, door.floor),
       }));
       building.add(pointMarker(center, door.source === "inferred" ? 0.035 : 0.042, material.clone()));
+      if (singleFocus) {
+        labels.push({
+          roomId: `door-${door.id}`,
+          text: door.source === "inferred" ? "推断门" : "门",
+          compactText: "门",
+          fullText: door.source === "inferred" ? "推断门洞" : "门洞",
+          minDensity: "near",
+          floor: door.floor,
+          priority: door.source === "inferred" ? 24 : 30,
+          active: false,
+          start: false,
+          target: false,
+          variant: "door",
+          position: center.clone().add(new THREE.Vector3(0, 0.12, 0)),
+        });
+      }
     }
 
     const stairMaterial = new THREE.MeshStandardMaterial({
@@ -1859,28 +1953,40 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         });
       }
       if (currentVector) {
-        root.add(makeDisc(currentVector.clone(), 0.32, startDiscMaterial));
-        root.add(makeDisc(currentVector.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.48, outerHaloMaterial.clone()));
+        root.add(makeDisc(currentVector.clone(), 0.28, startDiscMaterial));
+        root.add(makeDisc(currentVector.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.42, outerHaloMaterial.clone()));
         const currentPin = new THREE.Mesh(
-          isOrthographicMap ? new THREE.CylinderGeometry(0.23, 0.23, 0.15, 34) : new THREE.CylinderGeometry(0.17, 0.17, 0.5, 28),
+          isOrthographicMap ? new THREE.CylinderGeometry(0.2, 0.2, 0.13, 34) : new THREE.CylinderGeometry(0.12, 0.12, 0.34, 28),
           new THREE.MeshStandardMaterial({
             color: 0x18a058,
             emissive: 0x063b1f,
-            emissiveIntensity: 0.36,
+            emissiveIntensity: 0.42,
             roughness: 0.4,
           }),
         );
         currentPin.position.copy(currentVector);
-        currentPin.position.y += isOrthographicMap ? 0.08 : 0.14;
+        currentPin.position.y += isOrthographicMap ? 0.07 : 0.1;
         root.add(currentPin);
+        const pinCap = new THREE.Mesh(
+          new THREE.SphereGeometry(isOrthographicMap ? 0.16 : 0.14, 24, 14),
+          new THREE.MeshStandardMaterial({
+            color: 0x1ac46d,
+            emissive: 0x0a7238,
+            emissiveIntensity: 0.32,
+            roughness: 0.32,
+          }),
+        );
+        pinCap.position.copy(currentVector);
+        pinCap.position.y += isOrthographicMap ? 0.16 : 0.31;
+        root.add(pinCap);
         const currentBeacon = tubeBetween(
           currentVector.clone().add(new THREE.Vector3(0, 0.03, 0)),
-          currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.48 : 0.86, 0)),
-          0.035,
+          currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.42 : 0.7, 0)),
+          0.026,
           new THREE.MeshBasicMaterial({
             color: 0x18a058,
             transparent: true,
-            opacity: 0.72,
+            opacity: 0.62,
           }),
         );
         currentBeacon.name = "route-current-location-beacon";
@@ -2012,7 +2118,19 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       layerMode,
       activeFloor,
     }));
-    if (layerMode === "exploded" && cameraMode === "orthographic") {
+    if (layerMode === "single" && activeFloor) {
+      if (cameraMode === "orthographic") {
+        setCameraMode("perspective");
+        setTimeout(() => focusSingleFloor(activeFloor), 0);
+      } else {
+        setTimeout(() => focusSingleFloor(activeFloor), 0);
+      }
+    } else if (layerMode === "raised202") {
+      if (cameraMode === "orthographic") {
+        setCameraMode("perspective");
+      }
+      setTimeout(() => focusSingleFloor("2F"), 0);
+    } else if (layerMode === "exploded" && cameraMode === "orthographic") {
       switchCameraMode("perspective");
       setTimeout(() => applyCameraPreset("lowIso"), 0);
     } else if (layerMode === "exploded") {
@@ -2164,7 +2282,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               );
             })}
         </div>
-        {headingBearing !== undefined && headingAnchor && headingLayout?.visible && (
+        {headingState.calibrated && headingBearing !== undefined && headingAnchor && headingLayout?.visible && (
           <div
             className={`map3d-heading-indicator ${headingState.calibrated ? "calibrated" : ""}`}
             style={
@@ -2194,9 +2312,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                   : `${targetRoom ? compactRoomName(targetRoom) : "目的地"}`
                 : selectedRoom
                   ? `已选 ${compactRoomName(selectedRoom)}`
-                  : "金工中心总览"}
+                  : layerChipTitle(session)}
             </span>
-            <small>{route ? `${activeLeg?.fromLabel ?? "当前位置"} → ${activeLeg?.toLabel ?? "下一点"}` : selectedRoom ? "点击查看房间" : "右侧可切路线/图层"}</small>
+            <small>{route ? `${activeLeg?.fromLabel ?? "当前位置"} → ${activeLeg?.toLabel ?? "下一点"}` : selectedRoom ? "点击查看房间" : layerChipHint(session)}</small>
           </button>
         )}
       </section>
@@ -2362,15 +2480,15 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                   <strong>全楼</strong>
                   <span>完整模型与全部语义点</span>
                 </button>
-                <button className={session.layerMode === "single" && session.activeFloor === "1F" ? "material-tile active" : "material-tile"} onClick={() => setLayer("single", "1F")}>
+                <button className={session.layerMode === "single" && session.activeFloor === "1F" ? "material-tile single-floor active" : "material-tile single-floor"} onClick={() => setLayer("single", "1F")}>
                   <Layers size={20} />
-                  <strong>一层</strong>
-                  <span>只显示一层房间热点</span>
+                  <strong>一层精看</strong>
+                  <span>压低墙体并突出门、走廊和房间边界</span>
                 </button>
-                <button className={session.layerMode === "single" && session.activeFloor === "2F" ? "material-tile active" : "material-tile"} onClick={() => setLayer("single", "2F")}>
+                <button className={session.layerMode === "single" && session.activeFloor === "2F" ? "material-tile single-floor active" : "material-tile single-floor"} onClick={() => setLayer("single", "2F")}>
                   <Layers size={20} />
-                  <strong>二层</strong>
-                  <span>只显示二层房间热点</span>
+                  <strong>二层精看</strong>
+                  <span>单层导览视角，保留门洞和通行线</span>
                 </button>
                 <button className={session.layerMode === "raised202" ? "material-tile active raised" : "material-tile raised"} onClick={() => setLayer("raised202")}>
                   <Layers size={20} />
@@ -2380,7 +2498,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                 <button className={session.layerMode === "exploded" ? "material-tile active" : "material-tile"} onClick={() => setLayer("exploded")}>
                   <Box size={20} />
                   <strong>爆炸分层</strong>
-                  <span>强调楼层高度和跨层路线</span>
+                  <span>拉大层距并回到斜视角，强调上下楼关系</span>
                 </button>
                 <button className={session.layerMode === "section" ? "material-tile active wide" : "material-tile wide"} onClick={() => setLayer("section")}>
                   <ScanLine size={20} />

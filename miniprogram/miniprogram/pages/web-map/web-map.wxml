@@ -1,0 +1,7 @@
+<view class="web-map">
+  <web-view wx:if="{{src}}" src="{{src}}" bindmessage="handleMessage" bindload="handleLoad" binderror="handleError"></web-view>
+  <view wx:else class="empty">
+    <text class="empty-title">缺少地图地址</text>
+    <text class="empty-desc">请从首页入口进入，或在 webBaseUrl 中配置 H5 地址。</text>
+  </view>
+</view>

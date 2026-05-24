@@ -1,0 +1,139 @@
+.home {
+  min-height: 100vh;
+  box-sizing: border-box;
+  padding: 40rpx 32rpx 48rpx;
+  background: linear-gradient(180deg, #eef6ff 0%, #f8fbff 58%, #ffffff 100%);
+}
+
+.hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16rpx;
+  padding: 36rpx 0 28rpx;
+}
+
+.robot-face {
+  position: relative;
+  width: 168rpx;
+  height: 132rpx;
+  border-radius: 48rpx;
+  background: linear-gradient(145deg, #ffad22, #ff7d18);
+  box-shadow: 0 24rpx 64rpx rgba(37, 87, 160, 0.16);
+}
+
+.robot-face::before {
+  position: absolute;
+  left: 24rpx;
+  right: 24rpx;
+  top: 34rpx;
+  height: 70rpx;
+  content: "";
+  border-radius: 34rpx;
+  background: #10213d;
+}
+
+.eye {
+  position: absolute;
+  z-index: 1;
+  top: 58rpx;
+  width: 18rpx;
+  height: 30rpx;
+  border-radius: 999rpx;
+  background: #26d6ff;
+  box-shadow: 0 0 24rpx rgba(38, 214, 255, 0.62);
+}
+
+.eye.left {
+  left: 58rpx;
+}
+
+.eye.right {
+  right: 58rpx;
+}
+
+.mouth {
+  position: absolute;
+  z-index: 1;
+  left: 72rpx;
+  top: 88rpx;
+  width: 26rpx;
+  height: 12rpx;
+  border-bottom: 6rpx solid #26d6ff;
+  border-radius: 0 0 999rpx 999rpx;
+}
+
+.title {
+  color: #162640;
+  font-size: 44rpx;
+  font-weight: 900;
+}
+
+.subtitle {
+  color: #5f7590;
+  font-size: 26rpx;
+  font-weight: 700;
+}
+
+.entry-grid {
+  display: grid;
+  gap: 18rpx;
+}
+
+.entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8rpx;
+  min-height: 136rpx;
+  padding: 26rpx 30rpx;
+  text-align: left;
+  background: #ffffff;
+  border: 2rpx solid #d8e8fb;
+  border-radius: 28rpx;
+  box-shadow: 0 14rpx 36rpx rgba(40, 82, 135, 0.08);
+}
+
+.entry.primary {
+  color: #ffffff;
+  background: #0b6cff;
+  border-color: #0b6cff;
+}
+
+.entry-title {
+  font-size: 30rpx;
+  font-weight: 900;
+}
+
+.entry-desc {
+  color: #697e96;
+  font-size: 24rpx;
+  font-weight: 700;
+}
+
+.entry.primary .entry-desc {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.status {
+  margin-top: 28rpx;
+  padding: 20rpx 24rpx;
+  color: #5f7188;
+  background: rgba(255, 255, 255, 0.74);
+  border: 2rpx solid #dce9f7;
+  border-radius: 24rpx;
+}
+
+.status-label {
+  display: block;
+  margin-bottom: 8rpx;
+  font-size: 22rpx;
+  font-weight: 900;
+}
+
+.status-value {
+  display: block;
+  word-break: break-all;
+  font-size: 22rpx;
+  line-height: 1.45;
+}

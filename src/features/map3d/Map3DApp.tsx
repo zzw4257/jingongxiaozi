@@ -199,6 +199,13 @@ function densityVariant(label: LabelAnchor, density: LabelDensity): LabelAnchor[
   return "compact-room";
 }
 
+function routeLabelNudge(roomId: string): { x: number; y: number } {
+  if (roomId === "route-current-location") return { x: -22, y: 30 };
+  if (roomId === "route-next-portal") return { x: 24, y: -26 };
+  if (roomId === "route-target-location") return { x: 0, y: -34 };
+  return { x: 0, y: 0 };
+}
+
 function createCamera(mode: CameraMode, width: number, height: number): THREE.PerspectiveCamera | THREE.OrthographicCamera {
   const aspect = Math.max(0.1, width / Math.max(1, height));
   if (mode === "orthographic") {
@@ -316,6 +323,15 @@ function stairIsOnRoute(stair: StairGeometry, route?: RouteResult) {
   );
 }
 
+function centerlineIsOnRoute(centerline: (typeof jingongMapData.centerlines)[number], route?: RouteResult) {
+  if (!route) return false;
+  return route.steps.some(
+    (step) =>
+      (step.fromNodeId === centerline.from && step.toNodeId === centerline.to) ||
+      (step.fromNodeId === centerline.to && step.toNodeId === centerline.from),
+  );
+}
+
 function tubeBetween(a: THREE.Vector3, b: THREE.Vector3, radius: number, material: THREE.Material) {
   const curve = new THREE.LineCurve3(a, b);
   return new THREE.Mesh(new THREE.TubeGeometry(curve, 16, radius, 8, false), material);
@@ -388,10 +404,10 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
   const { horizontal, side, angle } = stairBasis(a, b);
   const horizontalDistance = Math.max(0.5, new THREE.Vector3(b.x - a.x, 0, b.z - a.z).length());
   const verticalDistance = Math.max(0.32, Math.abs(b.y - a.y));
-  const stepCount = options.publicAccess ? 9 : 7;
+  const stepCount = options.publicAccess ? 12 : 9;
   const run = Math.max(0.13, horizontalDistance / stepCount);
   const rise = verticalDistance / stepCount;
-  const stairWidth = options.publicAccess ? 0.44 : 0.34;
+  const stairWidth = options.publicAccess ? 0.56 : 0.4;
   const pairMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0xffa000 : options.publicAccess ? 0x8a9bad : 0xb68b57,
     emissive: options.active ? 0xb85d00 : 0x000000,
@@ -413,6 +429,13 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     emissiveIntensity: options.active ? 0.36 : 0,
     roughness: 0.32,
     metalness: 0.08,
+  });
+  const nosingMaterial = new THREE.MeshStandardMaterial({
+    color: options.active ? 0xfff0bd : options.publicAccess ? 0xf4f7fb : 0xf4dfbf,
+    emissive: options.active ? 0xffb340 : 0x000000,
+    emissiveIntensity: options.active ? 0.18 : 0,
+    roughness: 0.36,
+    metalness: 0.02,
   });
   const haloMaterial = new THREE.MeshBasicMaterial({
     color: options.active ? 0xffd27a : options.publicAccess ? 0xd8e1ea : 0xe9d0ad,
@@ -438,6 +461,9 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     center.y = Math.min(a.y, b.y) + rise * (index + 0.5);
     const tread = orientedBox(center.clone().add(new THREE.Vector3(0, 0.014, 0)), run * 0.92, 0.035, stairWidth, angle, treadMaterial.clone(), `stair-tread-${index}`);
     root.add(tread);
+    const nosingCenter = center.clone().add(horizontal.clone().multiplyScalar(run * 0.41)).add(new THREE.Vector3(0, 0.04, 0));
+    const nosing = orientedBox(nosingCenter, 0.016, 0.016, stairWidth * 0.98, angle, nosingMaterial.clone(), `stair-nosing-${index}`);
+    root.add(nosing);
 
     const riserCenter = center.clone().sub(horizontal.clone().multiplyScalar(run * 0.45));
     riserCenter.y -= Math.max(0.01, rise * 0.28);
@@ -453,6 +479,8 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
   const rightRailEnd = b.clone().sub(railOffset).add(railLift);
   root.add(tubeBetween(leftRailStart, leftRailEnd, options.active ? 0.026 : 0.018, railMaterial.clone()));
   root.add(tubeBetween(rightRailStart, rightRailEnd, options.active ? 0.026 : 0.018, railMaterial.clone()));
+  root.add(tubeBetween(a.clone().add(railOffset).add(new THREE.Vector3(0, 0.06, 0)), b.clone().add(railOffset).add(new THREE.Vector3(0, 0.06, 0)), options.active ? 0.03 : 0.022, railMaterial.clone()));
+  root.add(tubeBetween(a.clone().sub(railOffset).add(new THREE.Vector3(0, 0.06, 0)), b.clone().sub(railOffset).add(new THREE.Vector3(0, 0.06, 0)), options.active ? 0.03 : 0.022, railMaterial.clone()));
   [0, 0.33, 0.66, 1].forEach((ratio, index) => {
     const base = a.clone().lerp(b, ratio);
     const leftBase = base.clone().add(railOffset);
@@ -532,13 +560,6 @@ function activeGuidanceLeg(route?: RouteResult, progress?: RouteProgressState) {
   if (!route || route.guidanceLegs.length === 0) return undefined;
   const requested = progress?.routeId === route.id ? progress.activeLegIndex : 0;
   return route.guidanceLegs[THREE.MathUtils.clamp(requested, 0, route.guidanceLegs.length - 1)];
-}
-
-function nextRouteGuidance(route?: RouteResult, progress?: RouteProgressState) {
-  const leg = activeGuidanceLeg(route, progress);
-  if (leg) return leg.instruction;
-  if (!route || route.steps.length === 0) return undefined;
-  return route.announceLines[1];
 }
 
 function routeUsesRaised202(route?: RouteResult) {
@@ -741,25 +762,27 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         zoom: 1,
       },
       top: {
-        position: new THREE.Vector3(0.1, 10.8, 0.1),
+        position: new THREE.Vector3(0, 11.4, 0.001),
         target: new THREE.Vector3(0, 0.72, 0),
         fov: 32,
         zoom: 0.88,
       },
       route: {
-        position: new THREE.Vector3(4.6, 4.1, 5.8),
-        target: new THREE.Vector3(0.24, 0.95, 0.2),
+        position: new THREE.Vector3(6.6, 4.65, 7.3),
+        target: new THREE.Vector3(0.12, 0.88, 0.08),
         fov: 31,
-        zoom: 1.08,
+        zoom: 0.92,
       },
     };
     const next = presets[preset];
     if (camera instanceof THREE.OrthographicCamera) {
       camera.position.copy(next.position);
+      camera.up.set(0, 0, -1);
       camera.zoom = next.zoom ?? 0.92;
       camera.updateProjectionMatrix();
     } else if (camera instanceof THREE.PerspectiveCamera) {
       camera.position.copy(next.position);
+      camera.up.set(0, 1, 0);
       camera.fov = next.fov ?? modelAlignment.defaultCamera.fov;
       camera.updateProjectionMatrix();
     }
@@ -771,6 +794,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const switchCameraMode = useCallback((mode: CameraMode) => {
     const preset: CameraPreset = mode === "orthographic" ? "top" : "overview";
     setActiveCameraPreset(preset);
+    if (mode === "orthographic") {
+      setSession((current) => ({
+        ...current,
+        layerMode: current.layerMode === "allFloors" || current.layerMode === "exploded" ? "section" : current.layerMode,
+      }));
+    }
     setCameraMode(mode);
     setTimeout(() => applyCameraPreset(preset), 0);
   }, [applyCameraPreset]);
@@ -845,13 +874,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       .map((anchor) => {
         const variant = densityVariant(anchor, density);
         const text = densityText(anchor, density);
+        const nudge = routeLabelNudge(anchor.roomId);
         const vector = anchor.position.clone().project(camera);
         return {
           ...anchor,
           text,
           variant,
-          x: (vector.x * 0.5 + 0.5) * width,
-          y: (-vector.y * 0.5 + 0.5) * height,
+          x: (vector.x * 0.5 + 0.5) * width + nudge.x,
+          y: (-vector.y * 0.5 + 0.5) * height + nudge.y,
           visible: vector.z > -1 && vector.z < 1,
         };
       })
@@ -871,7 +901,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               : label.variant === "corridor"
                 ? 112
                 : 92;
-      const heightHint = label.variant === "compact-room" ? 24 : 30;
+      const heightHint = label.variant === "compact-room" ? 24 : label.variant === "route" ? 32 : 30;
       const box = { x: label.x - widthHint / 2, y: label.y - heightHint / 2, width: widthHint, height: heightHint };
       const outside = box.x < 8 || box.y < 8 || box.x + box.width > width - 84 || box.y + box.height > height - 8;
       const isCompactRoom = label.variant === "compact-room";
@@ -883,7 +913,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           box.y < item.y + item.height &&
           box.y + box.height > item.y,
       );
-      const visible = label.visible && !outside && (!collides || label.priority >= 90 || (isCompactRoom && density === "near"));
+      const allowPriorityOverride = label.priority >= 90 && !label.roomId.startsWith("route-");
+      const visible = label.visible && !outside && (!collides || allowPriorityOverride || (isCompactRoom && density === "near"));
       if (visible && trackCollisions) occupied.push(box);
       return { ...label, visible };
     });
@@ -943,6 +974,10 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       ONE: THREE.TOUCH.ROTATE,
       TWO: THREE.TOUCH.DOLLY_PAN,
     };
+    if (camera instanceof THREE.OrthographicCamera) {
+      controls.enableRotate = false;
+      controls.screenSpacePanning = true;
+    }
     controls.addEventListener("start", markCameraFree);
     controls.target.fromArray(modelAlignment.defaultCamera.target);
     controls.update();
@@ -1192,6 +1227,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       opacity: 0.38,
     });
     const floorEdgeMaterial = new THREE.LineBasicMaterial({ color: 0x7d8fa3, transparent: true, opacity: 0.72 });
+    const floorShadowMaterial = new THREE.MeshBasicMaterial({
+      color: 0x9aabbf,
+      transparent: true,
+      opacity: session.layerMode === "exploded" ? 0.16 : 0.08,
+      depthWrite: false,
+    });
     const raisedEdgeMaterial = new THREE.MeshStandardMaterial({
       color: 0x006eb6,
       emissive: 0x003d67,
@@ -1268,7 +1309,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           session,
           modelAlignment.slabThickness,
           new THREE.MeshStandardMaterial({
-            color: floor.id === "1F" ? 0xf4f1e9 : 0xf0f5f9,
+            color: floor.id === "1F" ? 0xf8f5ee : 0xf2f7fb,
             roughness: 0.84,
             metalness: 0.02,
           }),
@@ -1276,6 +1317,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         slab.name = `${floor.id}-semantic-slab`;
         slab.receiveShadow = true;
         building.add(slab);
+        const shadow = extrudedPolygonMesh(floor.outline, floor.id, session, 0.004, floorShadowMaterial.clone(), -0.022, `${floor.id}-shadow`);
+        shadow.name = `${floor.id}-soft-shadow`;
+        building.add(shadow);
 
         const outlinePoints = [...floor.outline, floor.outline[0]].map((point) => {
           const [x, y, z] = mapPointToModel(point, floor.id, { ...modelOptions, lift: modelAlignment.slabThickness + 0.012 });
@@ -1449,6 +1493,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const raisedLift = raised202LiftForRoom(room.id, room.floor);
       const emphasizedRoom = active || target || start;
       const roomIsRouteContext = Boolean(route && (room.id === route.startRoomId || room.id === route.targetRoomId));
+      const hideRoomLabelForRouteEndpoint = Boolean(route && (room.id === route.startRoomId || room.id === route.targetRoomId));
       const subduedSemanticFill = session.layerMode === "allFloors" && !emphasizedRoom && !roomIsRouteContext;
       const material = new THREE.MeshStandardMaterial({
         color: active || target ? 0x0b6cff : start ? 0x19a15f : subduedSemanticFill ? 0xf2f5f8 : roomColor[room.area],
@@ -1505,7 +1550,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       markers.add(hotspot);
       interactive.push(hotspot);
 
-      if (shouldShowRoomLabel(room, session, startRoomId)) {
+      if (!hideRoomLabelForRouteEndpoint && shouldShowRoomLabel(room, session, startRoomId)) {
         const forceFullLabel = active || target || start || overviewLabelRoomIds.has(room.id) || session.layerMode === "raised202";
         const fullLabel = `${target ? "终点 " : start ? "起点 " : ""}${compactRoomName(room)}`;
         const compactLabel = target ? "终点" : start ? "起点" : room.roomNo;
@@ -1551,6 +1596,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const fromNode = jingongMapData.nodes.find((candidate) => candidate.id === centerline.from);
       const toNode = jingongMapData.nodes.find((candidate) => candidate.id === centerline.to);
       if (!fromNode || !toNode || !floorVisibility(fromNode.floor, session) || fromNode.floor !== toNode.floor) continue;
+      const onRouteCenterline = centerlineIsOnRoute(centerline, route);
+      if (route && !onRouteCenterline && session.layerMode !== "section") continue;
       const start = new THREE.Vector3(
         ...mapPointToModel(fromNode.point, fromNode.floor, {
           ...modelOptions,
@@ -1565,7 +1612,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           lift: modelAlignment.slabThickness + 0.105 + raised202LiftForPoint(toNode.point, toNode.floor),
         }),
       );
-      const tube = tubeBetween(start, end, centerline.kind === "stair-approach" ? 0.024 : 0.018, centerlineMaterial.clone());
+      const material = withOpacity(centerlineMaterial.clone(), onRouteCenterline ? 0.96 : 0.22);
+      const tube = tubeBetween(start, end, onRouteCenterline ? 0.024 : centerline.kind === "stair-approach" ? 0.016 : 0.012, material);
       tube.name = centerline.id;
       building.add(tube);
     }
@@ -1622,7 +1670,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         const upperVector = new THREE.Vector3(...mapPointToModel(upperPoint, stair.upperFloor, { ...modelOptions, semanticId: `${stair.id}-upper`, lift: 0.22 }));
         addStairPairGeometry(building, lowerVector, upperVector, { active: onRoute, publicAccess: stair.access === "public" });
       }
-      if (onRoute || !route) {
+      if ((onRoute && activeLeg?.kind?.includes("stair")) || !route) {
         const labelPoint = upperVisible ? stairCenter(stair.upperLanding) : stairCenter(stair.lowerLanding);
         labels.push({
           roomId: stair.id,
@@ -1671,6 +1719,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const currentLeg = activeGuidanceLeg(route, routeProgress);
       const activeFromIndex = currentLeg ? routePointIndex(currentLeg.fromNodeId, route) : 0;
       const activeToIndex = currentLeg ? routePointIndex(currentLeg.toNodeId, route) : Math.min(1, route.points.length - 1);
+      const isOrthographicMap = cameraMode === "orthographic";
       const routeLabels: LabelAnchor[] = [];
       const routeMaterial = new THREE.MeshStandardMaterial({
         color: 0x0b6cff,
@@ -1714,11 +1763,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         const isRoomEntry = step?.kind === "room-entry";
         const segmentMaterialBase = isStair ? stairRouteMaterial : isDoor ? doorRouteMaterial : isRoomEntry ? entryRouteMaterial : routeMaterial;
         const segmentHaloBase = isStair ? stairHaloMaterial : haloMaterial;
-        const segmentMaterial = withOpacity(segmentMaterialBase.clone(), isActiveSegment ? 1 : 0.38);
-        const segmentHalo = withOpacity(segmentHaloBase.clone(), isActiveSegment ? (isStair ? 0.58 : 0.42) : 0.16);
-        const outerHalo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.18 : isDoor ? 0.13 : isRoomEntry ? 0.082 : 0.116) : 0.055, withOpacity(outerHaloMaterial.clone(), isActiveSegment ? 0.72 : 0.2));
-        const halo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.128 : isDoor ? 0.104 : isRoomEntry ? 0.07 : 0.094) : 0.045, segmentHalo);
-        const tube = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.064 : isDoor ? 0.052 : isRoomEntry ? 0.032 : 0.046) : 0.024, segmentMaterial);
+        const segmentMaterial = withOpacity(segmentMaterialBase.clone(), isActiveSegment ? 1 : isOrthographicMap ? 0.28 : 0.38);
+        const segmentHalo = withOpacity(segmentHaloBase.clone(), isActiveSegment ? (isStair ? 0.58 : 0.42) : isOrthographicMap ? 0.1 : 0.16);
+        const activeScale = isOrthographicMap ? 0.82 : 1;
+        const outerHalo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.18 : isDoor ? 0.13 : isRoomEntry ? 0.082 : 0.116) * activeScale : 0.044, withOpacity(outerHaloMaterial.clone(), isActiveSegment ? 0.72 : 0.16));
+        const halo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.128 : isDoor ? 0.104 : isRoomEntry ? 0.07 : 0.094) * activeScale : 0.036, segmentHalo);
+        const tube = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.064 : isDoor ? 0.052 : isRoomEntry ? 0.032 : 0.046) * activeScale : 0.02, segmentMaterial);
         outerHalo.name = isStair ? "route-stair-outer-halo" : isDoor ? "route-door-outer-halo" : "route-walk-outer-halo";
         halo.name = isStair ? "route-stair-halo" : isDoor ? "route-door-halo" : "route-walk-halo";
         tube.name = isStair ? "route-stair-tube" : isDoor ? "route-door-tube" : isRoomEntry ? "route-entry-tube" : "route-walk-tube";
@@ -1777,13 +1827,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         root.add(pulse);
       });
 
-      const start = getRoomById(jingongMapData, route.startRoomId);
-      const target = getRoomById(jingongMapData, route.targetRoomId);
-      const currentVector = currentLeg ? routeNodeToVector(currentLeg.fromNodeId, route, session) : points[0];
-      const nextVector = currentLeg ? routeNodeToVector(currentLeg.toNodeId, route, session) : points[Math.min(1, points.length - 1)];
+        const target = getRoomById(jingongMapData, route.targetRoomId);
+        const currentVector = currentLeg ? routeNodeToVector(currentLeg.fromNodeId, route, session) : points[0];
+        const nextVector = currentLeg ? routeNodeToVector(currentLeg.toNodeId, route, session) : points[Math.min(1, points.length - 1)];
       if (currentLeg && currentVector && nextVector) {
         const nextMarker = new THREE.Mesh(
-          new THREE.ConeGeometry(0.2, 0.5, 28),
+          isOrthographicMap ? new THREE.CylinderGeometry(0.2, 0.2, 0.16, 30) : new THREE.ConeGeometry(0.2, 0.5, 28),
           new THREE.MeshStandardMaterial({
             color: 0x0b6cff,
             emissive: 0x063a9f,
@@ -1791,14 +1840,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             roughness: 0.34,
           }),
         );
-        nextMarker.position.copy(nextVector.clone().add(new THREE.Vector3(0, 0.22, 0)));
+        nextMarker.position.copy(nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.08 : 0.22, 0)));
         root.add(nextMarker);
         root.add(makeDisc(nextVector.clone(), 0.36, new THREE.MeshBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: 0.7 })));
         routeLabels.push({
           roomId: "route-next-portal",
           text: "下一点",
           compactText: "下一点",
-          fullText: `下一点 ${currentLeg.toLabel}`,
+          fullText: "下一点",
           minDensity: "far",
           floor: currentLeg.floor,
           priority: 120,
@@ -1809,7 +1858,50 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           position: nextVector.clone().add(new THREE.Vector3(0, 0.72, 0)),
         });
       }
-      [start, target].forEach((room, index) => {
+      if (currentVector) {
+        root.add(makeDisc(currentVector.clone(), 0.32, startDiscMaterial));
+        root.add(makeDisc(currentVector.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.48, outerHaloMaterial.clone()));
+        const currentPin = new THREE.Mesh(
+          isOrthographicMap ? new THREE.CylinderGeometry(0.23, 0.23, 0.15, 34) : new THREE.CylinderGeometry(0.17, 0.17, 0.5, 28),
+          new THREE.MeshStandardMaterial({
+            color: 0x18a058,
+            emissive: 0x063b1f,
+            emissiveIntensity: 0.36,
+            roughness: 0.4,
+          }),
+        );
+        currentPin.position.copy(currentVector);
+        currentPin.position.y += isOrthographicMap ? 0.08 : 0.14;
+        root.add(currentPin);
+        const currentBeacon = tubeBetween(
+          currentVector.clone().add(new THREE.Vector3(0, 0.03, 0)),
+          currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.48 : 0.86, 0)),
+          0.035,
+          new THREE.MeshBasicMaterial({
+            color: 0x18a058,
+            transparent: true,
+            opacity: 0.72,
+          }),
+        );
+        currentBeacon.name = "route-current-location-beacon";
+        root.add(currentBeacon);
+        routeLabels.push({
+          roomId: "route-current-location",
+          text: "当前位置",
+          compactText: "当前位置",
+          fullText: "当前位置",
+          minDensity: "far",
+          floor: currentLeg?.floor ?? route.points[0].floor,
+          priority: 116,
+          active: true,
+          start: true,
+          target: false,
+          variant: "route",
+          position: currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.46 : 0.92, 0)),
+        });
+      }
+
+      [target].forEach((room, index) => {
         if (!room) return;
         const [x, y, z] = mapPointToModel(room.center, room.floor, {
           layerMode: session.layerMode,
@@ -1817,46 +1909,48 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           semanticId: room.id,
           lift: 0.68 + raised202LiftForRoom(room.id, room.floor),
         });
-        const base = index === 0 && currentVector ? currentVector : new THREE.Vector3(x, y, z);
-        root.add(makeDisc(base.clone(), index === 0 ? 0.34 : 0.38, index === 0 ? startDiscMaterial : targetDiscMaterial));
-        root.add(makeDisc(base.clone().add(new THREE.Vector3(0, 0.012, 0)), index === 0 ? 0.5 : 0.56, outerHaloMaterial.clone()));
+        const base = new THREE.Vector3(x, y, z);
+        root.add(makeDisc(base.clone(), 0.38, targetDiscMaterial));
+        root.add(makeDisc(base.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.56, outerHaloMaterial.clone()));
         const pin = new THREE.Mesh(
-          index === 0 ? new THREE.CylinderGeometry(0.18, 0.18, 0.54, 28) : new THREE.ConeGeometry(0.25, 0.68, 32),
+          isOrthographicMap
+            ? new THREE.CylinderGeometry(0.3, 0.3, 0.16, 34)
+            : new THREE.ConeGeometry(0.25, 0.68, 32),
           new THREE.MeshStandardMaterial({
-            color: index === 0 ? 0x18a058 : 0xff3f6c,
-            emissive: index === 0 ? 0x063b1f : 0x5f0018,
+            color: 0xff3f6c,
+            emissive: 0x5f0018,
             emissiveIntensity: 0.36,
             roughness: 0.4,
           }),
         );
         pin.position.copy(base);
-        pin.position.y += index === 0 ? 0.14 : 0.2;
+        pin.position.y += isOrthographicMap ? 0.08 : 0.2;
         root.add(pin);
         const beacon = tubeBetween(
           base.clone().add(new THREE.Vector3(0, 0.03, 0)),
-          base.clone().add(new THREE.Vector3(0, index === 0 ? 0.86 : 1.05, 0)),
-          index === 0 ? 0.035 : 0.042,
+          base.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.56 : 1.05, 0)),
+          0.042,
           new THREE.MeshBasicMaterial({
-            color: index === 0 ? 0x18a058 : 0xff3f6c,
+            color: 0xff3f6c,
             transparent: true,
             opacity: 0.72,
           }),
         );
-        beacon.name = index === 0 ? "route-current-location-beacon" : "route-target-beacon";
+        beacon.name = "route-target-beacon";
         root.add(beacon);
         routeLabels.push({
-          roomId: index === 0 ? "route-current-location" : "route-target-location",
-          text: index === 0 ? "当前位置" : "目的地",
-          compactText: index === 0 ? "当前位置" : "终点",
-          fullText: index === 0 ? `当前位置 ${currentLeg?.fromLabel ?? compactRoomName(room)}` : `目的地 ${compactRoomName(room)}`,
+          roomId: "route-target-location",
+          text: "目的地",
+          compactText: "终点",
+          fullText: "目的地",
           minDensity: "far",
           floor: room.floor,
-          priority: index === 0 ? 116 : 118,
+          priority: 118,
           active: true,
-          start: index === 0,
-          target: index === 1,
+          start: false,
+          target: true,
           variant: "route",
-          position: base.clone().add(new THREE.Vector3(0, index === 0 ? 0.92 : 1.1, 0)),
+          position: base.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.58 : 1.1, 0)),
         });
       });
       labelAnchorsRef.current = [...labelAnchorsRef.current.filter((label) => !label.roomId.startsWith("route-")), ...routeLabels];
@@ -1869,7 +1963,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
     routeRootRef.current = root;
     scene.add(root);
-  }, [route, routeProgress, session.activeFloor, session.layerMode, updateLabels]);
+  }, [cameraMode, route, routeProgress, session.activeFloor, session.layerMode, updateLabels]);
 
   const pickRoom = useCallback((clientX: number, clientY: number) => {
     const renderer = rendererRef.current;
@@ -1918,6 +2012,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       layerMode,
       activeFloor,
     }));
+    if (layerMode === "exploded" && cameraMode === "orthographic") {
+      switchCameraMode("perspective");
+      setTimeout(() => applyCameraPreset("lowIso"), 0);
+    } else if (layerMode === "exploded") {
+      setTimeout(() => applyCameraPreset("lowIso"), 0);
+    }
   };
 
   const startNavigationToSelected = () => {
@@ -2041,7 +2141,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     setSession((current) => ({ ...current, selectedRoomId: room.id }));
     setPanel("room");
   };
-  const nextGuidance = nextRouteGuidance(route, routeProgress);
 
   return (
     <div className={`map3d-app panel-${panel}`}>
@@ -2090,12 +2189,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             {route ? <Route size={18} /> : <Crosshair size={18} />}
             <span>
               {route
-                ? `当前段 ${activeLeg ? activeLeg.index + 1 : 1}/${route.guidanceLegs.length} · ${targetRoom ? compactRoomName(targetRoom) : "目的地"}`
+                ? activeLeg
+                  ? `${activeLeg.index + 1}/${route.guidanceLegs.length} · ${activeLeg.instruction}`
+                  : `${targetRoom ? compactRoomName(targetRoom) : "目的地"}`
                 : selectedRoom
                   ? `已选 ${compactRoomName(selectedRoom)}`
                   : "金工中心总览"}
             </span>
-            <small>{route ? `${nextGuidance ?? `${route.totalMeters}m · ${formatSeconds(route.estimatedSeconds)}`}` : selectedRoom ? "点击查看房间" : "右侧可切路线/图层"}</small>
+            <small>{route ? `${activeLeg?.fromLabel ?? "当前位置"} → ${activeLeg?.toLabel ?? "下一点"}` : selectedRoom ? "点击查看房间" : "右侧可切路线/图层"}</small>
           </button>
         )}
       </section>

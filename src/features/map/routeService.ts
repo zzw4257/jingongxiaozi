@@ -1,4 +1,4 @@
-import type { MapData, MapRoom, NavEdge, RouteResult, RouteStep } from "./types";
+import type { GuidanceLeg, MapData, MapRoom, NavEdge, NavNode, RouteResult, RouteStep } from "./types";
 
 const nodeDistance = (a: [number, number], b: [number, number], scale: number): number => {
   const dx = a[0] - b[0];
@@ -119,6 +119,7 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
     .filter(Boolean) as RouteResult["points"];
 
   const floorChanges = steps.filter((step) => step.kind === "stair" || step.kind === "internal-stair");
+  const guidanceLegs = buildGuidanceLegs(steps, nodes);
   const notableSteps = compactRouteSteps(steps);
 
   return {
@@ -128,6 +129,7 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
     totalMeters,
     estimatedSeconds,
     steps,
+    guidanceLegs,
     points,
     announceLines: [
       `从 ${startRoom.roomNo} ${startRoom.name} 前往 ${targetRoom.roomNo} ${targetRoom.name}`,
@@ -138,6 +140,72 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
         .map((step) => step.note ?? "需要经过内部楼梯跨楼层。"),
     ],
   };
+}
+
+function nodeLabel(node?: NavNode): string {
+  if (!node) return "下一节点";
+  if (node.kind === "room-center") return node.label ? `${node.label}内` : "房间内";
+  if (node.kind === "door") return node.label ? `${node.label}门口` : "门口";
+  if (node.kind === "stair") return node.label ? `${node.label}楼梯口` : "楼梯口";
+  if (node.kind === "space-center") {
+    const label = node.label ?? "";
+    if (label.includes("走廊") || label.includes("过道") || label.includes("通行")) return label.includes("二层") ? "二层走廊" : "走廊";
+    if (label.includes("楼梯")) return "楼梯口";
+    return label ? `${label}附近` : "公共空间";
+  }
+  if (node.label) return node.label;
+  return "走廊节点";
+}
+
+function stepInstruction(step: RouteStep, fromNode?: NavNode, toNode?: NavNode): string {
+  const toLabel = nodeLabel(toNode);
+  if (step.kind === "room-entry") {
+    return fromNode?.kind === "room-center" ? `从房间内走到${toLabel}` : `进入${toLabel}`;
+  }
+  const note = step.note ? sanitizeStepNote(step.note) : undefined;
+  if (step.kind === "door") {
+    if (fromNode?.kind === "door" && toNode?.kind === "space-center") return `从${nodeLabel(fromNode)}进入走廊`;
+    if (note) return note;
+    return `通过${toLabel}`;
+  }
+  if (note) return note;
+  if (step.kind === "corridor") {
+    const destination = toLabel.includes("走廊") ? "下一个转向点" : toLabel;
+    return `沿走廊前进约 ${step.distanceMeters} 米到${destination}`;
+  }
+  if (step.kind === "internal-stair") return "经房间内部楼梯上下楼";
+  if (step.kind === "stair") return "经公共楼梯上下楼";
+  return `前往${toLabel}`;
+}
+
+function sanitizeStepNote(note: string): string {
+  return note
+    .replace(/从\s*([A-Za-z0-9-]+)\s*门进入公共通行线/g, "从 $1 门口进入走廊")
+    .replace(/从\s*([A-Za-z0-9-]+)\s*中心移动到门口/g, "从房间内走到 $1 门口")
+    .replace(/公共通行线/g, "走廊");
+}
+
+function portalNodeIdsForStep(step: RouteStep, fromNode?: NavNode, toNode?: NavNode): string[] {
+  const ids: string[] = [];
+  if (fromNode?.kind === "door" || fromNode?.kind === "stair" || step.kind === "room-entry") ids.push(step.fromNodeId);
+  if (toNode?.kind === "door" || toNode?.kind === "stair" || step.kind === "door" || step.kind.includes("stair")) ids.push(step.toNodeId);
+  return [...new Set(ids)];
+}
+
+function buildGuidanceLegs(steps: RouteStep[], nodes: Map<string, NavNode>): GuidanceLeg[] {
+  return steps.map((step, index) => {
+    const fromNode = nodes.get(step.fromNodeId);
+    const toNode = nodes.get(step.toNodeId);
+    return {
+      ...step,
+      id: `${step.fromNodeId}->${step.toNodeId}`,
+      index,
+      fromLabel: nodeLabel(fromNode),
+      toLabel: nodeLabel(toNode),
+      instruction: stepInstruction(step, fromNode, toNode),
+      portalNodeIds: portalNodeIdsForStep(step, fromNode, toNode),
+    };
+  });
 }
 
 export function compactRouteSteps(steps: RouteStep[]): string[] {

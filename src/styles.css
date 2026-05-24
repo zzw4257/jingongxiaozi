@@ -2237,6 +2237,43 @@ button {
   border-color: rgba(255, 255, 255, 0.92);
 }
 
+.map3d-heading-indicator {
+  position: absolute;
+  z-index: 12;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 8px 11px;
+  color: #233855;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(181, 202, 228, 0.92);
+  border-radius: 999px;
+  box-shadow:
+    0 12px 28px rgba(20, 53, 94, 0.16),
+    0 0 0 5px rgba(11, 108, 255, 0.08);
+  font-size: 12px;
+  font-weight: 950;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.map3d-heading-indicator svg {
+  color: #0b6cff;
+  transform: rotate(var(--heading-angle));
+  transform-origin: center;
+}
+
+.map3d-heading-indicator.calibrated {
+  color: #ffffff;
+  background: #0b6cff;
+  border-color: #0b6cff;
+}
+
+.map3d-heading-indicator.calibrated svg {
+  color: #ffffff;
+}
+
 .map3d-bottom-chip {
   position: absolute;
   left: max(16px, env(safe-area-inset-left));
@@ -2376,6 +2413,12 @@ button {
   overflow: hidden;
 }
 
+.route-endpoint-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
 .material-field {
   display: grid;
   gap: 4px;
@@ -2416,6 +2459,7 @@ button {
 }
 
 .route-material-summary div,
+.route-guidance-card,
 .stepper-card,
 .route-step-card,
 .room-material-card {
@@ -2426,6 +2470,7 @@ button {
 }
 
 .route-material-summary span,
+.route-guidance-card span,
 .stepper-card span,
 .room-material-card span {
   display: block;
@@ -2435,6 +2480,7 @@ button {
 }
 
 .route-material-summary strong,
+.route-guidance-card strong,
 .stepper-card strong,
 .room-material-card strong {
   display: block;
@@ -2445,6 +2491,43 @@ button {
   font-weight: 950;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.route-guidance-card {
+  display: grid;
+  gap: 4px;
+  color: #17253a;
+  background: #eef6ff;
+  border-color: #bcd8ff;
+}
+
+.route-guidance-card strong {
+  white-space: normal;
+  line-height: 1.24;
+}
+
+.route-guidance-card small {
+  overflow: hidden;
+  color: #5f728b;
+  font-size: 12px;
+  font-weight: 850;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.route-step-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+
+.route-step-controls span {
+  min-width: 58px;
+  color: #50647e;
+  font-size: 13px;
+  font-weight: 950;
+  text-align: center;
 }
 
 .material-action-row {
@@ -2505,6 +2588,16 @@ button {
   color: #ffffff;
   background: #0b6cff;
   border-radius: 50%;
+}
+
+.route-step-card.active {
+  background: #eef6ff;
+  border-color: #91c3ff;
+  box-shadow: inset 0 0 0 1px rgba(11, 108, 255, 0.14);
+}
+
+.route-step-card.active b {
+  background: #ff8b2c;
 }
 
 .route-step-card span,
@@ -2613,6 +2706,50 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 9px;
+}
+
+.heading-calibration-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 70px;
+  padding: 11px;
+  background: #f8fbff;
+  border: 1px solid #d8e4f3;
+  border-radius: 20px;
+}
+
+.heading-calibration-card div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.heading-calibration-card span {
+  color: #647891;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.heading-calibration-card strong {
+  overflow: hidden;
+  color: #17253a;
+  font-size: 15px;
+  font-weight: 950;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heading-calibration-card small {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #647891;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .debug-material-list {
@@ -2796,6 +2933,55 @@ button {
     gap: 7px;
   }
 
+  .route-endpoint-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .route-guidance-card {
+    padding: 8px 9px;
+    border-radius: 16px;
+  }
+
+  .route-guidance-card strong {
+    font-size: 13px;
+    line-height: 1.18;
+  }
+
+  .route-guidance-card small {
+    font-size: 11px;
+  }
+
+  .route-step-controls {
+    gap: 6px;
+  }
+
+  .route-step-controls span {
+    min-width: 46px;
+    font-size: 12px;
+  }
+
+  .heading-calibration-card {
+    min-height: 58px;
+    padding: 8px 9px;
+    border-radius: 17px;
+  }
+
+  .heading-calibration-card strong {
+    font-size: 13px;
+  }
+
+  .heading-calibration-card small {
+    font-size: 11px;
+    -webkit-line-clamp: 1;
+  }
+
+  .map3d-heading-indicator {
+    min-height: 30px;
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+
   .map3d-app.panel-view .material-panel {
     width: min(470px, calc(100vw - 126px));
   }
@@ -2963,6 +3149,71 @@ button {
   .material-secondary {
     min-height: 40px;
     border-radius: 16px;
+  }
+
+  .map3d-app.panel-route .material-action-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .map3d-app.panel-route .map3d-panel-page {
+    gap: 6px;
+  }
+
+  .map3d-app.panel-route .route-mode-banner {
+    min-height: 28px;
+    padding: 5px 8px;
+  }
+
+  .map3d-app.panel-route .route-endpoint-grid {
+    gap: 6px;
+  }
+
+  .map3d-app.panel-route .material-field span {
+    font-size: 10px;
+  }
+
+  .map3d-app.panel-route .material-field select {
+    min-height: 32px;
+    padding: 0 9px;
+    font-size: 12px;
+  }
+
+  .map3d-app.panel-route .route-material-summary {
+    gap: 6px;
+  }
+
+  .map3d-app.panel-route .route-material-summary div {
+    padding: 6px 7px;
+    border-radius: 14px;
+  }
+
+  .map3d-app.panel-route .route-material-summary span {
+    font-size: 10px;
+  }
+
+  .map3d-app.panel-route .route-material-summary strong {
+    margin-top: 2px;
+    font-size: 12px;
+  }
+
+  .map3d-app.panel-route .route-step-window {
+    gap: 6px;
+  }
+
+  .map3d-app.panel-route .route-step-card {
+    padding: 7px 8px;
+    border-radius: 15px;
+  }
+
+  .map3d-app.panel-route .route-step-card b {
+    width: 26px;
+    height: 26px;
+    font-size: 12px;
+  }
+
+  .map3d-app.panel-route .route-step-card span {
+    font-size: 12px;
+    line-height: 1.25;
   }
 
   .material-tile {

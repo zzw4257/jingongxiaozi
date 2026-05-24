@@ -170,6 +170,27 @@ export type RouteStep = {
   note?: string;
 };
 
+export type GuidanceLeg = RouteStep & {
+  id: string;
+  index: number;
+  fromLabel: string;
+  toLabel: string;
+  instruction: string;
+  portalNodeIds: string[];
+};
+
+export type RouteProgressState = {
+  routeId: string;
+  activeLegIndex: number;
+  source: "manual" | "backend";
+};
+
+export type MapProgressUpdate = {
+  routeId?: string;
+  activeLegIndex?: number;
+  currentNodeId?: string;
+};
+
 export type RouteResult = {
   id: string;
   startRoomId: string;
@@ -177,6 +198,7 @@ export type RouteResult = {
   totalMeters: number;
   estimatedSeconds: number;
   steps: RouteStep[];
+  guidanceLegs: GuidanceLeg[];
   points: Array<{ nodeId: string; floor: FloorId; point: Point; kind: NavEdge["kind"] | NavNode["kind"] }>;
   announceLines: string[];
 };

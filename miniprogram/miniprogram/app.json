@@ -1,0 +1,14 @@
+{
+  "pages": [
+    "pages/home/home",
+    "pages/web-map/web-map"
+  ],
+  "window": {
+    "navigationBarTitleText": "金工小子",
+    "navigationBarBackgroundColor": "#f4f8ff",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f4f8ff"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}

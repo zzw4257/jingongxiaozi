@@ -1,0 +1,29 @@
+.web-map {
+  width: 100vw;
+  height: 100vh;
+  background: #eef6ff;
+}
+
+.empty {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18rpx;
+  padding: 48rpx;
+  text-align: center;
+}
+
+.empty-title {
+  color: #17253a;
+  font-size: 34rpx;
+  font-weight: 900;
+}
+
+.empty-desc {
+  color: #647891;
+  font-size: 26rpx;
+  font-weight: 700;
+  line-height: 1.5;
+}

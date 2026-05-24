@@ -26,6 +26,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CSSProperties } from "react";
 import type { MapDirectRequest } from "../../shared/appTypes";
+import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
 import { calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
 import type { AreaType, DoorSegment, FloorId, MapProgressUpdate, MapRoom, MapSessionState, Point, RouteProgressState, RouteResult, StairGeometry } from "../map/types";
@@ -758,6 +759,17 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   useEffect(() => {
     headingAnchorRef.current = headingAnchor;
   }, [headingAnchor]);
+
+  useEffect(() => {
+    postMiniProgramMessage({
+      type: "map-state",
+      title: route ? `${startRoom?.roomNo ?? "101"} → ${targetRoom?.roomNo ?? session.targetRoomId ?? ""}` : layerChipTitle(session),
+      panel,
+      layerMode: session.layerMode,
+      activeFloor: session.activeFloor,
+      routeStep: activeLeg?.instruction,
+    });
+  }, [activeLeg?.instruction, panel, route, session.activeFloor, session.layerMode, session.targetRoomId, startRoom?.roomNo, targetRoom?.roomNo]);
 
   useEffect(() => {
     if (!route) {

@@ -1,0 +1,35 @@
+<view class="home">
+  <view class="hero">
+    <view class="robot-face">
+      <view class="eye left"></view>
+      <view class="eye right"></view>
+      <view class="mouth"></view>
+    </view>
+    <text class="title">金工小子</text>
+    <text class="subtitle">微信演示版 · 复用 3D 精确模型地图</text>
+  </view>
+
+  <view class="entry-grid">
+    <button class="entry primary" bindtap="openMap">
+      <text class="entry-title">打开 3D 地图</text>
+      <text class="entry-desc">默认进入全楼总览，可继续切图层和路线</text>
+    </button>
+    <button class="entry" data-target="104-2F01" bindtap="openMapDirect">
+      <text class="entry-title">去 104 二层</text>
+      <text class="entry-desc">模拟 MapDirect 参数带入</text>
+    </button>
+    <button class="entry" data-target="108-2F04" bindtap="openMapDirect">
+      <text class="entry-title">去 108 钳工</text>
+      <text class="entry-desc">验证跨房间导航初始状态</text>
+    </button>
+    <button class="entry" data-start="108-lobby" data-target="202-5" bindtap="openMapDirect">
+      <text class="entry-title">108 到 202-5</text>
+      <text class="entry-desc">验证公共楼梯与 202 二层半</text>
+    </button>
+  </view>
+
+  <view class="status">
+    <text class="status-label">H5 地址</text>
+    <text class="status-value">{{webBaseUrl}}</text>
+  </view>
+</view>

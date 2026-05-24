@@ -1,5 +1,5 @@
 {
-  "appid": "touristappid",
+  "appid": "",
   "projectname": "jingong-xiaozi-miniprogram",
   "miniprogramRoot": "miniprogram/",
   "compileType": "miniprogram",
@@ -8,6 +8,7 @@
     "es6": true,
     "enhance": true,
     "postcss": true,
-    "minified": true
+    "minified": true,
+    "minifyWXML": true
   }
 }

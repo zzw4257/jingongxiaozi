@@ -2175,6 +2175,7 @@ button {
 }
 
 .map3d-label.route {
+  max-width: 154px;
   color: #ffffff;
   background: #0b6cff;
   border-color: rgba(255, 255, 255, 0.92);
@@ -2237,6 +2238,16 @@ button {
   border-color: rgba(255, 255, 255, 0.92);
 }
 
+.map3d-label.route.start,
+.map3d-label.route.target {
+  min-height: 32px;
+  padding: 8px 12px;
+  font-size: 13px;
+  box-shadow:
+    0 14px 32px rgba(20, 53, 94, 0.24),
+    0 0 0 4px rgba(255, 255, 255, 0.76);
+}
+
 .map3d-heading-indicator {
   position: absolute;
   z-index: 12;
@@ -2292,8 +2303,10 @@ button {
 }
 
 .map3d-bottom-chip {
-  bottom: max(18px, env(safe-area-inset-bottom));
-  max-width: min(660px, calc(100vw - 136px));
+  bottom: max(14px, env(safe-area-inset-bottom));
+  max-width: min(720px, calc(100vw - 148px));
+  min-height: 38px;
+  padding: 7px 12px;
   color: #20344f;
   background: rgba(255, 255, 255, 0.93);
   border-color: rgba(207, 222, 241, 0.94);
@@ -2304,9 +2317,9 @@ button {
 
 .map3d-bottom-chip.route-active {
   color: #ffffff;
-  background: linear-gradient(135deg, #0b6cff 0%, #0656d5 100%);
+  background: linear-gradient(135deg, #0968f7 0%, #064ec8 100%);
   border-color: #0b6cff;
-  box-shadow: 0 15px 34px rgba(6, 77, 184, 0.28);
+  box-shadow: 0 13px 30px rgba(6, 77, 184, 0.24);
 }
 
 .map3d-bottom-chip span {
@@ -2318,8 +2331,10 @@ button {
 
 .map3d-bottom-chip small {
   color: #5e7189;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .map3d-bottom-chip.route-active small {
@@ -3122,9 +3137,17 @@ button {
     max-width: 132px;
   }
 
+  .map3d-label.route.start,
+  .map3d-label.route.target {
+    min-height: 28px;
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+
   .map3d-bottom-chip {
-    max-width: calc(100vw - 136px);
-    min-height: 36px;
+    max-width: calc(100vw - 150px);
+    min-height: 34px;
+    padding: 6px 10px;
   }
 
   .map3d-bottom-chip small {

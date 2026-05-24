@@ -2237,8 +2237,6 @@ button {
   border-color: rgba(255, 255, 255, 0.92);
 }
 
-.map3d-status-chip,
-.map3d-note-chip,
 .map3d-bottom-chip {
   position: absolute;
   left: max(16px, env(safe-area-inset-left));
@@ -2256,28 +2254,9 @@ button {
   box-shadow: 0 10px 26px rgba(20, 53, 94, 0.12);
 }
 
-.map3d-status-chip,
-.map3d-note-chip {
-  pointer-events: none;
-}
-
-.map3d-status-chip {
-  top: max(14px, env(safe-area-inset-top));
-}
-
-.map3d-note-chip {
-  top: max(64px, calc(env(safe-area-inset-top) + 56px));
-  min-height: 38px;
-  color: #075985;
-  background: rgba(231, 247, 255, 0.9);
-  border-color: rgba(61, 158, 214, 0.6);
-  font-size: 13px;
-  font-weight: 950;
-}
-
 .map3d-bottom-chip {
   bottom: max(18px, env(safe-area-inset-bottom));
-  max-width: min(520px, calc(100vw - 136px));
+  max-width: min(660px, calc(100vw - 136px));
   color: #20344f;
   background: rgba(255, 255, 255, 0.93);
   border-color: rgba(207, 222, 241, 0.94);
@@ -2288,12 +2267,11 @@ button {
 
 .map3d-bottom-chip.route-active {
   color: #ffffff;
-  background: #0b6cff;
+  background: linear-gradient(135deg, #0b6cff 0%, #0656d5 100%);
   border-color: #0b6cff;
+  box-shadow: 0 15px 34px rgba(6, 77, 184, 0.28);
 }
 
-.map3d-status-chip span,
-.map3d-note-chip span,
 .map3d-bottom-chip span {
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2301,7 +2279,6 @@ button {
   font-weight: 950;
 }
 
-.map3d-status-chip small,
 .map3d-bottom-chip small {
   color: #5e7189;
   font-size: 12px;
@@ -2959,14 +2936,6 @@ button {
     max-width: 132px;
   }
 
-  .map3d-note-chip {
-    top: max(52px, calc(env(safe-area-inset-top) + 44px));
-    max-width: min(340px, calc(100vw - 132px));
-    min-height: 32px;
-    padding: 6px 10px;
-    font-size: 11px;
-  }
-
   .map3d-bottom-chip {
     max-width: calc(100vw - 136px);
     min-height: 36px;
@@ -3062,10 +3031,6 @@ button {
   .map3d-app.panel-view .view-pan-pad {
     padding: 8px;
     gap: 6px;
-  }
-
-  .map3d-note-chip {
-    max-width: calc(100vw - 114px);
   }
 
   .map3d-bottom-chip {

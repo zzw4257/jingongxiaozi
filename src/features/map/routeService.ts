@@ -119,7 +119,7 @@ export function calculateRoute(data: MapData, startRoomId: string, targetRoomId:
     .filter(Boolean) as RouteResult["points"];
 
   const floorChanges = steps.filter((step) => step.kind === "stair" || step.kind === "internal-stair");
-  const guidanceLegs = buildGuidanceLegs(steps, nodes);
+  const guidanceLegs = buildGuidanceLegs(data, steps, nodes);
   const notableSteps = compactRouteSteps(steps);
 
   return {
@@ -147,6 +147,7 @@ function nodeLabel(node?: NavNode): string {
   if (node.kind === "room-center") return node.label ? `${node.label}内` : "房间内";
   if (node.kind === "door") return node.label ? `${node.label}门口` : "门口";
   if (node.kind === "stair") return node.label ? `${node.label}楼梯口` : "楼梯口";
+  if (node.kind === "corridor") return node.label ?? "走廊转折点";
   if (node.kind === "space-center") {
     const label = node.label ?? "";
     if (label.includes("走廊") || label.includes("过道") || label.includes("通行")) return label.includes("二层") ? "二层走廊" : "走廊";
@@ -157,16 +158,35 @@ function nodeLabel(node?: NavNode): string {
   return "走廊节点";
 }
 
-function stepInstruction(step: RouteStep, fromNode?: NavNode, toNode?: NavNode): string {
-  const toLabel = nodeLabel(toNode);
+function roomForNodeId(data: MapData, nodeId: string): MapRoom | undefined {
+  const centerMatch = nodeId.match(/^center-(.+)$/);
+  if (centerMatch) return getRoomById(data, centerMatch[1]);
+  return data.rooms.find((room) => room.doorNodeId === nodeId);
+}
+
+function roomDoorLabel(data: MapData, nodeId: string): string | undefined {
+  const room = roomForNodeId(data, nodeId);
+  return room ? `${room.roomNo} 门口` : undefined;
+}
+
+function routeNodeLabel(data: MapData, nodeId: string, node?: NavNode): string {
+  const room = roomForNodeId(data, nodeId);
+  if (room && node?.kind === "room-center") return `${room.roomNo} 房间内`;
+  if (room && node?.kind === "door") return `${room.roomNo} 门口`;
+  if (node?.kind === "corridor") return node.label ?? "走廊转折点";
+  return nodeLabel(node);
+}
+
+function stepInstruction(data: MapData, step: RouteStep, fromNode?: NavNode, toNode?: NavNode): string {
+  const toLabel = routeNodeLabel(data, step.toNodeId, toNode);
   if (step.kind === "room-entry") {
-    return fromNode?.kind === "room-center" ? `从房间内走到${toLabel}` : `进入${toLabel}`;
+    return fromNode?.kind === "room-center" ? `从房间内走到 ${toLabel}` : `进入 ${toLabel}`;
   }
   const note = step.note ? sanitizeStepNote(step.note) : undefined;
   if (step.kind === "door") {
-    if (fromNode?.kind === "door" && toNode?.kind === "space-center") return `从${nodeLabel(fromNode)}进入走廊`;
+    if (fromNode?.kind === "door" && toNode?.kind === "space-center") return `从 ${routeNodeLabel(data, step.fromNodeId, fromNode)} 出门进入走廊`;
     if (note) return note;
-    return `通过${toLabel}`;
+    return `通过 ${toLabel}`;
   }
   if (note) return note;
   if (step.kind === "corridor") {
@@ -176,6 +196,36 @@ function stepInstruction(step: RouteStep, fromNode?: NavNode, toNode?: NavNode):
   if (step.kind === "internal-stair") return "经房间内部楼梯上下楼";
   if (step.kind === "stair") return "经公共楼梯上下楼";
   return `前往${toLabel}`;
+}
+
+function checkpointKind(step: RouteStep, toNode?: NavNode): GuidanceLeg["checkpointKind"] {
+  if (step.kind === "stair" || step.kind === "internal-stair" || toNode?.kind === "stair") return "stair";
+  if (toNode?.kind === "door" || step.kind === "door") return "door";
+  if (toNode?.kind === "room-center") return "destination";
+  if (toNode?.kind === "space-center") return "turn";
+  if (step.kind === "corridor") return "corridor";
+  return "room";
+}
+
+function checkpointLabel(data: MapData, step: RouteStep, fromNode?: NavNode, toNode?: NavNode): string {
+  if (step.kind === "room-entry" && toNode?.kind === "door") return roomDoorLabel(data, step.toNodeId) ?? nodeLabel(toNode);
+  if (step.kind === "door" && fromNode?.kind === "door" && toNode?.kind === "space-center") return `${roomDoorLabel(data, step.fromNodeId) ?? "房间门口"}外走廊`;
+  if (step.kind === "door" && toNode?.kind !== "door") return "走廊入口";
+  const label = nodeLabel(toNode);
+  const kind = checkpointKind(step, toNode);
+  if (kind === "stair") return label.includes("楼梯") ? label : `${label}楼梯口`;
+  if (kind === "door") return label.includes("门") ? label : `${label}门口`;
+  if (kind === "destination") return label.replace(/内$/, "") || "终点";
+  if (kind === "turn" || kind === "corridor") return label.includes("走廊") ? "走廊转折点" : label;
+  return label;
+}
+
+function actionLabel(kind: GuidanceLeg["checkpointKind"]): string {
+  if (kind === "stair") return "到达楼梯口";
+  if (kind === "door") return "到达门口";
+  if (kind === "destination") return "到达终点";
+  if (kind === "turn" || kind === "corridor") return "到达转折点";
+  return "到达此处";
 }
 
 function sanitizeStepNote(note: string): string {
@@ -192,17 +242,21 @@ function portalNodeIdsForStep(step: RouteStep, fromNode?: NavNode, toNode?: NavN
   return [...new Set(ids)];
 }
 
-function buildGuidanceLegs(steps: RouteStep[], nodes: Map<string, NavNode>): GuidanceLeg[] {
+function buildGuidanceLegs(data: MapData, steps: RouteStep[], nodes: Map<string, NavNode>): GuidanceLeg[] {
   return steps.map((step, index) => {
     const fromNode = nodes.get(step.fromNodeId);
     const toNode = nodes.get(step.toNodeId);
+    const kind = checkpointKind(step, toNode);
     return {
       ...step,
       id: `${step.fromNodeId}->${step.toNodeId}`,
       index,
-      fromLabel: nodeLabel(fromNode),
-      toLabel: nodeLabel(toNode),
-      instruction: stepInstruction(step, fromNode, toNode),
+      fromLabel: routeNodeLabel(data, step.fromNodeId, fromNode),
+      toLabel: routeNodeLabel(data, step.toNodeId, toNode),
+      checkpointLabel: checkpointLabel(data, step, fromNode, toNode),
+      checkpointKind: kind,
+      actionLabel: actionLabel(kind),
+      instruction: stepInstruction(data, step, fromNode, toNode),
       portalNodeIds: portalNodeIdsForStep(step, fromNode, toNode),
     };
   });

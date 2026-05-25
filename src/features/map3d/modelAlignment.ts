@@ -18,7 +18,7 @@ type Raised202Space = {
 export const raised202Space: Raised202Space = {
   roomPrefix: "202",
   label: "202 二层半",
-  height: 0.46,
+  height: 0.74,
   platformPolygon: [
     [620, 88],
     [1058, 88],
@@ -44,7 +44,8 @@ type TransformOptions = {
 
 export function floorBaseY(floor: FloorId, options: TransformOptions = {}): number {
   const layerMode = options.layerMode ?? "allFloors";
-  if (layerMode === "single" || layerMode === "raised202") return 0.08;
+  if (layerMode === "single") return floor === "2F" ? modelAlignment.floorHeight : 0.08;
+  if (layerMode === "raised202") return modelAlignment.floorHeight;
 
   const visualFloorHeight = layerMode === "section" ? modelAlignment.floorHeight * 1.18 : modelAlignment.floorHeight * 1.08;
   const normalY = floor === "2F" ? visualFloorHeight : 0.08;
@@ -126,10 +127,10 @@ const semanticAnchors2F: Array<{ id: string; offset: Point; match: (semanticId: 
       semanticId.includes("stair-public-upper") ||
       semanticId.includes("stair-public-2f") ||
       semanticId.includes("202") ||
-      semanticId.includes("201") ||
       semanticId.includes("c2-main") ||
       semanticId.includes("c2-202") ||
-      semanticId.includes("2F-corridor-0"),
+      semanticId.includes("2F-corridor-0") ||
+      semanticId.includes("2F-corridor-1"),
   },
 ];
 
@@ -156,9 +157,9 @@ export const modelAlignment = {
   wallHeight: 0.38,
   outerWallHeight: 0.54,
   defaultCamera: {
-    position: [7.1, 5.35, 7.8] as ModelPoint,
-    target: [0.16, 0.78, 0.18] as ModelPoint,
-    fov: 36,
+    position: [8.9, 8.7, 10.4] as ModelPoint,
+    target: [0.08, 1.42, 0.1] as ModelPoint,
+    fov: 46,
   },
   routeLift: 0.58,
   hotspotLift: 0.12,

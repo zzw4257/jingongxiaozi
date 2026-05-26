@@ -152,6 +152,64 @@ const FLOOR_SHELL_COLOR: Record<FloorId, number> = {
   "1F": 0xf6efe5,
   "2F": 0xf8fafc,
 };
+const explodedSecondFloorIslands: Array<{ id: string; label: string; polygon: Point[]; semanticId: string; lift?: number }> = [
+  {
+    id: "2f-island-108-west",
+    label: "108 独立二层",
+    semanticId: "108-2F-island",
+    polygon: [
+      [90, 15],
+      [520, 15],
+      [520, 345],
+      [90, 345],
+    ],
+  },
+  {
+    id: "2f-island-202-platform",
+    label: "202 二层半",
+    semanticId: "202-island",
+    lift: raised202Space.height,
+    polygon: [
+      [620, 88],
+      [1058, 88],
+      [1058, 350],
+      [620, 350],
+    ],
+  },
+  {
+    id: "2f-island-office-south",
+    label: "204-210 办公区",
+    semanticId: "c2-office-island",
+    polygon: [
+      [235, 625],
+      [520, 625],
+      [520, 705],
+      [235, 705],
+    ],
+  },
+  {
+    id: "2f-island-104",
+    label: "104 独立二层",
+    semanticId: "104-2F-island",
+    polygon: [
+      [1050, 160],
+      [1180, 160],
+      [1180, 280],
+      [1050, 280],
+    ],
+  },
+  {
+    id: "2f-island-106",
+    label: "106 独立二层",
+    semanticId: "106-2F-island",
+    polygon: [
+      [760, 15],
+      [930, 15],
+      [930, 95],
+      [760, 95],
+    ],
+  },
+];
 const roomCssClass: Record<AreaType, string> = {
   teaching: "teaching",
   processing: "processing",
@@ -718,6 +776,32 @@ function raisedPlatformOutline(session: MapSessionState, material: THREE.Materia
     root.add(post);
   });
   return root;
+}
+
+function addRaisedOutlineForPolygon(
+  root: THREE.Group,
+  polygon: Point[],
+  floor: FloorId,
+  session: MapSessionState,
+  semanticId: string,
+  material: THREE.Material,
+  lift = 0.09,
+  radius = 0.018,
+) {
+  const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
+  const points = [...polygon, polygon[0]].map((point) => {
+    const [x, y, z] = mapPointToModel(point, floor, {
+      ...modelOptions,
+      semanticId,
+      lift: modelAlignment.slabThickness + lift,
+    });
+    return new THREE.Vector3(x, y, z);
+  });
+  points.slice(0, -1).forEach((point, index) => {
+    const edge = tubeBetween(point, points[index + 1], radius, material.clone());
+    edge.name = `${semanticId}-outline-${index}`;
+    root.add(edge);
+  });
 }
 
 function routePointToVector(point: RouteResult["points"][number], session: MapSessionState) {
@@ -1559,13 +1643,15 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
     for (const floor of jingongMapData.floors) {
       if (!floorVisibility(floor.id, session)) continue;
+      const useExplodedSecondFloorIslands = session.layerMode === "exploded" && floor.id === "2F";
       const shouldDrawWholeFloorShell =
-        floor.id === "1F" ||
-        session.layerMode === "single" ||
-        session.layerMode === "raised202" ||
-        session.layerMode === "exploded" ||
-        session.layerMode === "allFloors" ||
-        session.layerMode === "section";
+        !useExplodedSecondFloorIslands &&
+        (floor.id === "1F" ||
+          session.layerMode === "single" ||
+          session.layerMode === "raised202" ||
+          session.layerMode === "exploded" ||
+          session.layerMode === "allFloors" ||
+          session.layerMode === "section");
       const shellOutline =
         session.layerMode === "raised202" && floor.id === "2F"
           ? raised202Space.platformPolygon
@@ -1603,6 +1689,31 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             building.add(edge);
           });
         }
+      }
+
+      if (useExplodedSecondFloorIslands) {
+        explodedSecondFloorIslands.forEach((island) => {
+          const slab = extrudedPolygonMesh(
+            island.polygon,
+            "2F",
+            session,
+            modelAlignment.slabThickness,
+            semanticPlaneMaterial({
+              color: island.id.includes("202") ? 0xf7fbfd : 0xf7f9fc,
+              opacity: island.id.includes("202") ? 0.62 : 0.88,
+              roughness: 0.9,
+            }),
+            island.lift ?? 0,
+            island.semanticId,
+          );
+          slab.name = `${island.id}-semantic-slab`;
+          slab.receiveShadow = true;
+          building.add(slab);
+          const shadow = extrudedPolygonMesh(island.polygon, "2F", session, 0.004, floorShadowMaterial.clone(), (island.lift ?? 0) - 0.026, `${island.semanticId}-shadow`);
+          shadow.name = `${island.id}-soft-shadow`;
+          building.add(shadow);
+          addRaisedOutlineForPolygon(building, island.polygon, "2F", session, island.semanticId, floorEdgeMaterial.clone(), (island.lift ?? 0) + 0.045, island.id.includes("202") ? 0.022 : 0.018);
+        });
       }
 
       floor.corridorPolygons.forEach((corridor, index) => {
@@ -1722,7 +1833,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
     const routeTouchesRaised202 = routeUsesRaised202(route);
     if (floorVisibility("2F", session) && (session.layerMode === "raised202" || session.layerMode === "exploded" || routeTouchesRaised202) && !(session.layerMode === "single" && session.activeFloor === "2F")) {
-      if (session.layerMode === "raised202" || routeTouchesRaised202) {
+      const showSeparateRaisedPlatform = session.layerMode === "raised202" || (routeTouchesRaised202 && session.layerMode !== "exploded");
+      if (showSeparateRaisedPlatform) {
         const raisedPlatform = extrudedPolygonMesh(
           raised202Space.platformPolygon,
           "2F",
@@ -1740,7 +1852,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         raisedPlatform.name = "raised-202-platform";
         building.add(raisedPlatform);
       }
-      building.add(session.layerMode === "exploded" && !routeTouchesRaised202 ? raisedPlatformOutline(session, raisedPlatformSideMaterial.clone(), 0.16) : raisedPlatformRim(session, raisedPlatformSideMaterial.clone()));
+      if (session.layerMode !== "exploded") {
+        building.add(raisedPlatformRim(session, raisedPlatformSideMaterial.clone()));
+      }
       labels.push({
         roomId: "raised-202-note",
         text: raised202Space.label,
@@ -1859,6 +1973,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
 
     for (const wall of jingongMapData.walls) {
+      if (session.layerMode === "exploded" && wall.floor === "2F" && wall.kind === "outer") continue;
       const roomWallMatch = wall.id.match(/^wall-(.+)-\d+$/);
       const wallRoom = roomWallMatch ? getRoomById(jingongMapData, roomWallMatch[1]) : undefined;
       if (session.layerMode === "single" && session.activeFloor === "2F" && wallRoom && !isPublicSecondFloorRoom(wallRoom)) continue;

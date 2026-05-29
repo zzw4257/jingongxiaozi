@@ -333,7 +333,7 @@ function layerChipTitle(session: MapSessionState) {
 }
 
 function layerChipHint(session: MapSessionState) {
-  if (session.layerMode === "single" && session.activeFloor === "2F") return "不含 202 二层半";
+  if (session.layerMode === "single" && session.activeFloor === "2F") return "含 202 下方空间";
   if (session.layerMode === "single") return "门洞、走廊和房间边界已增强";
   if (session.layerMode === "raised202") return "聚焦 202 高平台";
   if (session.layerMode === "exploded") return "默认分开看各层";
@@ -728,12 +728,14 @@ function raisedPlatformRim(session: MapSessionState, material: THREE.Material) {
     const start = new THREE.Vector3(
       ...mapPointToModel(from, "2F", {
         ...modelOptions,
+        semanticId: "202-island",
         lift: modelAlignment.slabThickness + raised202Space.height / 2,
       }),
     );
     const end = new THREE.Vector3(
       ...mapPointToModel(to, "2F", {
         ...modelOptions,
+        semanticId: "202-island",
         lift: modelAlignment.slabThickness + raised202Space.height / 2,
       }),
     );
@@ -744,8 +746,43 @@ function raisedPlatformRim(session: MapSessionState, material: THREE.Material) {
     side.position.copy(midpoint);
     side.rotation.y = -Math.atan2(end.z - start.z, end.x - start.x);
     side.name = `raised-202-rim-${index}`;
+    side.castShadow = true;
+    side.receiveShadow = true;
     root.add(side);
   }
+  return root;
+}
+
+function raisedPlatformSubstructure(session: MapSessionState, sideMaterial: THREE.Material, baseMaterial: THREE.Material) {
+  const root = new THREE.Group();
+  const base = extrudedPolygonMesh(
+    raised202Space.platformPolygon,
+    "2F",
+    session,
+    modelAlignment.slabThickness * 1.35,
+    baseMaterial,
+    0,
+    "202-island",
+  );
+  base.name = "raised-202-lower-occupied-space";
+  base.receiveShadow = true;
+  root.add(base);
+  root.add(raisedPlatformRim(session, sideMaterial));
+
+  const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
+  raised202Space.platformPolygon.forEach((point, index) => {
+    const [x, y, z] = mapPointToModel(point, "2F", {
+      ...modelOptions,
+      semanticId: "202-island",
+      lift: modelAlignment.slabThickness + raised202Space.height / 2,
+    });
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.026, 0.034, raised202Space.height * 0.88, 16), sideMaterial.clone());
+    post.position.set(x, y, z);
+    post.name = `raised-202-support-post-${index}`;
+    post.castShadow = true;
+    post.receiveShadow = true;
+    root.add(post);
+  });
   return root;
 }
 
@@ -1568,6 +1605,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       transparent: true,
       opacity: session.layerMode === "raised202" ? 0.74 : 0.52,
     });
+    const raisedPlatformBaseMaterial = new THREE.MeshStandardMaterial({
+      color: session.layerMode === "exploded" ? 0xe2e8f0 : 0xe9f0f6,
+      roughness: 0.86,
+      metalness: 0.01,
+      transparent: true,
+      opacity: session.layerMode === "exploded" ? 0.72 : 0.56,
+    });
     const floorEdgeMaterial = new THREE.LineBasicMaterial({ color: singleFocus ? 0x52677f : 0x7d8fa3, transparent: true, opacity: singleFocus ? 0.92 : 0.72 });
     const floorShadowMaterial = new THREE.MeshBasicMaterial({
       color: 0x9aabbf,
@@ -1693,14 +1737,18 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
       if (useExplodedSecondFloorIslands) {
         explodedSecondFloorIslands.forEach((island) => {
+          const isRaised202Island = island.id.includes("202");
+          if (isRaised202Island) {
+            building.add(raisedPlatformSubstructure(session, raisedPlatformSideMaterial.clone(), raisedPlatformBaseMaterial.clone()));
+          }
           const slab = extrudedPolygonMesh(
             island.polygon,
             "2F",
             session,
             modelAlignment.slabThickness,
             semanticPlaneMaterial({
-              color: island.id.includes("202") ? 0xf7fbfd : 0xf7f9fc,
-              opacity: island.id.includes("202") ? 0.62 : 0.88,
+              color: isRaised202Island ? 0xf7fbfd : 0xf7f9fc,
+              opacity: isRaised202Island ? 0.82 : 0.88,
               roughness: 0.9,
             }),
             island.lift ?? 0,
@@ -1712,7 +1760,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           const shadow = extrudedPolygonMesh(island.polygon, "2F", session, 0.004, floorShadowMaterial.clone(), (island.lift ?? 0) - 0.026, `${island.semanticId}-shadow`);
           shadow.name = `${island.id}-soft-shadow`;
           building.add(shadow);
-          addRaisedOutlineForPolygon(building, island.polygon, "2F", session, island.semanticId, floorEdgeMaterial.clone(), (island.lift ?? 0) + 0.045, island.id.includes("202") ? 0.022 : 0.018);
+          addRaisedOutlineForPolygon(building, island.polygon, "2F", session, island.semanticId, floorEdgeMaterial.clone(), (island.lift ?? 0) + 0.045, isRaised202Island ? 0.022 : 0.018);
         });
       }
 
@@ -1832,7 +1880,31 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
 
     const routeTouchesRaised202 = routeUsesRaised202(route);
-    if (floorVisibility("2F", session) && (session.layerMode === "raised202" || session.layerMode === "exploded" || routeTouchesRaised202) && !(session.layerMode === "single" && session.activeFloor === "2F")) {
+    const showRaised202LowerContext = session.layerMode === "single" && session.activeFloor === "2F";
+    if (floorVisibility("2F", session) && showRaised202LowerContext) {
+      building.add(raisedPlatformSubstructure(session, raisedPlatformSideMaterial.clone(), raisedPlatformBaseMaterial.clone()));
+      labels.push({
+        roomId: "raised-202-lower-context",
+        text: "202 下方空间",
+        compactText: "202 下方",
+        fullText: "202 二层半下方空间",
+        minDensity: "mid",
+        floor: "2F",
+        priority: 70,
+        active: false,
+        start: false,
+        target: false,
+        variant: "note",
+        position: new THREE.Vector3(
+          ...mapPointToModel(raised202Space.center, "2F", {
+            ...modelOptions,
+            semanticId: "202-island",
+            lift: modelAlignment.slabThickness + raised202Space.height * 0.62,
+          }),
+        ),
+      });
+    }
+    if (floorVisibility("2F", session) && (session.layerMode === "raised202" || session.layerMode === "exploded" || routeTouchesRaised202) && !showRaised202LowerContext) {
       const showSeparateRaisedPlatform = session.layerMode === "raised202" || (routeTouchesRaised202 && session.layerMode !== "exploded");
       if (showSeparateRaisedPlatform) {
         const raisedPlatform = extrudedPolygonMesh(
@@ -1853,7 +1925,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         building.add(raisedPlatform);
       }
       if (session.layerMode !== "exploded") {
-        building.add(raisedPlatformRim(session, raisedPlatformSideMaterial.clone()));
+        building.add(raisedPlatformSubstructure(session, raisedPlatformSideMaterial.clone(), raisedPlatformBaseMaterial.clone()));
       }
       labels.push({
         roomId: "raised-202-note",
@@ -2926,7 +2998,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                 <button className={session.layerMode === "single" && session.activeFloor === "2F" ? "material-tile single-floor active" : "material-tile single-floor"} onClick={() => setLayer("single", "2F")}>
                   <Layers size={20} />
                   <strong>二层公共区</strong>
-                  <span>不含 202 二层半，避免混层</span>
+                  <span>保留 202 下方空间，二层半单独看</span>
                 </button>
                 <button className={session.layerMode === "raised202" ? "material-tile active raised" : "material-tile raised"} onClick={() => setLayer("raised202")}>
                   <Layers size={20} />

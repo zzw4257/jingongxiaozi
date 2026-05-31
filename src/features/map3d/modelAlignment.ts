@@ -44,9 +44,10 @@ type TransformOptions = {
 
 export function floorBaseY(floor: FloorId, options: TransformOptions = {}): number {
   const layerMode = options.layerMode ?? "allFloors";
-  if (layerMode === "single" || layerMode === "raised202") return 0.08;
+  if (layerMode === "single") return floor === "2F" ? modelAlignment.floorHeight : 0.08;
+  if (layerMode === "raised202") return modelAlignment.floorHeight;
 
-  const visualFloorHeight = layerMode === "section" ? modelAlignment.floorHeight * 1.18 : modelAlignment.floorHeight * 1.08;
+  const visualFloorHeight = layerMode === "section" ? modelAlignment.floorHeight * 1.08 : modelAlignment.floorHeight;
   const normalY = floor === "2F" ? visualFloorHeight : 0.08;
   if (layerMode === "exploded" && floor === "2F") {
     return modelAlignment.floorHeight + modelAlignment.explodeHeight;
@@ -58,7 +59,7 @@ export function floorOffsetXZ(floor: FloorId, options: TransformOptions = {}): [
   const layerMode = options.layerMode ?? "allFloors";
   if (layerMode === "single" || layerMode === "section" || layerMode === "raised202") return [0, 0];
   if (layerMode === "exploded") {
-    return floor === "2F" ? [-1.28, -1.06] : [0.42, 0.36];
+    return floor === "2F" ? [-0.46, -0.38] : [0.16, 0.13];
   }
   return [0, 0];
 }
@@ -126,10 +127,10 @@ const semanticAnchors2F: Array<{ id: string; offset: Point; match: (semanticId: 
       semanticId.includes("stair-public-upper") ||
       semanticId.includes("stair-public-2f") ||
       semanticId.includes("202") ||
-      semanticId.includes("201") ||
       semanticId.includes("c2-main") ||
       semanticId.includes("c2-202") ||
-      semanticId.includes("2F-corridor-0"),
+      semanticId.includes("2F-corridor-0") ||
+      semanticId.includes("2F-corridor-1"),
   },
 ];
 
@@ -151,16 +152,16 @@ export const modelAlignment = {
   mapCenter: MAP_CENTER,
   modelScale: MODEL_SCALE,
   floorHeight: 0.92,
-  explodeHeight: 2.18,
+  explodeHeight: 0.86,
   slabThickness: 0.045,
   wallHeight: 0.38,
   outerWallHeight: 0.54,
   defaultCamera: {
     position: [7.1, 5.35, 7.8] as ModelPoint,
     target: [0.16, 0.78, 0.18] as ModelPoint,
-    fov: 36,
+    fov: 38,
   },
-  routeLift: 0.58,
+  routeLift: 0.18,
   hotspotLift: 0.12,
   semanticAnchors2F,
 };

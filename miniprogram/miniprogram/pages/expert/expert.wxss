@@ -1,0 +1,73 @@
+@import "../chat/chat.wxss";
+
+.expert-page {
+  background:
+    radial-gradient(circle at 50% 14%, rgba(11, 108, 255, 0.1), transparent 32%),
+    radial-gradient(circle at 18% 76%, rgba(255, 154, 0, 0.08), transparent 30%),
+    linear-gradient(145deg, #f8fbff 0%, #edf5fb 100%);
+}
+
+.citation-strip {
+  position: fixed;
+  left: 176rpx;
+  right: 132rpx;
+  bottom: 24rpx;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12rpx;
+}
+
+.citation-card {
+  min-width: 0;
+  min-height: 92rpx;
+  box-sizing: border-box;
+  padding: 14rpx 16rpx;
+  background: rgba(255, 255, 255, 0.88);
+  border: 2rpx solid #dbe5f2;
+  border-radius: 22rpx;
+  box-shadow: 0 12rpx 28rpx rgba(40, 82, 135, 0.08);
+}
+
+.citation-card text {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.citation-title {
+  color: #17253a;
+  font-size: 20rpx;
+  font-weight: 950;
+}
+
+.citation-source {
+  margin-top: 4rpx;
+  color: #075bd4;
+  font-size: 16rpx;
+  font-weight: 900;
+}
+
+.citation-excerpt {
+  margin-top: 4rpx;
+  color: #61748d;
+  font-size: 16rpx;
+  font-weight: 800;
+}
+
+@media (max-height: 430px) and (orientation: landscape) {
+  .citation-strip {
+    left: 160rpx;
+    right: 124rpx;
+    bottom: 16rpx;
+  }
+
+  .citation-card {
+    min-height: 76rpx;
+    padding: 10rpx 12rpx;
+  }
+
+  .citation-excerpt {
+    display: none;
+  }
+}

@@ -1,31 +1,13 @@
 <view class="home">
   <view class="standby-stage" bindtap="openMap" hover-class="standby-hover">
-    <view class="robot-shell">
-      <view class="robot-antenna"></view>
-      <view class="robot-face">
-        <view class="face-screen">
-          <view class="eye left"></view>
-          <view class="eye right"></view>
-          <view class="mouth"></view>
-        </view>
-      </view>
-      <view class="robot-neck"></view>
-    </view>
-    <view class="voice-orbit orbit-a"></view>
-    <view class="voice-orbit orbit-b"></view>
+    <image class="robot-expression-image" src="/assets/ui/robot-standby.png" mode="aspectFit"></image>
   </view>
 
-  <view class="standby-copy">
-    <text class="eyebrow">待机中</text>
-    <text class="title">金工小子</text>
-    <text class="subtitle">触摸表情或右下角按钮打开地图导航</text>
-  </view>
-
-  <view class="drawer-handle" bindtap="openAppDrawer" hover-class="entry-hover">
+  <view class="drawer-handle" catchtap="openAppDrawer" hover-class="entry-hover">
     <text class="drawer-dot"></text>
   </view>
 
-  <view class="map-fab" bindtap="openMap" hover-class="entry-hover">
+  <view class="map-fab" catchtap="openMap" hover-class="entry-hover">
     <text class="fab-icon">⌖</text>
     <text class="fab-label">地图</text>
   </view>
@@ -37,38 +19,38 @@
         <button class="sheet-close" bindtap="closeAppDrawer" hover-class="entry-hover">关闭</button>
       </view>
       <view class="drawer-item primary" bindtap="openMap" hover-class="entry-hover">
-        <text class="drawer-item-icon">⌖</text>
+        <image class="drawer-item-asset" src="/assets/ui/map-building-pin.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">地图导航</text>
-          <text class="drawer-item-desc">打开包内地图，进入后可继续改起终点</text>
+          <text class="drawer-item-desc">独立浏览、起终点导航、2.5D 分层</text>
         </view>
       </view>
       <view class="drawer-item" bindtap="showMoreRoutes" hover-class="entry-hover">
-        <text class="drawer-item-icon">↱</text>
+        <image class="drawer-item-asset" src="/assets/ui/route-stairs.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">快速路线</text>
-          <text class="drawer-item-desc">带 MapDirect 参数打开同一地图</text>
+          <text class="drawer-item-desc">带 MapDirect 参数打开地图</text>
         </view>
       </view>
-      <view class="drawer-item muted">
-        <text class="drawer-item-icon">◌</text>
+      <view class="drawer-item" bindtap="openChat" hover-class="entry-hover">
+        <image class="drawer-item-asset" src="/assets/ui/robot-speaking.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">常态对话</text>
-          <text class="drawer-item-desc">包内保留状态入口，后续接入回复展示和播报链路</text>
+          <text class="drawer-item-desc">突出显示后端回复与核心词</text>
         </view>
       </view>
-      <view class="drawer-item muted">
-        <text class="drawer-item-icon">▣</text>
+      <view class="drawer-item" bindtap="openExpert" hover-class="entry-hover">
+        <image class="drawer-item-asset" src="/assets/ui/robot-expert.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">专家问答</text>
-          <text class="drawer-item-desc">后续接入后端指令后与移动端状态机同步</text>
+          <text class="drawer-item-desc">检索型回答与引用信息展示</text>
         </view>
       </view>
       <view class="drawer-item muted">
         <text class="drawer-item-icon">⚙</text>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">后端调试</text>
-          <text class="drawer-item-desc">默认折叠，不抢占展示屏主视觉</text>
+          <text class="drawer-item-desc">发布版隐藏，联调用 mock 指令</text>
         </view>
       </view>
     </view>

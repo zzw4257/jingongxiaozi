@@ -1,7 +1,9 @@
 {
   "pages": [
     "pages/home/home",
-    "pages/map/map"
+    "pages/map/map",
+    "pages/chat/chat",
+    "pages/expert/expert"
   ],
   "window": {
     "navigationBarTitleText": "金工小子",

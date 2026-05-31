@@ -14,6 +14,20 @@ const requiredFiles = [
   "miniprogram/miniprogram/pages/map/map.wxml",
   "miniprogram/miniprogram/pages/map/map.js",
   "miniprogram/miniprogram/pages/map/map.wxss",
+  "miniprogram/miniprogram/pages/chat/chat.json",
+  "miniprogram/miniprogram/pages/chat/chat.wxml",
+  "miniprogram/miniprogram/pages/chat/chat.js",
+  "miniprogram/miniprogram/pages/chat/chat.wxss",
+  "miniprogram/miniprogram/pages/expert/expert.json",
+  "miniprogram/miniprogram/pages/expert/expert.wxml",
+  "miniprogram/miniprogram/pages/expert/expert.js",
+  "miniprogram/miniprogram/pages/expert/expert.wxss",
+  "miniprogram/miniprogram/assets/ui/robot-standby.png",
+  "miniprogram/miniprogram/assets/ui/robot-speaking.png",
+  "miniprogram/miniprogram/assets/ui/robot-expert.png",
+  "miniprogram/miniprogram/assets/ui/route-stairs.png",
+  "miniprogram/miniprogram/assets/ui/map-layered.png",
+  "miniprogram/miniprogram/assets/ui/map-building-pin.png",
   "src/shared/miniProgramBridge.ts",
 ];
 
@@ -38,7 +52,7 @@ if (appJs.includes("webBaseUrl") || appJs.includes("127.0.0.1") || appJs.include
 
 const appJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprogram/app.json"), "utf8"));
 const pages = new Set(appJson.pages || []);
-for (const page of ["pages/home/home", "pages/map/map"]) {
+for (const page of ["pages/home/home", "pages/map/map", "pages/chat/chat", "pages/expert/expert"]) {
   if (!pages.has(page)) throw new Error(`app.json does not declare page: ${page}`);
 }
 if (appJson.window?.navigationStyle !== "custom") {
@@ -73,7 +87,7 @@ for (const token of ["source: \"miniprogram\"", "ui: \"mobile\"", "targetRoomId"
 if (!home.includes("mapDirects")) {
   throw new Error("home.js must pass MapDirect query parameters to the native map page");
 }
-for (const token of ["primaryMapDirects", "secondaryMapDirects", "showAppDrawer", "showMoreRoutes", "buildMapQuery"]) {
+for (const token of ["primaryMapDirects", "secondaryMapDirects", "showAppDrawer", "showMoreRoutes", "buildMapQuery", "wx.reLaunch", "navigating"]) {
   if (!home.includes(token)) {
     throw new Error(`home.js must keep landscape route grouping: ${token}`);
   }
@@ -83,7 +97,7 @@ if (home.includes("webBaseUrl") || home.includes("127.0.0.1") || home.includes("
 }
 
 const homeWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/home/home.wxml"), "utf8");
-for (const token of ["standby-stage", "map-fab", "drawer-handle", "app-drawer", "primaryMapDirects", "secondaryMapDirects", "showMoreRoutes", "快速路线"]) {
+for (const token of ["robot-standby.png", "robot-speaking.png", "robot-expert.png", "map-fab", "drawer-handle", "app-drawer", "primaryMapDirects", "secondaryMapDirects", "showMoreRoutes", "快速路线", "openChat", "openExpert"]) {
   if (!homeWxml.includes(token)) {
     throw new Error(`home.wxml must keep landscape route grouping: ${token}`);
   }
@@ -93,24 +107,24 @@ if (homeWxml.includes("WebView") || homeWxml.includes("业务域名") || homeWxm
 }
 
 const homeWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/home/home.wxss"), "utf8");
-for (const token of ["height: 100vh", ".standby-stage", ".map-fab", ".drawer-handle", ".app-drawer", ".route-grid", "@media (orientation: portrait)"]) {
+for (const token of ["height: 100vh", ".robot-expression-image", ".map-fab", ".drawer-handle", ".app-drawer", ".route-grid", "@media (orientation: portrait)"]) {
   if (!homeWxss.includes(token)) {
     throw new Error(`home.wxss must keep landscape touch layout token: ${token}`);
   }
 }
 
 const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxml"), "utf8");
-if (webMap.includes("<web-view") || webMap.includes("src=")) {
+if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap.includes("src='{{src}}'")) {
   throw new Error("map page must be native and must not use web-view");
 }
-for (const token of ["native-map-page", "map-scene", "floor-deck", "routeNodes", "路线引导", "图层", "房间、走廊、楼梯"]) {
+for (const token of ["native-map-page layer-{{layerMode}}", "map-stage", "floor-deck", "routeNodes", "map3d-guidance-strip", "material-panel", "map-asset", "panel-close"]) {
   if (!webMap.includes(token)) {
     throw new Error(`map page must keep native map token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-for (const token of ["routeTemplates", "routeNodeMeta", "buildRoute", "refreshFloors", "104-2F01", "202-5", "108-2F04"]) {
+for (const token of ["routeTemplates", "routeNodeMeta", "buildRoute", "refreshFloors", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!webMapJs.includes(token)) {
     throw new Error(`map.js must keep native map logic token: ${token}`);
   }
@@ -120,9 +134,25 @@ if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJ
 }
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".floor-deck", ".corridor", ".room", ".stair", ".route-node", ".bottom-panel"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-stage", ".map-asset", ".floor-deck", ".corridor", ".room", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
+  }
+}
+
+const chatWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.wxml"), "utf8");
+const chatWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.wxss"), "utf8");
+for (const token of ["robot-speaking.png", "response-page", "answer-zone", "keyword-row", "audio-pill", "response-rail"]) {
+  if (!chatWxml.includes(token) && !chatWxss.includes(token)) {
+    throw new Error(`chat page must keep mobile app response token: ${token}`);
+  }
+}
+
+const expertWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/expert/expert.wxml"), "utf8");
+const expertWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/expert/expert.wxss"), "utf8");
+for (const token of ["robot-expert.png", "response-page", "answer-zone", "keyword-row", "citation-strip", "response-rail"]) {
+  if (!expertWxml.includes(token) && !expertWxss.includes(token)) {
+    throw new Error(`expert page must keep mobile app response token: ${token}`);
   }
 }
 
@@ -134,6 +164,10 @@ const miniProgramText = [
   webMap,
   webMapJs,
   webMapWxss,
+  chatWxml,
+  chatWxss,
+  expertWxml,
+  expertWxss,
   fs.readFileSync(path.join(root, "miniprogram/README.md"), "utf8"),
 ].join("\n");
 for (const token of ["5173", "127.0.0.1", "localhost", "webBaseUrl", "<web-view", "业务域名"]) {

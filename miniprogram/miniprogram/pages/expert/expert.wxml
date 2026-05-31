@@ -1,0 +1,21 @@
+<view class="response-page expert-page">
+  <image class="response-asset" src="/assets/ui/robot-expert.png" mode="aspectFit"></image>
+  <view class="answer-zone">
+    <text class="answer-text">{{answer}}</text>
+    <view class="keyword-row">
+      <text wx:for="{{keywords}}" wx:key="*this">{{item}}</text>
+    </view>
+  </view>
+  <view class="citation-strip">
+    <view wx:for="{{citations}}" wx:key="title" class="citation-card">
+      <text class="citation-title">{{item.title}}</text>
+      <text class="citation-source">{{item.source}}</text>
+      <text class="citation-excerpt">{{item.excerpt}}</text>
+    </view>
+  </view>
+  <view class="response-rail">
+    <button bindtap="goBack">返回</button>
+    <button bindtap="openMap">地图</button>
+    <button bindtap="openChat">对话</button>
+  </view>
+</view>

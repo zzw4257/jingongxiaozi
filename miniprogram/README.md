@@ -19,6 +19,8 @@
 
 - `pages/home/home`：待机首页，默认只展示金工小子表情、右下地图入口、左侧应用抽屉。
 - `pages/map/map`：包内原生小程序地图页，不依赖 WebView 或外部 H5 服务。
+- `pages/chat/chat`：包内常态对话展示页，对齐移动端的“表情 + 大字回答 + 核心词 + 音频状态”。
+- `pages/expert/expert`：包内专家问答展示页，对齐移动端的专家回答与引用卡片。
 
 首页 MapDirect 预设会通过页面 query 进入地图页：
 

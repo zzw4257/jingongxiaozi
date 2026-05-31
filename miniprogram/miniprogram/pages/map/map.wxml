@@ -1,13 +1,8 @@
-<view class="native-map-page">
-  <view class="map-topbar">
-    <view>
-      <text class="map-title">金工中心地图</text>
-      <text class="map-subtitle">房间、走廊、楼梯与二层半导引</text>
-    </view>
-    <view class="north-chip">真北 ↑</view>
-  </view>
-
-  <view class="map-scene layer-{{layerMode}}">
+<view class="native-map-page layer-{{layerMode}} panel-{{panel}}">
+  <view class="map-stage">
+    <view class="map-ambient map-ambient-a"></view>
+    <view class="map-ambient map-ambient-b"></view>
+    <image class="map-asset" src="/assets/ui/map-layered.png" mode="aspectFit"></image>
     <view
       wx:for="{{visibleFloors}}"
       wx:key="floorId"
@@ -61,6 +56,41 @@
     </view>
   </view>
 
+  <view class="map3d-north-indicator">
+    <text class="north-arrow">N</text>
+    <view>
+      <text>真北</text>
+      <text>朝向传感器待接入</text>
+    </view>
+  </view>
+
+  <view class="layer-status-pill">
+    <text>{{layerHint}}</text>
+    <text wx:if="{{hasRoute}}">{{route.summary}}</text>
+  </view>
+
+  <view wx:if="{{hasRoute}}" class="map3d-guidance-strip">
+    <text class="guidance-strip-step">{{activeStepLabel}}</text>
+    <view class="guidance-strip-node">
+      <text>当前</text>
+      <text class="guidance-strong">{{currentStepTitle}}</text>
+    </view>
+    <text class="guidance-arrow">→</text>
+    <view class="guidance-strip-node next">
+      <text>下一处</text>
+      <text class="guidance-strong">{{nextStepTitle}}</text>
+    </view>
+    <text class="guidance-strip-distance">{{routeDistanceLabel}}</text>
+  </view>
+
+  <view wx:else class="map3d-bottom-chip">
+    <image src="/assets/ui/map-building-pin.png" mode="aspectFit"></image>
+    <view>
+      <text>金工中心地图</text>
+      <text>点击房间或选择终点开始导引</text>
+    </view>
+  </view>
+
   <view class="map-rail">
     <button bindtap="goBack">返回</button>
     <button class="{{routeButtonClass}}" data-panel="route" bindtap="openPanel">路线</button>
@@ -68,11 +98,12 @@
     <button class="{{roomButtonClass}}" data-panel="room" bindtap="openPanel">房间</button>
   </view>
 
-  <view class="bottom-panel">
+  <view wx:if="{{panel !== 'none'}}" class="material-panel panel-{{panel}}">
     <view wx:if="{{panel === 'route'}}" class="panel-card">
       <view class="panel-head">
         <text class="panel-title">路线引导</text>
         <text class="panel-meta">{{routeDistanceLabel}}</text>
+        <button class="panel-close" bindtap="closePanel">×</button>
       </view>
       <view wx:if="{{hasRoute}}" class="route-summary">
         <text>{{route.summary}}</text>
@@ -80,7 +111,7 @@
       <view wx:else class="route-summary muted">
         <text>选择常用终点后生成路线，可继续切换楼层、查看房间和清除路线。</text>
       </view>
-      <scroll-view class="step-strip" scroll-x="true">
+      <scroll-view class="step-strip" scroll-x="true" enhanced="true" show-scrollbar="false">
         <view
           wx:for="{{routeSteps}}"
           wx:key="id"
@@ -101,6 +132,7 @@
       <view class="panel-head">
         <text class="panel-title">图层</text>
         <text class="panel-meta">默认分层总览</text>
+        <button class="panel-close" bindtap="closePanel">×</button>
       </view>
       <view class="layer-grid">
         <button class="{{allLayerClass}}" data-layer="all" bindtap="setLayer">全楼分层</button>
@@ -108,12 +140,14 @@
         <button class="{{layer2FClass}}" data-layer="2F" bindtap="setLayer">二层</button>
         <button class="{{layer25FClass}}" data-layer="25F" bindtap="setLayer">二层半</button>
       </view>
+      <view class="panel-note">单层用于近看房间和门点；全楼分层用于理解跨层路线。</view>
     </view>
 
     <view wx:if="{{panel === 'room'}}" class="panel-card">
       <view class="panel-head">
         <text class="panel-title">空间信息</text>
         <text class="panel-meta">{{selectedFloorLabel}}</text>
+        <button class="panel-close" bindtap="closePanel">×</button>
       </view>
       <view wx:if="{{selectedRoom}}" class="room-detail">
         <text class="detail-title">{{selectedRoom.no}} · {{selectedRoom.name}}</text>

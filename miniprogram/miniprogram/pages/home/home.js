@@ -73,31 +73,53 @@ Page({
     primaryMapDirects,
     secondaryMapDirects,
     showAppDrawer: false,
-    showMoreRoutes: false
+    showMoreRoutes: false,
+    navigating: false
   },
 
   openMap() {
+    if (this.data.navigating) return;
+    this.setData({ navigating: true });
     app.globalData.lastMapDirective = { source: "manual" };
-    wx.navigateTo({
+    wx.reLaunch({
       url: `/pages/map/map${buildMapQuery()}`,
+      complete: () => this.setData({ navigating: false }),
       fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
     });
   },
 
   openMapDirect(event) {
+    if (this.data.navigating) return;
     const { index } = event.currentTarget.dataset;
     const item = mapDirects[index];
     if (!item) return;
-    this.setData({ showMoreRoutes: false });
+    this.setData({ showMoreRoutes: false, navigating: true });
     const request = {
       startRoomId: item.startRoomId,
       targetRoomId: item.targetRoomId,
       announce
     };
     app.globalData.lastMapDirective = { source: "miniprogram", request };
-    wx.navigateTo({
+    wx.reLaunch({
       url: `/pages/map/map${buildMapQuery(request)}`,
+      complete: () => this.setData({ navigating: false }),
       fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
+    });
+  },
+
+  openChat() {
+    this.setData({ showAppDrawer: false });
+    wx.navigateTo({
+      url: "/pages/chat/chat",
+      fail: () => wx.showToast({ title: "对话未打开", icon: "none" })
+    });
+  },
+
+  openExpert() {
+    this.setData({ showAppDrawer: false });
+    wx.navigateTo({
+      url: "/pages/expert/expert",
+      fail: () => wx.showToast({ title: "专家问答未打开", icon: "none" })
     });
   },
 

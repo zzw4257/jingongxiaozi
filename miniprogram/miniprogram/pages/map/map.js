@@ -75,6 +75,13 @@ const floorTitles = {
   "25F": "二层半"
 };
 
+const layerHints = {
+  all: "全楼分层总览",
+  "1F": "一层单层浏览",
+  "2F": "二层单层浏览",
+  "25F": "202 二层半平台"
+};
+
 const floorOrder = ["1F", "2F", "25F"];
 
 function rectStyle(item) {
@@ -157,7 +164,7 @@ function buildFloor(floorId, layerMode, route) {
     });
   const routeNodes = route ? route.nodes.filter((node) => node.floor === floorId) : [];
   const index = floorOrder.indexOf(floorId);
-  const allModeStyle = `margin-left:${index * 18}rpx;margin-top:${index * -42}rpx;z-index:${10 + index};`;
+  const allModeStyle = `--floor-index:${index};z-index:${10 + index};`;
   const singleStyle = "margin-left:0;margin-top:0;z-index:20;";
   return {
     floorId,
@@ -187,11 +194,15 @@ Page({
     hasRoute: false,
     routeSteps: [],
     routeDistanceLabel: "未选择终点",
+    activeStepLabel: "1/1",
+    currentStepTitle: "当前位置",
+    nextStepTitle: "选择终点",
     visibleFloors: [],
     selectedRoom: null,
     selectedFloorLabel: "点击地图房间",
-    panel: "route",
-    routeButtonClass: "active",
+    layerHint: layerHints.all,
+    panel: "none",
+    routeButtonClass: "",
     layersButtonClass: "",
     roomButtonClass: "",
     allLayerClass: "active",
@@ -210,17 +221,31 @@ Page({
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? buildRoute(targetRoomId, startRoomId) : null;
-    this.setRouteState({ targetRoomId, startRoomId, route });
+    this.setRouteState({
+      targetRoomId,
+      startRoomId,
+      route,
+      panel: route ? "route" : "none",
+      routeButtonClass: route ? "active" : "",
+      layersButtonClass: "",
+      roomButtonClass: ""
+    });
   },
 
   setRouteState(next) {
     const route = next.route || null;
+    const steps = route ? route.steps : [];
+    const currentStep = steps[0];
+    const nextStep = steps[1] || steps[0];
     this.setData({
       ...next,
       route,
       hasRoute: Boolean(route),
-      routeSteps: route ? route.steps : [],
-      routeDistanceLabel: route ? route.distance : "未选择终点"
+      routeSteps: steps,
+      routeDistanceLabel: route ? route.distance : "未选择终点",
+      activeStepLabel: route ? `1/${Math.max(1, steps.length)}` : "1/1",
+      currentStepTitle: currentStep ? currentStep.title : "当前位置",
+      nextStepTitle: nextStep ? nextStep.title : "选择终点"
     }, () => this.refreshFloors());
   },
 
@@ -234,6 +259,7 @@ Page({
     const layerMode = event.currentTarget.dataset.layer;
     this.setData({
       layerMode,
+      layerHint: layerHints[layerMode] || layerHints.all,
       allLayerClass: layerButtonClass(layerMode, "all"),
       layer1FClass: layerButtonClass(layerMode, "1F"),
       layer2FClass: layerButtonClass(layerMode, "2F"),
@@ -248,6 +274,15 @@ Page({
       routeButtonClass: panelButtonClass(panel, "route"),
       layersButtonClass: panelButtonClass(panel, "layers"),
       roomButtonClass: panelButtonClass(panel, "room")
+    });
+  },
+
+  closePanel() {
+    this.setData({
+      panel: "none",
+      routeButtonClass: "",
+      layersButtonClass: "",
+      roomButtonClass: ""
     });
   },
 
@@ -267,14 +302,28 @@ Page({
   selectQuickTarget(event) {
     const targetRoomId = event.currentTarget.dataset.id;
     const route = buildRoute(targetRoomId, this.data.startRoomId);
-    this.setRouteState({ targetRoomId, route, panel: "route" });
+    this.setRouteState({
+      targetRoomId,
+      route,
+      panel: "route",
+      routeButtonClass: "active",
+      layersButtonClass: "",
+      roomButtonClass: ""
+    });
   },
 
   clearRoute() {
-    this.setRouteState({ targetRoomId: "", route: null, panel: "route" });
+    this.setRouteState({
+      targetRoomId: "",
+      route: null,
+      panel: "none",
+      routeButtonClass: "",
+      layersButtonClass: "",
+      roomButtonClass: ""
+    });
   },
 
   goBack() {
-    wx.navigateBack({ delta: 1 });
+    wx.reLaunch({ url: "/pages/home/home" });
   }
 });

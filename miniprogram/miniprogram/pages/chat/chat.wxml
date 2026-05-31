@@ -1,0 +1,21 @@
+<view class="response-page chat-page">
+  <image class="response-asset" src="/assets/ui/robot-speaking.png" mode="aspectFit"></image>
+  <view class="answer-zone">
+    <text class="answer-text">{{answer}}</text>
+    <view class="keyword-row">
+      <text wx:for="{{keywords}}" wx:key="*this">{{item}}</text>
+    </view>
+    <view class="audio-pill">
+      <text class="audio-dot"></text>
+      <view>
+        <text>扬声器输出</text>
+        <text>等待后端音频链路</text>
+      </view>
+    </view>
+  </view>
+  <view class="response-rail">
+    <button bindtap="goBack">返回</button>
+    <button bindtap="openMap">地图</button>
+    <button bindtap="openExpert">专家</button>
+  </view>
+</view>

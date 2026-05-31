@@ -54,13 +54,8 @@ const secondaryMapDirects = mapDirects.slice(3).map((item, index) => ({
   originalIndex: index + primaryMapDirects.length
 }));
 
-function canOpenWebMap(src) {
-  return src && !/^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(src);
-}
-
-function buildMapUrl(options = {}) {
+function buildMapQuery(options = {}) {
   const params = {
-    mode: "map",
     source: "miniprogram",
     ui: "mobile",
     ...options
@@ -69,27 +64,23 @@ function buildMapUrl(options = {}) {
     .filter((key) => params[key])
     .map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key])}`)
     .join("&");
-  return `${app.globalData.webBaseUrl}?${query}`;
+  return query ? `?${query}` : "";
 }
 
 Page({
   data: {
-    webBaseUrl: app.globalData.webBaseUrl,
     mapDirects,
     primaryMapDirects,
     secondaryMapDirects,
-    showMoreRoutes: false,
-    showMapUnavailable: false
+    showAppDrawer: false,
+    showMoreRoutes: false
   },
 
   openMap() {
-    const src = buildMapUrl();
-    if (!canOpenWebMap(src)) {
-      this.setData({ showMapUnavailable: true, showMoreRoutes: false });
-      return;
-    }
+    app.globalData.lastMapDirective = { source: "manual" };
     wx.navigateTo({
-      url: `/pages/web-map/web-map?src=${encodeURIComponent(src)}`
+      url: `/pages/map/map${buildMapQuery()}`,
+      fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
     });
   },
 
@@ -98,30 +89,32 @@ Page({
     const item = mapDirects[index];
     if (!item) return;
     this.setData({ showMoreRoutes: false });
-    const src = buildMapUrl({
+    const request = {
       startRoomId: item.startRoomId,
       targetRoomId: item.targetRoomId,
       announce
-    });
-    if (!canOpenWebMap(src)) {
-      this.setData({ showMapUnavailable: true });
-      return;
-    }
+    };
+    app.globalData.lastMapDirective = { source: "miniprogram", request };
     wx.navigateTo({
-      url: `/pages/web-map/web-map?src=${encodeURIComponent(src)}`
+      url: `/pages/map/map${buildMapQuery(request)}`,
+      fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
     });
   },
 
+  openAppDrawer() {
+    this.setData({ showAppDrawer: true, showMoreRoutes: false });
+  },
+
+  closeAppDrawer() {
+    this.setData({ showAppDrawer: false });
+  },
+
   showMoreRoutes() {
-    this.setData({ showMoreRoutes: true });
+    this.setData({ showMoreRoutes: true, showAppDrawer: false });
   },
 
   closeMoreRoutes() {
     this.setData({ showMoreRoutes: false });
-  },
-
-  closeMapUnavailable() {
-    this.setData({ showMapUnavailable: false });
   },
 
   noop() {

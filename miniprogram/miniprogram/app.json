@@ -1,7 +1,7 @@
 {
   "pages": [
     "pages/home/home",
-    "pages/web-map/web-map"
+    "pages/map/map"
   ],
   "window": {
     "navigationBarTitleText": "金工小子",

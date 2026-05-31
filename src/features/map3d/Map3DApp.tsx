@@ -25,7 +25,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent } from "react";
 import type { MapDirectRequest } from "../../shared/appTypes";
 import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
@@ -50,6 +50,7 @@ type Props = {
 };
 
 type PanelId = "none" | "route" | "layers" | "view" | "room" | "debug";
+type PanelSize = "compact" | "expanded";
 type CameraMode = "perspective" | "orthographic";
 type LoadState = "loading" | "ready" | "fallback" | "error";
 type CameraPreset = "overview" | "lowIso" | "top" | "route";
@@ -1464,6 +1465,7 @@ function disposeObject(object: THREE.Object3D) {
 export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: Props) {
   const [session, setSession] = useState<MapSessionState>(() => defaultSession(entrySource, initialRequest));
   const [panel, setPanel] = useState<PanelId>("none");
+  const [panelSize, setPanelSize] = useState<PanelSize>("expanded");
   const [routePage, setRoutePage] = useState<RoutePage>("setup");
   const [roomPickerGroup, setRoomPickerGroup] = useState<RoomPickerGroup>("common");
   const [roomPickerPage, setRoomPickerPage] = useState(0);
@@ -1494,10 +1496,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const headingLayoutSignatureRef = useRef("");
   const sessionLayerModeRef = useRef<MapSessionState["layerMode"]>(session.layerMode);
   const focusedLegSignatureRef = useRef("");
+  const panelDragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     setSession(defaultSession(entrySource, initialRequest));
     setPanel("none");
+    setPanelSize("expanded");
     setRoutePage("setup");
     setRoomPickerGroup("common");
     setRoomPickerPage(0);
@@ -3526,7 +3530,26 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   };
 
   const openPanel = (next: PanelId) => {
-    setPanel((current) => (current === next ? "none" : next));
+    if (panel === next) {
+      setPanel("none");
+      return;
+    }
+    setPanelSize(route && (next === "layers" || next === "view") ? "compact" : "expanded");
+    setPanel(next);
+  };
+
+  const handlePanelPointerDown = (event: PointerEvent) => {
+    panelDragStartRef.current = { x: event.clientX, y: event.clientY };
+  };
+
+  const handlePanelPointerUp = (event: PointerEvent) => {
+    const start = panelDragStartRef.current;
+    panelDragStartRef.current = null;
+    if (!start || !(route && (panel === "layers" || panel === "view"))) return;
+    const dx = event.clientX - start.x;
+    const dy = event.clientY - start.y;
+    if (Math.abs(dx) < 46 || Math.abs(dx) < Math.abs(dy) * 1.3) return;
+    setPanelSize(dx < 0 ? "expanded" : "compact");
   };
 
   const applyMapDirect = (request: MapDirectRequest) => {
@@ -3537,6 +3560,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     });
     setRouteProgress(undefined);
     setPanel("none");
+    setPanelSize("expanded");
     setRoutePage("setup");
     setTimeout(() => applyCameraPreset("route"), 0);
   };
@@ -3676,8 +3700,11 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     </>
   );
 
+  const dockablePanel = route && (panel === "layers" || panel === "view");
+  const effectivePanelSize: PanelSize = dockablePanel ? panelSize : "expanded";
+
   return (
-    <div className={`map3d-app panel-${panel}`}>
+    <div className={`map3d-app panel-${panel} panel-size-${effectivePanelSize}`}>
       <section className="map3d-stage" aria-label="金工中心地图">
         <div className="map3d-canvas-host" ref={hostRef} onPointerDown={handleCanvasPointerDown} onPointerUp={handleCanvasPointerUp} />
         <div className="map3d-label-layer" aria-hidden="true">
@@ -3787,10 +3814,16 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         )}
       </nav>
 
-      {panel !== "none" && <button className="material-scrim" aria-label="关闭地图面板" onClick={() => setPanel("none")} />}
+      {panel !== "none" && effectivePanelSize === "expanded" && <button className="material-scrim" aria-label="关闭地图面板" onClick={() => setPanel("none")} />}
 
       {panel !== "none" && (
-        <aside className="material-panel map3d-panel" aria-label="地图面板">
+        <aside
+          className={dockablePanel ? `material-panel map3d-panel dockable-panel ${effectivePanelSize}` : "material-panel map3d-panel"}
+          aria-label="地图面板"
+          onPointerDown={handlePanelPointerDown}
+          onPointerUp={handlePanelPointerUp}
+        >
+          {dockablePanel && <span className="panel-magnet-handle" aria-hidden="true" />}
           <div className="material-panel-title">
             <strong>
               {panel === "route" && "路线导航"}
@@ -3799,6 +3832,16 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               {panel === "room" && "房间信息"}
               {panel === "debug" && "地图调试"}
             </strong>
+            {dockablePanel && (
+              <button
+                className="material-panel-size-toggle"
+                onClick={() => setPanelSize((current) => (current === "compact" ? "expanded" : "compact"))}
+                title={effectivePanelSize === "compact" ? "展开面板" : "吸附到右侧"}
+                type="button"
+              >
+                {effectivePanelSize === "compact" ? "展开" : "吸附"}
+              </button>
+            )}
             <button className="icon-button material-close" onClick={() => setPanel("none")} title="关闭">
               <X size={19} />
             </button>

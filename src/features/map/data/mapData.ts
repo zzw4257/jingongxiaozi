@@ -222,19 +222,13 @@ const floors: FloorGeometry[] = [
         [350, 150],
         [520, 150],
         [520, 205],
-        [620, 205],
-        [620, 255],
+        [920, 205],
+        [920, 255],
         [520, 255],
         [520, 310],
         [350, 310],
         [350, 265],
         [90, 265],
-      ],
-      [
-        [620, 205],
-        [920, 205],
-        [920, 255],
-        [620, 255],
       ],
       [
         [235, 625],
@@ -366,21 +360,21 @@ const stairs: StairGeometry[] = [
 ];
 
 const nodes: NavNode[] = [
-  node("c1-main-west", "1F", [115, 615], "corridor", "一层西侧走廊转折点"),
-  node("c1-108", "1F", [470, 595], "corridor", "108 门厅外走廊"),
-  node("c1-107", "1F", [650, 595], "corridor", "107 前走廊转折点"),
-  node("c1-104", "1F", [740, 450], "corridor", "104 前走廊转折点"),
-  node("c1-east", "1F", [1015, 500], "corridor", "东侧走廊转折点"),
-  node("c1-101", "1F", [835, 615], "corridor", "101 门外走廊"),
+  node("c1-main-west", "1F", [115, 615]),
+  node("c1-108", "1F", [470, 595]),
+  node("c1-107", "1F", [650, 595]),
+  node("c1-104", "1F", [740, 450]),
+  node("c1-east", "1F", [1015, 500]),
+  node("c1-101", "1F", [835, 615]),
   node("stair-public-1f", "1F", [710, 520], "stair", "公共楼梯一层"),
   node("stair-104-1f", "1F", [750, 342], "stair", "104 内部楼梯一层"),
   node("stair-106-1f", "1F", [1040, 282], "stair", "106 内部楼梯一层"),
   node("stair-108-1f", "1F", [482, 520], "stair", "108 内部楼梯一层"),
-  node("c2-108", "2F", [350, 235], "corridor", "108 二层走廊转折点"),
-  node("c2-main", "2F", [575, 230], "corridor", "二层公共走廊转折点"),
+  node("c2-108", "2F", [350, 235]),
+  node("c2-main", "2F", [575, 230]),
   node("c2-202", "2F", [780, 230], "corridor", "202 二层半过道"),
-  node("c2-west", "2F", [160, 235], "corridor", "二层西侧走廊转折点"),
-  node("c2-office", "2F", [380, 665], "corridor", "二层办公走廊"),
+  node("c2-west", "2F", [160, 235]),
+  node("c2-office", "2F", [380, 665]),
   node("stair-public-2f", "2F", [548, 232], "stair", "公共楼梯二层"),
   node("stair-104-2f", "2F", [1070, 250], "stair", "104 内部楼梯二层"),
   node("stair-106-2f", "2F", [902, 72], "stair", "106 内部楼梯二层"),
@@ -505,22 +499,21 @@ const serviceSpaces: MapSpace[] = [
 
 const spaces: MapSpace[] = [
   ...floors.flatMap((floor) =>
-    floor.corridorPolygons.map((polygon, index) => {
-      const isRaised202Corridor = floor.id === "2F" && centroid(polygon)[0] >= 620 && centroid(polygon)[1] >= 205 && centroid(polygon)[1] <= 255;
-      return space(
+    floor.corridorPolygons.map((polygon, index) =>
+      space(
         `${floor.id.toLowerCase()}-corridor-${index}`,
-        isRaised202Corridor ? "202 二层半过道" : `${floor.label}过道 ${index + 1}`,
+        floor.id === "2F" && index === 0 ? "二层主过道 / 202 二层半" : `${floor.label}过道 ${index + 1}`,
         floor.id,
         "corridor",
         polygon,
-        isRaised202Corridor
-          ? "202 二层半平台内部过道；从二层公共走廊进入后再到各 202 房间门口。"
+        floor.id === "2F" && index === 0
+          ? "二层主过道与 202 二层半平台连通，路线必须沿蓝色中心线通行。"
           : "公共走廊面，路线只沿中心线或门到中心线的短连接通行。",
         "reference",
         true,
-        isRaised202Corridor ? 58 : 42,
-      );
-    }),
+        floor.id === "2F" && index === 0 ? 56 : 42,
+      ),
+    ),
   ),
   ...stairs.flatMap((stair) => [
     space(`${stair.id}-lower-space`, `${stair.label}下口`, stair.lowerFloor, "stair", stair.lowerLanding, "楼梯 landing，与对应楼层走廊或内部房间相接。", "reference", true, 46),

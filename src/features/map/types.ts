@@ -175,9 +175,6 @@ export type GuidanceLeg = RouteStep & {
   index: number;
   fromLabel: string;
   toLabel: string;
-  checkpointLabel: string;
-  actionLabel: string;
-  checkpointKind: "door" | "corridor" | "turn" | "stair" | "room" | "destination";
   instruction: string;
   portalNodeIds: string[];
 };

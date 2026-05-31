@@ -1654,14 +1654,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
   useEffect(() => {
     if (!route || !activeLeg) return;
-    if (session.layerMode === "exploded") return;
-    if (!activeLegVisibleInLayer && (session.layerMode === "single" || session.layerMode === "raised202")) return;
-    const signature = `${route.id}:${activeLeg.index}:${session.layerMode}:${session.activeFloor ?? "all"}`;
+    if (session.layerMode !== "allFloors") return;
+    if (!activeLegVisibleInLayer) return;
+    const signature = `${route.id}:${activeLeg.index}`;
     if (signature === focusedLegSignatureRef.current) return;
     focusedLegSignatureRef.current = signature;
     const timer = window.setTimeout(() => focusActiveLeg(), 120);
     return () => window.clearTimeout(timer);
-  }, [activeLeg?.index, activeLegVisibleInLayer, focusActiveLeg, route?.id, session.activeFloor, session.layerMode]);
+  }, [activeLeg?.index, activeLegVisibleInLayer, focusActiveLeg, route?.id, session.layerMode]);
 
   const focusSingleFloor = useCallback((floor: FloorId) => {
     const camera = cameraRef.current;
@@ -2946,7 +2946,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         lift: modelAlignment.slabThickness + 0.17 + raised202LiftForPoint(door.point, door.floor),
       }));
       building.add(pointMarker(center, door.source === "inferred" ? 0.035 : 0.042, material.clone()));
-      if (singleFocus || doorIsActiveCheckpoint) {
+      if (doorIsActiveCheckpoint || (singleFocus && !route)) {
         labels.push({
           roomId: `door-${door.id}`,
           text: doorIsActiveCheckpoint ? "门口" : door.source === "inferred" ? "推断门" : "门",
@@ -3135,35 +3135,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         if (isActiveSegment) addDirectionalArrows(root, point, nextPoint, segmentMaterialBase.clone(), isStair ? 1.7 : isDoor ? 1.34 : 1.22);
         if (isStair) {
           if (isActiveSegment) addRouteStairGuide(root, point, nextPoint, stairRouteMaterial);
-          routeLabels.push({
-            roomId: `route-stair-${index}`,
-            text: "走楼梯",
-            compactText: "楼梯",
-            fullText: step?.note ?? "沿橙色楼梯段上楼",
-            minDensity: isActiveSegment ? "far" : "mid",
-            floor: route.points[index + 1].floor,
-            priority: isActiveSegment ? 104 : 78,
-            active: isActiveSegment,
-            start: false,
-            target: false,
-            variant: "route",
-            position: point.clone().lerp(nextPoint, 0.5).add(new THREE.Vector3(0, 0.14, 0)),
-          });
-        } else if (isDoor && index > 0 && isActiveSegment) {
-          routeLabels.push({
-            roomId: `route-door-${index}`,
-            text: "过门",
-            compactText: "门",
-            fullText: step?.note ?? "经过门洞",
-            minDensity: "near",
-            floor: route.points[index + 1].floor,
-            priority: 72,
-            active: false,
-            start: false,
-            target: false,
-            variant: "route",
-            position: point.clone().lerp(nextPoint, 0.5).add(new THREE.Vector3(0, 0.12, 0)),
-          });
         }
       });
       points.forEach((point, index) => {
@@ -3639,7 +3610,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       advanceRouteCheckpoint();
       return;
     }
-    if (roomId === "route-current-location" || roomId === "route-target-location" || roomId.startsWith("route-stair-") || roomId.startsWith("route-door-")) {
+    if (roomId === "route-current-location" || roomId === "route-target-location") {
       setPanel("route");
       setRoutePage("setup");
       return;

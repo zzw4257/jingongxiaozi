@@ -69,6 +69,27 @@ shasum -a 256 build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-a
 - 当前仓库默认 `webBaseUrl` 是 `http://127.0.0.1:5173/`，小程序会阻止直接进入 WebView，并显示“地图服务未连接 / HTTPS 业务域名”提示。
 - 开发者工具控制台在未完成正式发布态时出现微信 SDK `access_token missing` 报错；这不是小程序页面代码报错，但表示不能把当前游客/空 AppID 状态当作发布验收。
 
+2026-05-31 15:24 复查补充：
+
+```bash
+curl -I 'http://127.0.0.1:5173/?mode=map&targetRoomId=202-5&announce=summary,distance,direction,floorChange'
+/Applications/wechatwebdevtools.app/Contents/MacOS/cli preview --project "/Users/zzw4257/Documents/ZJU_archieve/05.课程与学术资料/项目设计实践/数据库-补充后端模块/repo/miniprogram" --port 3800
+npm run check:miniprogram
+npm run check:miniprogram:release
+npm run check:map
+npm run build
+```
+
+复查结论：
+
+- H5 地图服务返回 `HTTP/1.1 200 OK`，可作为小程序 WebView 的业务域名目标页继续部署。
+- 微信开发者工具真实打开项目，横屏首页视觉已截屏存档：`qa/screenshots/miniprogram-devtools-home-20260531-current.png`，SHA-256 `181ae40a631b2997d753b57ebb0ba8c3463b5a799d1ac0516e5c9298b8332805`。
+- `npm run check:miniprogram` 通过，说明小程序壳、横屏配置、首页入口、WebView 守卫和 MapDirect 参数结构完整。
+- `npm run check:map` 通过，当前 H5 地图数据为 53 rooms、53 door segments、72 spaces、16 centerlines；模型资产、路线约束、对齐点和门洞映射通过。
+- `npm run build` 通过，H5 生产构建成功。
+- 微信 CLI `preview` 失败于 `error code:41002, appid missing`；`npm run check:miniprogram:release` 同样失败于真实 AppID 缺失。这是发布阻塞，不是页面样式问题。
+- `npm run qa:mobile` 当前不能作为本节点通过项：仓库未安装可选 `playwright` 包，脚本会提示 `Mobile layout QA requires the optional Node package 'playwright'`。如要把视觉回归纳入发布门禁，应先补齐该可选测试依赖或改用现有截图流程。
+
 发布前必须补齐：
 
 ```bash

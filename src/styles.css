@@ -2317,6 +2317,38 @@ button {
   color: #ffffff;
 }
 
+.map3d-north-indicator {
+  position: absolute;
+  left: calc(env(safe-area-inset-left) + 18px);
+  top: calc(env(safe-area-inset-top) + 18px);
+  z-index: 10;
+  display: inline-grid;
+  grid-template-columns: 30px auto;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 6px 11px 6px 7px;
+  color: #17324f;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(188, 210, 232, 0.9);
+  border-radius: 999px;
+  box-shadow: 0 10px 26px rgba(20, 53, 94, 0.14);
+  font-size: 12px;
+  font-weight: 950;
+  pointer-events: none;
+}
+
+.map3d-north-indicator svg {
+  width: 30px;
+  height: 30px;
+  padding: 6px;
+  color: #ffffff;
+  background: #17253a;
+  border-radius: 50%;
+  transform: rotate(var(--north-angle));
+  transform-origin: center;
+}
+
 .map3d-bottom-chip {
   position: absolute;
   left: max(16px, env(safe-area-inset-left));
@@ -2550,10 +2582,10 @@ button {
 }
 
 .dockable-panel.compact {
-  right: max(96px, calc(env(safe-area-inset-right) + 92px));
+  right: max(84px, calc(env(safe-area-inset-right) + 78px));
   top: 50%;
-  width: min(232px, calc(100vw - 132px));
-  min-width: 212px;
+  width: min(218px, calc(100vw - 118px));
+  min-width: 196px;
   height: auto;
   max-height: min(330px, calc(100vh - 34px));
   padding: 12px;
@@ -2568,11 +2600,11 @@ button {
 
 .panel-magnet-handle {
   position: absolute;
-  left: -10px;
+  left: -7px;
   top: 50%;
-  width: 4px;
-  height: 52px;
-  background: rgba(11, 108, 255, 0.28);
+  width: 3px;
+  height: 42px;
+  background: rgba(11, 108, 255, 0.16);
   border-radius: 999px;
   transform: translateY(-50%);
 }
@@ -2593,9 +2625,9 @@ button {
   margin-left: auto;
   margin-right: 8px;
   padding: 0 12px;
-  color: #075dcf;
-  background: #edf5ff;
-  border: 1px solid #cfe2ff;
+  color: #31516f;
+  background: #f4f8fd;
+  border: 1px solid #d8e4f3;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 950;
@@ -3433,7 +3465,24 @@ button {
 }
 
 .map3d-app.panel-view.panel-size-compact .heading-calibration-card {
-  display: none;
+  order: -1;
+  min-height: 58px;
+  padding: 8px;
+  border-radius: 16px;
+}
+
+.map3d-app.panel-view.panel-size-compact .heading-calibration-card strong {
+  font-size: 13px;
+}
+
+.map3d-app.panel-view.panel-size-compact .heading-calibration-card small {
+  -webkit-line-clamp: 1;
+}
+
+.map3d-app.panel-view.panel-size-compact .heading-calibration-card .material-primary {
+  min-height: 38px;
+  padding: 0 10px;
+  font-size: 12px;
 }
 
 .map3d-app.panel-view.panel-size-compact .view-nudge-grid {

@@ -73,6 +73,7 @@ type DeviceHeadingState = {
   calibrated: boolean;
   calibrationOffset: number;
   permissionState: "idle" | "requesting" | "granted" | "denied";
+  statusMessage?: string;
 };
 type LabelAnchor = {
   roomId: string;
@@ -98,8 +99,13 @@ type HeadingLayout = {
   y: number;
   visible: boolean;
 };
+type NorthLayout = {
+  angle: number;
+  label: string;
+};
 
 const mapDebugEnabled = import.meta.env.VITE_MAP_DEBUG === "1";
+const TRUE_NORTH_VECTOR = new THREE.Vector3(0, 0, -1);
 
 function activeLegUi(route?: RouteResult, leg?: RouteResult["guidanceLegs"][number]) {
   if (!route || !leg) {
@@ -1141,6 +1147,41 @@ function raisedPlatformOutline(session: MapSessionState, material: THREE.Materia
   return root;
 }
 
+function raisedPlatformBoundaryWall(session: MapSessionState, material: THREE.Material) {
+  const root = new THREE.Group();
+  const polygon = raised202Space.platformPolygon;
+  const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
+  const focus = session.layerMode === "raised202";
+  const height = focus ? 0.18 : 0.13;
+  const thickness = focus ? 0.046 : 0.032;
+  for (let index = 0; index < polygon.length; index++) {
+    const from = new THREE.Vector3(
+      ...mapPointToModel(polygon[index], "2F", {
+        ...modelOptions,
+        semanticId: "raised-202-boundary",
+        lift: modelAlignment.slabThickness + raised202Space.height + height / 2,
+      }),
+    );
+    const to = new THREE.Vector3(
+      ...mapPointToModel(polygon[(index + 1) % polygon.length], "2F", {
+        ...modelOptions,
+        semanticId: "raised-202-boundary",
+        lift: modelAlignment.slabThickness + raised202Space.height + height / 2,
+      }),
+    );
+    const length = from.distanceTo(to);
+    if (length < 0.001) continue;
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(length, height, thickness), material.clone());
+    wall.position.copy(from.clone().add(to).multiplyScalar(0.5));
+    wall.rotation.y = -Math.atan2(to.z - from.z, to.x - from.x);
+    wall.name = `raised-202-boundary-wall-${index}`;
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    root.add(wall);
+  }
+  return root;
+}
+
 function raisedPlatformLowerContext(session: MapSessionState, material: THREE.Material) {
   const root = new THREE.Group();
   const polygon = raised202Space.platformPolygon;
@@ -1342,11 +1383,13 @@ function useDeviceHeading(): DeviceHeadingState & {
   setCalibrationOffset: (offset: number) => void;
   requestPermission: () => Promise<void>;
 } {
+  const missingSensorTimerRef = useRef<number | undefined>();
   const [state, setState] = useState<DeviceHeadingState>({
     supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
     calibrated: false,
     calibrationOffset: 0,
     permissionState: "idle",
+    statusMessage: "使用真实南北方向作为地图基准",
   });
 
   const attachOrientationListener = useCallback(() => {
@@ -1355,11 +1398,17 @@ function useDeviceHeading(): DeviceHeadingState & {
       const webkitHeading = (event as DeviceOrientationEvent & { webkitCompassHeading?: number }).webkitCompassHeading;
       const degrees = typeof webkitHeading === "number" ? webkitHeading : typeof event.alpha === "number" ? 360 - event.alpha : undefined;
       if (degrees === undefined || Number.isNaN(degrees)) return;
+      if (missingSensorTimerRef.current !== undefined) {
+        window.clearTimeout(missingSensorTimerRef.current);
+        missingSensorTimerRef.current = undefined;
+      }
       const radians = normalizeRadians(THREE.MathUtils.degToRad(degrees));
       setState((current) => ({
         ...current,
         heading: current.heading === undefined ? radians : normalizeRadians(current.heading * 0.82 + radians * 0.18),
         supported: true,
+        permissionState: "granted",
+        statusMessage: undefined,
       }));
     };
     window.addEventListener("deviceorientationabsolute", handleOrientation);
@@ -1377,25 +1426,70 @@ function useDeviceHeading(): DeviceHeadingState & {
   }, []);
 
   const requestPermission = useCallback(async () => {
+    const markSensorPending = () => {
+      if (typeof window === "undefined") return;
+      if (missingSensorTimerRef.current !== undefined) window.clearTimeout(missingSensorTimerRef.current);
+      missingSensorTimerRef.current = window.setTimeout(() => {
+        setState((current) =>
+          current.heading === undefined
+            ? {
+                ...current,
+                supported: false,
+                permissionState: "denied",
+                statusMessage: "当前环境没有返回方向传感器数据；模拟器可继续使用真北基准。",
+              }
+            : current,
+        );
+      }, 1200);
+    };
     if (typeof window === "undefined" || !("DeviceOrientationEvent" in window)) {
-      setState((current) => ({ ...current, supported: false, permissionState: "denied" }));
+      setState((current) => ({
+        ...current,
+        supported: false,
+        permissionState: "denied",
+        statusMessage: "当前环境不支持方向传感器；地图按真实北向显示。",
+      }));
       return;
     }
     const eventCtor = window.DeviceOrientationEvent as typeof DeviceOrientationEvent & {
       requestPermission?: () => Promise<PermissionState>;
     };
     if (typeof eventCtor.requestPermission !== "function") {
-      setState((current) => ({ ...current, supported: true, permissionState: "granted" }));
+      setState((current) => ({
+        ...current,
+        supported: true,
+        permissionState: "granted",
+        statusMessage: "正在等待方向传感器数据。",
+      }));
+      markSensorPending();
       return;
     }
-    setState((current) => ({ ...current, permissionState: "requesting" }));
+    setState((current) => ({ ...current, permissionState: "requesting", statusMessage: "正在请求方向传感器权限。" }));
     try {
       const result = await eventCtor.requestPermission();
-      setState((current) => ({ ...current, supported: result === "granted", permissionState: result === "granted" ? "granted" : "denied" }));
+      setState((current) => ({
+        ...current,
+        supported: result === "granted",
+        permissionState: result === "granted" ? "granted" : "denied",
+        statusMessage: result === "granted" ? "正在等待方向传感器数据。" : "方向权限被拒绝；地图按真实北向显示。",
+      }));
+      if (result === "granted") markSensorPending();
     } catch {
-      setState((current) => ({ ...current, permissionState: "denied" }));
+      setState((current) => ({
+        ...current,
+        supported: false,
+        permissionState: "denied",
+        statusMessage: "无法读取方向传感器；地图按真实北向显示。",
+      }));
     }
   }, []);
+
+  useEffect(
+    () => () => {
+      if (missingSensorTimerRef.current !== undefined) window.clearTimeout(missingSensorTimerRef.current);
+    },
+    [],
+  );
 
   return { ...state, setCalibrationOffset, requestPermission };
 }
@@ -1474,6 +1568,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const [statusText, setStatusText] = useState("正在加载地图");
   const [labelLayout, setLabelLayout] = useState<LabelLayout[]>([]);
   const [headingLayout, setHeadingLayout] = useState<HeadingLayout | undefined>();
+  const [northLayout, setNorthLayout] = useState<NorthLayout>({ angle: 0, label: "真北" });
   const [activeCameraPreset, setActiveCameraPreset] = useState<CameraPresetState>("overview");
   const [routeProgress, setRouteProgress] = useState<RouteProgressState | undefined>();
   const headingState = useDeviceHeading();
@@ -1494,6 +1589,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const activeCameraPresetRef = useRef<CameraPresetState>("overview");
   const headingAnchorRef = useRef<THREE.Vector3 | undefined>();
   const headingLayoutSignatureRef = useRef("");
+  const northLayoutSignatureRef = useRef("");
   const sessionLayerModeRef = useRef<MapSessionState["layerMode"]>(session.layerMode);
   const focusedLegSignatureRef = useRef("");
   const panelDragStartRef = useRef<{ x: number; y: number } | null>(null);
@@ -1779,9 +1875,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                 : 92;
       const heightHint = label.variant === "compact-room" ? 24 : label.variant === "door" ? 22 : label.variant === "route" ? 32 : 30;
       const box = { x: label.x - widthHint / 2, y: label.y - heightHint / 2, width: widthHint, height: heightHint };
-      const outside = box.x < 8 || box.y < 8 || box.x + box.width > width - 84 || box.y + box.height > height - 8;
+      const rightGuard = density === "near" && (label.variant === "room" || label.variant === "compact-room") ? 42 : 84;
+      const edgeGuard = density === "near" ? 4 : 8;
+      const outside = box.x < edgeGuard || box.y < edgeGuard || box.x + box.width > width - rightGuard || box.y + box.height > height - edgeGuard;
       const isCompactRoom = label.variant === "compact-room";
-      const trackCollisions = !isCompactRoom || density !== "near";
+      const relaxedNearRoom = density === "near" && (isCompactRoom || label.variant === "room") && !label.roomId.startsWith("route-");
+      const trackCollisions = !relaxedNearRoom;
       const collides = trackCollisions && occupied.some(
         (item) =>
           box.x < item.x + item.width &&
@@ -1790,7 +1889,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           box.y + box.height > item.y,
       );
       const allowPriorityOverride = label.priority >= 108 || (label.priority >= 90 && !label.roomId.startsWith("route-"));
-      const visible = label.visible && !outside && (!collides || allowPriorityOverride || (isCompactRoom && density === "near"));
+      const visible = label.visible && !outside && (!collides || allowPriorityOverride || relaxedNearRoom);
       if (visible && trackCollisions) occupied.push(box);
       return { ...label, visible };
     });
@@ -1819,6 +1918,17 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     if (headingSignature !== headingLayoutSignatureRef.current) {
       headingLayoutSignatureRef.current = headingSignature;
       setHeadingLayout({ x, y, visible });
+    }
+
+    const northFrom = controlsRef.current?.target.clone() ?? new THREE.Vector3();
+    const northTo = northFrom.clone().add(TRUE_NORTH_VECTOR);
+    const projectedFrom = northFrom.clone().project(camera);
+    const projectedTo = northTo.clone().project(camera);
+    const northAngle = Math.atan2(projectedTo.y - projectedFrom.y, projectedTo.x - projectedFrom.x) + Math.PI / 2;
+    const northSignature = `${Math.round(northAngle * 1000)}:${density}`;
+    if (northSignature !== northLayoutSignatureRef.current) {
+      northLayoutSignatureRef.current = northSignature;
+      setNorthLayout({ angle: northAngle, label: "真北" });
     }
   }, []);
 
@@ -2242,6 +2352,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       transparent: true,
       opacity: session.layerMode === "allFloors" ? 0.54 : 0.78,
     });
+    const raisedPlatformWallMaterial = new THREE.MeshStandardMaterial({
+      color: session.layerMode === "raised202" ? 0x5f768a : 0x7c91a4,
+      roughness: 0.74,
+      metalness: 0.02,
+      transparent: session.layerMode !== "raised202",
+      opacity: session.layerMode === "raised202" ? 0.96 : 0.72,
+    });
 
     for (const floor of jingongMapData.floors) {
       if (!floorVisibility(floor.id, session)) continue;
@@ -2615,6 +2732,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           ? raisedPlatformOutline(session, raisedPlatformSideMaterial.clone(), 0.16)
           : raisedPlatformRim(session, raisedPlatformSideMaterial.clone());
       building.add(platformContext);
+      building.add(raisedPlatformBoundaryWall(session, raisedPlatformWallMaterial));
       if (!modelFirstOverview || session.layerMode === "raised202") {
         labels.push({
           roomId: "raised-202-note",
@@ -2803,7 +2921,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
 
     for (const wall of jingongMapData.walls) {
       if (modelAuthorityView && session.layerMode !== "section" && session.layerMode !== "exploded") continue;
-      if (session.layerMode === "exploded" && wall.floor === "2F" && wall.kind === "outer") continue;
       const roomWallMatch = wall.id.match(/^wall-(.+)-\d+$/);
       const wallRoom = roomWallMatch ? getRoomById(jingongMapData, roomWallMatch[1]) : undefined;
       if (!shouldDrawWall(wall, wallRoom, session)) continue;
@@ -2812,7 +2929,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       if (session.layerMode === "raised202" && wallRoom && !isRaised202Room(wallRoom)) continue;
       if (!semanticVisibleForSession(wall.floor, session, { point: stairCenter([wall.from, wall.to]), semanticId: wall.id })) continue;
       const raisedLift = raised202LiftForPoint(wall.from, wall.floor) || raised202LiftForPoint(wall.to, wall.floor);
-      const explodedSecondFloorBoost = session.layerMode === "exploded" && wall.floor === "2F" ? 0.92 : 1;
+      const explodedSecondFloorBoost = session.layerMode === "exploded" && wall.floor === "2F" ? 1.08 : 1;
         const overviewWallScale =
           session.layerMode === "allFloors"
             ? wall.kind === "outer"
@@ -2820,14 +2937,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               : 0.22
             : session.layerMode === "exploded"
               ? wall.kind === "outer"
-                ? 0.56
+                ? 0.7
                 : wall.kind === "low"
                   ? 0.28
-                  : 0.38
+                  : 0.46
               : 1;
       const height = wall.kind === "outer"
-        ? modelAlignment.outerWallHeight * (singleFocus ? 0.52 : overviewWallScale) * explodedSecondFloorBoost
-        : modelAlignment.wallHeight * (singleFocus ? 0.42 : overviewWallScale) * explodedSecondFloorBoost;
+        ? modelAlignment.outerWallHeight * (singleFocus ? 0.72 : overviewWallScale) * explodedSecondFloorBoost
+        : modelAlignment.wallHeight * (singleFocus ? 0.56 : overviewWallScale) * explodedSecondFloorBoost;
       for (const segment of splitWallSegments(wall, jingongMapData.doors)) {
         const start = new THREE.Vector3(...mapPointToModel(segment.from, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
         const end = new THREE.Vector3(...mapPointToModel(segment.to, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
@@ -3586,10 +3703,25 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     headingState.heading === undefined
       ? headingState.permissionState === "requesting"
         ? "启用中"
+        : headingState.permissionState === "denied"
+          ? "朝向不可用"
         : "启用朝向"
       : headingState.calibrated
         ? "重校朝向"
         : "校准朝向";
+  const headingStatusTitle =
+    headingState.heading === undefined
+      ? headingState.permissionState === "denied"
+        ? "当前环境不可用"
+        : headingState.permissionState === "requesting"
+          ? "正在读取"
+          : "未启用"
+      : headingState.calibrated
+        ? "已校准"
+        : "待校准";
+  const headingStatusHint =
+    headingState.statusMessage ??
+    (headingState.heading === undefined ? "点按钮读取手机朝向" : activeLeg ? "按当前导引段校准" : "按当前视图校准");
   const debugPhysicalModeLabel =
     session.layerMode === "exploded"
       ? "分层总览"
@@ -3747,6 +3879,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             <span>{headingState.calibrated ? "朝向" : "未校准"}</span>
           </div>
         )}
+        <div
+          className="map3d-north-indicator"
+          style={{ "--north-angle": `${northLayout.angle}rad` } as CSSProperties}
+          aria-label={`地图${northLayout.label}方向`}
+        >
+          <Navigation2 size={17} />
+          <span>{northLayout.label}</span>
+        </div>
         {panel === "none" && !route && selectedRoom && (
           <button
             className="map3d-bottom-chip"
@@ -3832,14 +3972,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               {panel === "room" && "房间信息"}
               {panel === "debug" && "地图调试"}
             </strong>
-            {dockablePanel && (
+          {dockablePanel && (
               <button
                 className="material-panel-size-toggle"
                 onClick={() => setPanelSize((current) => (current === "compact" ? "expanded" : "compact"))}
-                title={effectivePanelSize === "compact" ? "展开面板" : "吸附到右侧"}
+                title={effectivePanelSize === "compact" ? "展开完整面板" : "收起为简洁面板"}
                 type="button"
               >
-                {effectivePanelSize === "compact" ? "展开" : "吸附"}
+                {effectivePanelSize === "compact" ? "展开" : "简洁"}
               </button>
             )}
             <button className="icon-button material-close" onClick={() => setPanel("none")} title="关闭">
@@ -4062,8 +4202,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               <div className="heading-calibration-card">
                 <div>
                   <span>朝向校准</span>
-                  <strong>{headingState.heading === undefined ? "未启用" : headingState.calibrated ? "已校准" : "待校准"}</strong>
-                  <small>{headingState.heading === undefined ? "点按钮读取手机朝向" : activeLeg ? "按当前导引段校准" : "按当前视图校准"}</small>
+                  <strong>{headingStatusTitle}</strong>
+                  <small>{headingStatusHint}</small>
                 </div>
                 <button className="material-primary" disabled={headingState.permissionState === "requesting"} onClick={headingState.heading === undefined ? headingState.requestPermission : calibrateHeading}>
                   <Navigation2 size={18} />

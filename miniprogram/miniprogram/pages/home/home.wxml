@@ -1,35 +1,96 @@
 <view class="home">
-  <view class="hero">
-    <view class="robot-face">
-      <view class="eye left"></view>
-      <view class="eye right"></view>
-      <view class="mouth"></view>
+  <view class="hero-panel">
+    <view class="hero-copy">
+      <view class="robot-face">
+        <view class="eye left"></view>
+        <view class="eye right"></view>
+        <view class="mouth"></view>
+      </view>
+      <view>
+        <text class="title">金工小子</text>
+        <text class="subtitle">金工中心导航</text>
+      </view>
     </view>
-    <text class="title">金工小子</text>
-    <text class="subtitle">微信演示版 · 复用 3D 精确模型地图</text>
+
+    <view class="capability-row">
+      <text class="capability-chip">选地点</text>
+      <text class="capability-chip">看路线</text>
+      <text class="capability-chip">转视角</text>
+    </view>
   </view>
 
-  <view class="entry-grid">
-    <button class="entry primary" bindtap="openMap">
-      <text class="entry-title">打开 3D 地图</text>
-      <text class="entry-desc">默认进入全楼总览，可继续切图层和路线</text>
-    </button>
-    <button class="entry" data-target="104-2F01" bindtap="openMapDirect">
-      <text class="entry-title">去 104 二层</text>
-      <text class="entry-desc">模拟 MapDirect 参数带入</text>
-    </button>
-    <button class="entry" data-target="108-2F04" bindtap="openMapDirect">
-      <text class="entry-title">去 108 钳工</text>
-      <text class="entry-desc">验证跨房间导航初始状态</text>
-    </button>
-    <button class="entry" data-start="108-lobby" data-target="202-5" bindtap="openMapDirect">
-      <text class="entry-title">108 到 202-5</text>
-      <text class="entry-desc">验证公共楼梯与 202 二层半</text>
-    </button>
+  <view class="action-panel">
+    <view class="entry primary" bindtap="openMap" hover-class="entry-hover">
+      <view class="entry-top">
+        <text class="entry-title">打开地图</text>
+        <text class="entry-badge">总览</text>
+      </view>
+      <text class="entry-desc">查看全楼，可继续选择起点、终点和楼层。</text>
+    </view>
+
+    <view class="section-head">
+      <text class="section-title">快速导航</text>
+      <text class="section-note">打开后仍可修改路线</text>
+    </view>
+
+    <view class="entry-grid">
+      <view
+        wx:for="{{primaryMapDirects}}"
+        wx:key="id"
+        class="entry route-entry"
+        data-index="{{item.originalIndex}}"
+        bindtap="openMapDirect"
+        hover-class="entry-hover"
+      >
+        <view class="entry-top">
+          <text class="entry-title">{{item.title}}</text>
+          <text class="entry-badge">{{item.badge}}</text>
+        </view>
+        <text class="entry-desc">{{item.desc}}</text>
+      </view>
+
+      <view class="entry route-entry more-entry" bindtap="showMoreRoutes" hover-class="entry-hover">
+        <view class="entry-top">
+          <text class="entry-title">更多路线</text>
+          <text class="entry-badge">展开</text>
+        </view>
+        <text class="entry-desc">查看服务空间和二层公共房间。</text>
+      </view>
+    </view>
   </view>
 
-  <view class="status">
-    <text class="status-label">H5 地址</text>
-    <text class="status-value">{{webBaseUrl}}</text>
+  <view wx:if="{{showMoreRoutes}}" class="route-sheet-mask" bindtap="closeMoreRoutes">
+    <view class="route-sheet" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">更多路线</text>
+        <button class="sheet-close" bindtap="closeMoreRoutes" hover-class="entry-hover">关闭</button>
+      </view>
+      <view class="sheet-grid">
+        <view
+          wx:for="{{secondaryMapDirects}}"
+          wx:key="id"
+          class="entry"
+          data-index="{{item.originalIndex}}"
+          bindtap="openMapDirect"
+          hover-class="entry-hover"
+        >
+          <view class="entry-top">
+            <text class="entry-title">{{item.title}}</text>
+            <text class="entry-badge">{{item.badge}}</text>
+          </view>
+          <text class="entry-desc">{{item.desc}}</text>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view wx:if="{{showMapUnavailable}}" class="route-sheet-mask" bindtap="closeMapUnavailable">
+    <view class="route-sheet notice-sheet" catchtap="noop">
+      <view class="sheet-head">
+        <text class="sheet-title">地图服务未连接</text>
+        <button class="sheet-close" bindtap="closeMapUnavailable" hover-class="entry-hover">关闭</button>
+      </view>
+      <text class="notice-desc">请确认地图服务已启动。连接完成后，这里会直接打开同一套金工中心地图。</text>
+    </view>
   </view>
 </view>

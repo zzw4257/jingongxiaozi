@@ -1,3 +1,5 @@
 {
-  "navigationBarTitleText": "金工地图"
+  "navigationBarTitleText": "金工地图",
+  "navigationStyle": "custom",
+  "pageOrientation": "landscape"
 }

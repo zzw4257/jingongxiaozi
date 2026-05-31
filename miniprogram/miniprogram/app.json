@@ -7,7 +7,9 @@
     "navigationBarTitleText": "金工小子",
     "navigationBarBackgroundColor": "#f4f8ff",
     "navigationBarTextStyle": "black",
-    "backgroundColor": "#f4f8ff"
+    "backgroundColor": "#f4f8ff",
+    "navigationStyle": "custom",
+    "pageOrientation": "landscape"
   },
   "style": "v2",
   "sitemapLocation": "sitemap.json"

@@ -1,7 +1,30 @@
 <view class="web-map">
-  <web-view wx:if="{{src}}" src="{{src}}" bindmessage="handleMessage" bindload="handleLoad" binderror="handleError"></web-view>
-  <view wx:else class="empty">
+  <view class="map-backdrop"></view>
+  <web-view
+    wx:if="{{src && canRenderWebView && !loadFailed}}"
+    class="map-web-view"
+    src="{{src}}"
+    bindmessage="handleMessage"
+    bindload="handleLoad"
+    binderror="handleError"
+  ></web-view>
+  <view wx:if="{{src && canRenderWebView && !loaded && !loadFailed}}" class="empty map-loading">
+    <text class="empty-title">地图加载中</text>
+    <text class="empty-desc">正在打开金工中心地图。</text>
+  </view>
+  <view wx:if="{{src && !canRenderWebView}}" class="empty map-fallback">
+    <text class="empty-title">地图服务未连接</text>
+    <text class="empty-desc">请确认地图服务已启动，连接成功后会直接打开金工中心地图。</text>
+    <view class="back-action" bindtap="goBack" hover-class="back-action-hover">返回首页</view>
+  </view>
+  <view wx:if="{{!src}}" class="empty">
     <text class="empty-title">缺少地图地址</text>
-    <text class="empty-desc">请从首页入口进入，或在 webBaseUrl 中配置 H5 地址。</text>
+    <text class="empty-desc">请从首页入口进入，或先连接地图服务。</text>
+  </view>
+
+  <view wx:if="{{loadFailed}}" class="empty map-fallback">
+    <text class="empty-title">地图暂未连接</text>
+    <text class="empty-desc">请确认地图服务已启动，或稍后重新打开。</text>
+    <view class="back-action" bindtap="goBack" hover-class="back-action-hover">返回首页</view>
   </view>
 </view>

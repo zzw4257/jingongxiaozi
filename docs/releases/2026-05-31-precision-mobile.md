@@ -17,6 +17,7 @@
 - `104 / 106 / 108` 独立二层继续按内部楼梯约束处理；`202-5` 作为 2.5 层平台目标保留。
 - 二层、202 平台和分层总览均有墙体/边界补强；传感器不可用时显示明确反馈，不静默失败。
 - 微信小程序只负责入口、横屏壳、WebView 容器和 MapDirect 预设，和移动端 H5 使用同一套交互语义。
+- 小程序发布门禁独立于开发校验：开发态允许本地 `127.0.0.1`，正式发布必须换成 HTTPS 业务域名和真实 AppID。
 
 ## 发布制品
 
@@ -53,6 +54,28 @@ npm run tauri -- android build --apk --target aarch64 --ci
 unzip -l build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64.apk | rg 'lib/.+\\.so'
 shasum -a 256 build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64.apk
 ```
+
+## 小程序检查记录
+
+2026-05-31 使用微信开发者工具 Stable v2.01.2510290 打开：
+
+```bash
+/Applications/wechatwebdevtools.app/Contents/MacOS/cli open --project "/Users/zzw4257/Documents/ZJU_archieve/05.课程与学术资料/项目设计实践/数据库-补充后端模块/repo/miniprogram" --port 3800 --lang zh
+```
+
+观察结果：
+
+- 首页横屏壳可显示“金工小子 / 打开地图 / 快速导航 / 104 二层 / 202-5 / 108 钳工 / 更多路线”。
+- 当前仓库默认 `webBaseUrl` 是 `http://127.0.0.1:5173/`，小程序会阻止直接进入 WebView，并显示“地图服务未连接 / HTTPS 业务域名”提示。
+- 开发者工具控制台在未完成正式发布态时出现微信 SDK `access_token missing` 报错；这不是小程序页面代码报错，但表示不能把当前游客/空 AppID 状态当作发布验收。
+
+发布前必须补齐：
+
+```bash
+npm run check:miniprogram:release
+```
+
+该命令要求真实 AppID 和 HTTPS 业务域名；未满足时应失败，不能上传。
 
 如需横屏视觉回归，可在本地服务启动后补跑：
 

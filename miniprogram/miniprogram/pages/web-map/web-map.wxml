@@ -14,7 +14,7 @@
   </view>
   <view wx:if="{{src && !canRenderWebView}}" class="empty map-fallback">
     <text class="empty-title">地图服务未连接</text>
-    <text class="empty-desc">请确认地图服务已启动，连接成功后会直接打开金工中心地图。</text>
+    <text class="empty-desc">当前地址不是可发布的 HTTPS 业务域名。配置正式 H5 地址后会直接打开金工中心地图。</text>
     <view class="back-action" bindtap="goBack" hover-class="back-action-hover">返回首页</view>
   </view>
   <view wx:if="{{!src}}" class="empty">
@@ -24,7 +24,7 @@
 
   <view wx:if="{{loadFailed}}" class="empty map-fallback">
     <text class="empty-title">地图暂未连接</text>
-    <text class="empty-desc">请确认地图服务已启动，或稍后重新打开。</text>
+    <text class="empty-desc">请确认 H5 地图已部署到 HTTPS 业务域名，且已在微信公众平台完成域名配置。</text>
     <view class="back-action" bindtap="goBack" hover-class="back-action-hover">返回首页</view>
   </view>
 </view>

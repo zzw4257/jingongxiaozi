@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = process.cwd();
+const releaseMode = process.argv.includes("--release") || process.env.MINIPROGRAM_RELEASE_CHECK === "1";
 const requiredFiles = [
   "miniprogram/project.config.json",
   "miniprogram/miniprogram/app.json",
@@ -24,6 +25,19 @@ for (const file of requiredFiles) {
 const projectConfig = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/project.config.json"), "utf8"));
 if (projectConfig.miniprogramRoot !== "miniprogram/") {
   throw new Error("project.config.json miniprogramRoot must be miniprogram/");
+}
+if (releaseMode && (!projectConfig.appid || projectConfig.appid === "touristappid")) {
+  throw new Error("release check requires a real WeChat AppID in miniprogram/project.config.json");
+}
+
+const appJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/app.js"), "utf8");
+const webBaseUrl = appJs.match(/webBaseUrl:\s*["']([^"']+)["']/)?.[1] ?? "";
+if (!webBaseUrl) {
+  throw new Error("app.js must define globalData.webBaseUrl");
+}
+const localWebBaseUrl = /^https?:\/\/(127\.0\.0\.1|localhost)(?::|\/|$)/i.test(webBaseUrl);
+if (releaseMode && (!webBaseUrl.startsWith("https://") || localWebBaseUrl)) {
+  throw new Error("release check requires globalData.webBaseUrl to be a production HTTPS business-domain URL");
 }
 
 const appJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprogram/app.json"), "utf8"));
@@ -70,7 +84,7 @@ for (const token of ["primaryMapDirects", "secondaryMapDirects", "showMoreRoutes
 }
 
 const homeWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/home/home.wxml"), "utf8");
-for (const token of ["primaryMapDirects", "secondaryMapDirects", "showMoreRoutes", "showMapUnavailable", "更多路线", "地图服务未连接"]) {
+for (const token of ["primaryMapDirects", "secondaryMapDirects", "showMoreRoutes", "showMapUnavailable", "更多路线", "地图服务未连接", "HTTPS 业务域名"]) {
   if (!homeWxml.includes(token)) {
     throw new Error(`home.wxml must keep landscape route grouping: ${token}`);
   }
@@ -87,7 +101,7 @@ const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/we
 if (!webMap.includes("<web-view") || !webMap.includes("bindmessage")) {
   throw new Error("web-map page must use web-view and bindmessage");
 }
-for (const token of ["canRenderWebView", "loadFailed", "地图暂未连接", "返回首页", "地图加载中", "地图服务未连接"]) {
+for (const token of ["canRenderWebView", "loadFailed", "地图暂未连接", "返回首页", "地图加载中", "地图服务未连接", "HTTPS 业务域名"]) {
   if (!webMap.includes(token)) {
     throw new Error(`web-map page must keep non-transparent failure state: ${token}`);
   }
@@ -107,4 +121,4 @@ for (const token of ["position: fixed", ".map-web-view", ".map-fallback", ".map-
   }
 }
 
-console.log("Mini program shell verified.");
+console.log(releaseMode ? "Mini program release gate verified." : "Mini program shell verified.");

@@ -90,7 +90,7 @@
         <text class="sheet-title">地图服务未连接</text>
         <button class="sheet-close" bindtap="closeMapUnavailable" hover-class="entry-hover">关闭</button>
       </view>
-      <text class="notice-desc">请确认地图服务已启动。连接完成后，这里会直接打开同一套金工中心地图。</text>
+      <text class="notice-desc">当前仍是本地调试地址。小程序正式版必须配置 HTTPS 业务域名，连接完成后会直接打开同一套金工中心地图。</text>
     </view>
   </view>
 </view>

@@ -7,7 +7,6 @@ import { MapShell } from "./features/map3d/MapShell";
 import { StandbyView } from "./features/standby/StandbyView";
 import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
-import { postMiniProgramMessage } from "./shared/miniProgramBridge";
 
 export function App() {
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
@@ -20,27 +19,6 @@ export function App() {
   const activeRail = appState.mode === "standby" && appState.phase === "listening" ? "listening" : activeMode;
   const immersive = displayMode === "kiosk";
   const qaHotspotEnabled = import.meta.env.VITE_QA_HOTSPOT === "1";
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const params = new URLSearchParams(window.location.search);
-    const mode = params.get("mode");
-    const startRoomId = params.get("startRoomId") || undefined;
-    const targetRoomId = params.get("targetRoomId") || undefined;
-    const announce = params.get("announce")?.split(",").filter(Boolean) as MapDirectRequest["announce"] | undefined;
-    if (mode !== "map") return;
-    const request: MapDirectRequest = {
-      ...(startRoomId ? { startRoomId } : {}),
-      ...(targetRoomId ? { targetRoomId } : {}),
-      ...(announce?.length ? { announce } : {}),
-    };
-    setAppState({
-      mode: "map",
-      request: targetRoomId || startRoomId ? request : undefined,
-      audio: { ...DEFAULT_AUDIO_STATE, source: "backend", message: "小程序入口打开地图" },
-    });
-    postMiniProgramMessage({ type: "map-direct", request });
-  }, []);
 
   useEffect(() => {
     setNavOpen(false);
@@ -90,7 +68,6 @@ export function App() {
       if (directive) handleDirective(directive);
     };
     window.addEventListener("jingong:directive", onDirective);
-    postMiniProgramMessage({ type: "map-ready", title: "金工小子", hasRoute: false });
     return () => {
       delete apiWindow.jingongOpenMap;
       delete apiWindow.jingongApplyDirective;

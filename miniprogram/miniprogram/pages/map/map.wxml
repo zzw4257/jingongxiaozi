@@ -1,0 +1,127 @@
+<view class="native-map-page">
+  <view class="map-topbar">
+    <view>
+      <text class="map-title">金工中心地图</text>
+      <text class="map-subtitle">房间、走廊、楼梯与二层半导引</text>
+    </view>
+    <view class="north-chip">真北 ↑</view>
+  </view>
+
+  <view class="map-scene layer-{{layerMode}}">
+    <view
+      wx:for="{{visibleFloors}}"
+      wx:key="floorId"
+      class="floor-deck floor-{{item.floorId}}"
+      style="{{item.style}}"
+    >
+      <view class="floor-slab"></view>
+      <view class="floor-title">{{item.title}}</view>
+      <view
+        wx:for="{{item.corridors}}"
+        wx:for-item="corridor"
+        wx:key="id"
+        class="corridor"
+        style="{{corridor.style}}"
+      >
+        <text>{{corridor.label}}</text>
+      </view>
+      <view
+        wx:for="{{item.rooms}}"
+        wx:for-item="room"
+        wx:key="id"
+        class="{{room.className}}"
+        style="{{room.style}}"
+        data-id="{{room.id}}"
+        bindtap="selectRoom"
+      >
+        <text class="room-no">{{room.no}}</text>
+        <text class="room-name">{{room.name}}</text>
+      </view>
+      <view
+        wx:for="{{item.stairs}}"
+        wx:for-item="stair"
+        wx:key="id"
+        class="{{stair.className}}"
+        style="{{stair.style}}"
+      >
+        <view class="stair-treads">
+          <text></text><text></text><text></text><text></text>
+        </view>
+        <text>{{stair.label}}</text>
+      </view>
+      <view
+        wx:for="{{item.routeNodes}}"
+        wx:for-item="node"
+        wx:key="id"
+        class="{{node.className}}"
+        style="{{node.style}}"
+      >
+        <text>{{node.index + 1}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="map-rail">
+    <button bindtap="goBack">返回</button>
+    <button class="{{routeButtonClass}}" data-panel="route" bindtap="openPanel">路线</button>
+    <button class="{{layersButtonClass}}" data-panel="layers" bindtap="openPanel">图层</button>
+    <button class="{{roomButtonClass}}" data-panel="room" bindtap="openPanel">房间</button>
+  </view>
+
+  <view class="bottom-panel">
+    <view wx:if="{{panel === 'route'}}" class="panel-card">
+      <view class="panel-head">
+        <text class="panel-title">路线引导</text>
+        <text class="panel-meta">{{routeDistanceLabel}}</text>
+      </view>
+      <view wx:if="{{hasRoute}}" class="route-summary">
+        <text>{{route.summary}}</text>
+      </view>
+      <view wx:else class="route-summary muted">
+        <text>选择常用终点后生成路线，可继续切换楼层、查看房间和清除路线。</text>
+      </view>
+      <scroll-view class="step-strip" scroll-x="true">
+        <view
+          wx:for="{{routeSteps}}"
+          wx:key="id"
+          class="{{item.className}}"
+        >
+          <text class="step-no">{{item.no}}</text>
+          <text class="step-title">{{item.title}}</text>
+          <text class="step-desc">{{item.desc}}</text>
+        </view>
+      </scroll-view>
+      <view class="quick-row">
+        <button wx:for="{{quickTargets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectQuickTarget">{{item.label}}</button>
+        <button class="plain" bindtap="clearRoute">清路线</button>
+      </view>
+    </view>
+
+    <view wx:if="{{panel === 'layers'}}" class="panel-card">
+      <view class="panel-head">
+        <text class="panel-title">图层</text>
+        <text class="panel-meta">默认分层总览</text>
+      </view>
+      <view class="layer-grid">
+        <button class="{{allLayerClass}}" data-layer="all" bindtap="setLayer">全楼分层</button>
+        <button class="{{layer1FClass}}" data-layer="1F" bindtap="setLayer">一层</button>
+        <button class="{{layer2FClass}}" data-layer="2F" bindtap="setLayer">二层</button>
+        <button class="{{layer25FClass}}" data-layer="25F" bindtap="setLayer">二层半</button>
+      </view>
+    </view>
+
+    <view wx:if="{{panel === 'room'}}" class="panel-card">
+      <view class="panel-head">
+        <text class="panel-title">空间信息</text>
+        <text class="panel-meta">{{selectedFloorLabel}}</text>
+      </view>
+      <view wx:if="{{selectedRoom}}" class="room-detail">
+        <text class="detail-title">{{selectedRoom.no}} · {{selectedRoom.name}}</text>
+        <text class="detail-desc">类型：{{selectedRoom.area}}。后续可继续补充实景图、门洞来源、房间介绍和可导航状态。</text>
+      </view>
+      <view wx:else class="room-detail muted">
+        <text>点击地图中的房间、走廊或楼梯节点查看信息。</text>
+      </view>
+    </view>
+  </view>
+</view>

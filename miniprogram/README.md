@@ -6,7 +6,7 @@
 - 地图入口和快速路线入口。
 - 包内原生地图页，支持楼层切换、房间点击、常用路线和逐段引导。
 
-当前版本用于和安卓移动端主线保持视觉与流程一致。3D 精确模型渲染仍以安卓/H5 主线为最高保真版本；小程序端先保留包内原生地图能力，后续继续把拓扑和房间语义数据自动同步过来。
+当前版本用于和安卓移动端主线保持视觉与流程一致。3D 精确模型渲染仍以安卓/H5 主线为最高保真版本；小程序端地图数据由 `src/features/map/data/mapData.ts` 生成到 `miniprogram/miniprogram/data/map-data.js`，房间、走廊、门洞、楼梯、导航节点和路线边都来自同一份主线拓扑，不再维护一套简化手写地图。
 
 ## 导入方式
 
@@ -45,6 +45,7 @@ startRoomId=...&targetRoomId=...&announce=summary,distance,direction,floorChange
 在仓库根目录运行：
 
 ```bash
+node scripts/generate-miniprogram-map-data.mjs
 npm run check:miniprogram
 npm run build
 ```

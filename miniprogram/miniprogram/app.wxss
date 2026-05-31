@@ -6,5 +6,13 @@ page {
 }
 
 button {
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
   font: inherit;
+}
+
+button::after {
+  border: 0;
 }

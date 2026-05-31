@@ -1,7 +1,47 @@
+page {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #eef6ff;
+}
+
 .web-map {
+  position: fixed;
+  z-index: 999;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: #eef6ff;
+}
+
+.map-web-view {
+  position: relative;
+  z-index: 1;
+  display: block;
   width: 100vw;
   height: 100vh;
   background: #eef6ff;
+}
+
+.map-backdrop,
+.map-loading {
+  position: fixed;
+  z-index: 1000;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background:
+    radial-gradient(circle at 72% 28%, rgba(23, 105, 224, 0.16), transparent 34%),
+    linear-gradient(180deg, #f8fbff 0%, #e8f2ff 100%);
+}
+
+.map-loading {
+  z-index: 1002;
 }
 
 .empty {
@@ -26,4 +66,31 @@
   font-size: 26rpx;
   font-weight: 700;
   line-height: 1.5;
+}
+
+.map-fallback {
+  position: fixed;
+  z-index: 1003;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  background: #eef6ff;
+}
+
+.back-action {
+  min-width: 180rpx;
+  padding: 18rpx 28rpx;
+  color: #ffffff;
+  font-size: 24rpx;
+  font-weight: 900;
+  line-height: 1;
+  border-radius: 999rpx;
+  background: #1769e0;
+  box-shadow: 0 18rpx 42rpx rgba(23, 105, 224, 0.22);
+}
+
+.back-action-hover {
+  transform: scale(0.985);
+  opacity: 0.9;
 }

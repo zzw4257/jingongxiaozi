@@ -14,16 +14,16 @@ const baseUrl = process.env.QA_BASE_URL ?? "http://127.0.0.1:5173/";
 const screenshotDir = path.join(root, "qa", "screenshots");
 
 const viewports = [
-  { name: "phone-portrait", width: 390, height: 844 },
   { name: "kiosk-landscape", width: 844, height: 390 },
   { name: "robot-hd", width: 1280, height: 720 },
+  ...(process.env.QA_INCLUDE_PORTRAIT === "1" ? [{ name: "phone-portrait", width: 390, height: 844 }] : []),
 ];
 
 const panelButtons = [
   { name: "route", selector: 'button[title="路线"]', panel: ".material-panel" },
   { name: "layers", selector: 'button[title="图层"]', panel: ".material-panel" },
   { name: "view", selector: 'button[title="视角"]', panel: ".material-panel" },
-  { name: "debug", selector: 'button[title="调试"]', panel: ".material-panel" },
+  ...(process.env.VITE_MAP_DEBUG === "1" ? [{ name: "debug", selector: 'button[title="调试"]', panel: ".material-panel" }] : []),
 ];
 
 function outside(rect, width, height) {
@@ -56,7 +56,7 @@ async function assertCanvasNonBlank(page, viewport) {
   if (!result.ok) throw new Error(`${viewport.name}/map: canvas appears blank ${JSON.stringify(result)}`);
 }
 
-const browser = await chromium.launch();
+const browser = await chromium.launch({ args: ["--disable-gpu", "--disable-dev-shm-usage", "--use-gl=swiftshader"] });
 try {
   for (const viewport of viewports) {
     const page = await browser.newPage({ viewport });
@@ -76,7 +76,7 @@ try {
     await page.waitForSelector(".map3d-canvas-host canvas");
     await page.waitForTimeout(1000);
     await assertVisibleInViewport(page, ".map3d-rail", viewport, "map-rail");
-    await assertVisibleInViewport(page, ".map3d-status-chip", viewport, "map-status");
+    await assertVisibleInViewport(page, ".map3d-bottom-chip", viewport, "map-status");
     await assertCanvasNonBlank(page, viewport);
     await page.screenshot({ path: path.join(screenshotDir, `${viewport.name}-map.png`), fullPage: true });
 
@@ -100,6 +100,16 @@ try {
     await page.screenshot({ path: path.join(screenshotDir, `${viewport.name}-expert.png`), fullPage: true });
 
     await page.close();
+
+    const directPage = await browser.newPage({ viewport });
+    await directPage.goto(`${baseUrl}?mode=map&targetRoomId=202-5&announce=summary,distance,direction,floorChange`);
+    await directPage.waitForLoadState("networkidle");
+    await directPage.waitForSelector(".map3d-canvas-host canvas");
+    await assertVisibleInViewport(directPage, ".map3d-rail", viewport, "direct-map-rail");
+    await assertVisibleInViewport(directPage, ".map3d-bottom-chip.route-active", viewport, "direct-route-status");
+    await assertCanvasNonBlank(directPage, viewport);
+    await directPage.screenshot({ path: path.join(screenshotDir, `${viewport.name}-direct-map-route.png`), fullPage: true });
+    await directPage.close();
   }
 } finally {
   await browser.close();

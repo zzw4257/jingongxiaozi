@@ -18,22 +18,22 @@ cd src-tauri && cargo check
 npm run tauri -- android build --apk --target aarch64 --ci
 
 cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk \
-  build/android-release/jingong-xiaozi-0.1.0-map-guidance-v34-arm64-unsigned.apk
+  build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64-unsigned.apk
 
 /Users/zzw4257/Library/Android/sdk/build-tools/36.0.0/zipalign -f -p 4 \
-  build/android-release/jingong-xiaozi-0.1.0-map-guidance-v34-arm64-unsigned.apk \
-  build/android-release/jingong-xiaozi-0.1.0-map-guidance-v34-arm64-aligned.apk
+  build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64-unsigned.apk \
+  build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64-aligned.apk
 
 /Users/zzw4257/Library/Android/sdk/build-tools/36.0.0/apksigner sign \
   --ks build/android-release/jingong-xiaozi-v29-test-release.jks \
   --ks-key-alias jingong-v29 \
   --ks-pass pass:jingong-v29-test \
   --key-pass pass:jingong-v29-test \
-  --out build/android-release/jingong-xiaozi-0.1.0-map-guidance-v34-arm64-test-signed.apk \
-  build/android-release/jingong-xiaozi-0.1.0-map-guidance-v34-arm64-aligned.apk
+  --out build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64.apk \
+  build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-arm64-aligned.apk
 ```
 
-本地 Android 烟测记录见 `qa/android-map-smoke-v34.md`。构建产物、截图和校准 JSON 默认不入库。
+2026-05-31 存档见 `docs/releases/2026-05-31-precision-mobile.md`。构建产物、截图和校准 JSON 默认不入库。
 
 ## 微信小程序演示壳
 
@@ -42,3 +42,7 @@ cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-r
 ```bash
 npm run check:miniprogram
 ```
+
+## 后端接入
+
+后端指令、`MapDirect`、音频状态和 URL 调试入口见 `docs/backend-integration-contract.md`。

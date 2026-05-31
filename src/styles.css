@@ -2538,6 +2538,45 @@ button {
   box-shadow: 0 22px 58px rgba(20, 53, 94, 0.26);
 }
 
+.dockable-panel {
+  touch-action: pan-y;
+  transition:
+    width 180ms ease,
+    height 180ms ease,
+    top 180ms ease,
+    right 180ms ease,
+    border-radius 180ms ease,
+    box-shadow 180ms ease;
+}
+
+.dockable-panel.compact {
+  right: max(96px, calc(env(safe-area-inset-right) + 92px));
+  top: 50%;
+  width: min(232px, calc(100vw - 132px));
+  min-width: 212px;
+  height: auto;
+  max-height: min(330px, calc(100vh - 34px));
+  padding: 12px;
+  border-radius: 26px;
+  box-shadow: 0 16px 44px rgba(20, 53, 94, 0.22);
+  transform: translateY(-50%);
+}
+
+.dockable-panel.expanded {
+  transform: none;
+}
+
+.panel-magnet-handle {
+  position: absolute;
+  left: -10px;
+  top: 50%;
+  width: 4px;
+  height: 52px;
+  background: rgba(11, 108, 255, 0.28);
+  border-radius: 999px;
+  transform: translateY(-50%);
+}
+
 .material-panel-title {
   display: flex;
   align-items: center;
@@ -2546,6 +2585,31 @@ button {
   margin-bottom: 10px;
   color: #17253a;
   font-size: 20px;
+}
+
+.material-panel-size-toggle {
+  min-width: 48px;
+  min-height: 34px;
+  margin-left: auto;
+  margin-right: 8px;
+  padding: 0 12px;
+  color: #075dcf;
+  background: #edf5ff;
+  border: 1px solid #cfe2ff;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.dockable-panel.compact .material-panel-title {
+  min-height: 36px;
+  margin-bottom: 8px;
+  font-size: 16px;
+}
+
+.dockable-panel.compact .material-close {
+  width: 36px;
+  height: 36px;
 }
 
 .material-close {
@@ -3339,6 +3403,61 @@ button {
   flex-direction: column;
 }
 
+.map3d-app.panel-view.panel-size-compact .material-panel {
+  width: min(232px, calc(100vw - 132px));
+}
+
+.map3d-app.panel-view.panel-size-compact .map3d-panel-page {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(4, auto);
+  gap: 8px;
+}
+
+.map3d-app.panel-view.panel-size-compact .material-grid.two,
+.map3d-app.panel-view.panel-size-compact .material-grid.four {
+  grid-row: auto;
+  grid-template-columns: 1fr;
+}
+
+.map3d-app.panel-view.panel-size-compact .material-grid.two .material-tile {
+  min-height: 48px;
+  padding: 9px;
+}
+
+.map3d-app.panel-view.panel-size-compact .material-grid.two .material-tile span {
+  display: none;
+}
+
+.map3d-app.panel-view.panel-size-compact .material-mini-chip {
+  min-height: 36px;
+}
+
+.map3d-app.panel-view.panel-size-compact .heading-calibration-card {
+  display: none;
+}
+
+.map3d-app.panel-view.panel-size-compact .view-nudge-grid {
+  grid-column: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.map3d-app.panel-view.panel-size-compact .view-pan-pad {
+  display: none;
+}
+
+.map3d-app.panel-view.panel-size-compact .view-reset-action {
+  grid-column: 1 / -1;
+  min-height: 42px;
+  flex-direction: row;
+}
+
+.map3d-app.panel-view.panel-size-compact .view-touch-action {
+  min-height: 38px;
+  padding: 7px 8px;
+  border-radius: 15px;
+}
+
 .debug-material-list button:last-child {
   color: #075dcf;
   background: #edf5ff;
@@ -3475,6 +3594,50 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.map3d-app.panel-layers.panel-size-compact .material-panel {
+  width: min(232px, calc(100vw - 132px));
+  height: auto;
+}
+
+.map3d-app.panel-layers.panel-size-compact .map3d-panel-page {
+  grid-template-rows: auto auto;
+  gap: 8px;
+}
+
+.map3d-app.panel-layers.panel-size-compact .layer-mode-stack {
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(5, minmax(44px, auto));
+  min-height: 0;
+  gap: 6px;
+}
+
+.map3d-app.panel-layers.panel-size-compact .layer-mode-stack .primary-layer {
+  grid-row: auto;
+}
+
+.map3d-app.panel-layers.panel-size-compact .material-tile {
+  min-height: 44px;
+  padding: 7px 9px;
+  border-radius: 16px;
+}
+
+.map3d-app.panel-layers.panel-size-compact .material-tile svg {
+  width: 18px;
+  height: 18px;
+}
+
+.map3d-app.panel-layers.panel-size-compact .material-tile strong {
+  font-size: 14px;
+}
+
+.map3d-app.panel-layers.panel-size-compact .material-tile span {
+  display: none;
+}
+
+.map3d-app.panel-layers.panel-size-compact .layer-advanced-row {
+  display: none;
 }
 
 @media (max-height: 460px) and (orientation: landscape) {

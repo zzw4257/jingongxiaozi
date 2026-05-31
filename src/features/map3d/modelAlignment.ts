@@ -126,7 +126,10 @@ const semanticAnchors2F: Array<{ id: string; offset: Point; match: (semanticId: 
     match: (semanticId) =>
       semanticId.includes("stair-public-upper") ||
       semanticId.includes("stair-public-2f") ||
+      semanticId.includes("201") ||
       semanticId.includes("202") ||
+      semanticId.includes("raised-202") ||
+      semanticId.includes("restroom-2f-east") ||
       semanticId.includes("c2-main") ||
       semanticId.includes("c2-202") ||
       semanticId.includes("2F-corridor-0") ||
@@ -152,7 +155,7 @@ export const modelAlignment = {
   mapCenter: MAP_CENTER,
   modelScale: MODEL_SCALE,
   floorHeight: 0.92,
-  explodeHeight: 0.86,
+  explodeHeight: 1.18,
   slabThickness: 0.045,
   wallHeight: 0.38,
   outerWallHeight: 0.54,

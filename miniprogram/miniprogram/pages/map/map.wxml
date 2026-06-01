@@ -1,126 +1,217 @@
 <view class="native-map-page layer-{{layerMode}} panel-{{panel}}">
+  <view class="map-backplate"></view>
   <view class="map-stage">
     <view class="map-ambient map-ambient-a"></view>
     <view class="map-ambient map-ambient-b"></view>
-    <canvas
-      id="mapCanvas"
-      canvas-id="mapCanvas"
-      type="2d"
-      class="map-canvas"
-      style="width:100%;height:100%;"
+    <image
+      class="map-static-fallback map-static-{{layerMode}}"
+      src="{{mapImageSrc}}"
+      mode="aspectFit"
       bindtap="handleCanvasTap"
       bindtouchstart="handleTouchStart"
       bindtouchmove="handleTouchMove"
       bindtouchend="handleTouchEnd"
       bindtouchcancel="handleTouchEnd"
-    ></canvas>
-  </view>
-
-  <view class="map-compass">
-    <text class="north-arrow">N</text>
-    <view>
-      <text>真北</text>
-      <text>{{sensorHint}}</text>
+    ></image>
+    <view class="native-map-hit-layer" catchtap="noop">
+      <view wx:for="{{nativeRooms}}" wx:key="id" class="native-room native-room-{{item.area}} {{item.activeClass}}" style="{{item.style}}" data-id="{{item.id}}" bindtap="selectNativeRoom">
+        <text wx:if="{{item.label}}" class="native-room-label">{{item.label}}</text>
+      </view>
     </view>
   </view>
 
+  <cover-view class="map-compass">
+    <cover-view class="north-arrow">N</cover-view>
+    <cover-view class="compass-copy">
+      <cover-view>真北</cover-view>
+      <cover-view>{{sensorHint}}</cover-view>
+    </cover-view>
+  </cover-view>
+
   <view class="map-legend">
-    <view><text class="legend-dot corridor"></text><text>走廊</text></view>
-    <view><text class="legend-dot room"></text><text>房间</text></view>
-    <view><text class="legend-dot stair"></text><text>楼梯</text></view>
-    <view><text class="legend-dot route"></text><text>路线</text></view>
+    <view class="legend-item"><view class="legend-dot corridor"></view><view>走廊</view></view>
+    <view class="legend-item"><view class="legend-dot room"></view><view>房间</view></view>
+    <view class="legend-item"><view class="legend-dot stair"></view><view>楼梯</view></view>
+    <view class="legend-item"><view class="legend-dot route"></view><view>路线</view></view>
   </view>
 
   <view class="layer-status-pill">
-    <text>{{layerHint}}</text>
-    <text wx:if="{{hasRoute}}">{{route.summary}} · {{routeDistanceLabel}}</text>
+    <view>{{layerHint}}</view>
+    <view wx:if="{{hasRoute}}">{{route.summary}} · {{routeDistanceLabel}}</view>
   </view>
 
   <view wx:if="{{hasRoute}}" class="map3d-guidance-strip">
-    <text class="guidance-strip-step">{{activeStepLabel}}</text>
+    <view class="guidance-strip-step">{{activeStepLabel}}</view>
     <view class="guidance-strip-node">
-      <text>当前</text>
-      <text class="guidance-strong">{{currentStepTitle}}</text>
+      <view>当前</view>
+      <view class="guidance-strong">{{currentStepTitle}}</view>
     </view>
-    <text class="guidance-arrow">→</text>
+    <view class="guidance-arrow">→</view>
     <view class="guidance-strip-node next">
-      <text>下一处</text>
-      <text class="guidance-strong">{{nextStepTitle}}</text>
+      <view>{{nextStepVerb}}</view>
+      <view class="guidance-strong">{{nextStepTitle}}</view>
     </view>
-    <text class="guidance-strip-distance">{{routeDistanceLabel}}</text>
-  </view>
-
-  <view wx:else class="map3d-bottom-chip">
-    <image src="/assets/ui/map-building-pin.png" mode="aspectFit"></image>
-    <view>
-      <text>金工中心地图</text>
-      <text>点击房间或选择终点开始导引</text>
+    <view class="guidance-strip-distance">{{activeStepDistanceLabel}}</view>
+    <view class="guidance-strip-actions">
+      <view class="guidance-action secondary" bindtap="focusActiveStep">聚焦</view>
+      <view class="guidance-action primary" bindtap="advanceRouteCheckpoint">{{stepActionLabel}}</view>
     </view>
   </view>
 
-  <view class="map-rail">
-    <button bindtap="goBack">返回</button>
-    <button class="{{routeButtonClass}}" data-panel="route" bindtap="openPanel">路线</button>
-    <button class="{{layersButtonClass}}" data-panel="layers" bindtap="openPanel">图层</button>
-    <button class="{{roomButtonClass}}" data-panel="room" bindtap="openPanel">房间</button>
+  <view wx:else class="map-native-start-bar">
+    <view class="native-start-copy" bindtap="openPanel" data-panel="route">
+      <view>金工中心地图</view>
+      <view>点终点，立即导引</view>
+    </view>
+    <view class="native-start-button" data-id="104-2F01" bindtap="selectQuickTarget">104</view>
+    <view class="native-start-button" data-id="202-5" bindtap="selectQuickTarget">202-5</view>
+    <view class="native-start-button" data-id="108-2F04" bindtap="selectQuickTarget">108</view>
+    <view class="native-start-button more" bindtap="openPanel" data-panel="route">更多</view>
   </view>
+
+  <cover-view class="map-rail">
+    <cover-view class="rail-button" bindtap="goBack"><cover-view class="rail-icon">●</cover-view><cover-view>待机</cover-view></cover-view>
+    <cover-view class="rail-button {{routeButtonClass}}" data-panel="route" bindtap="openPanel"><cover-view class="rail-icon">⌁</cover-view><cover-view>路线</cover-view></cover-view>
+    <cover-view class="rail-button {{layersButtonClass}}" data-panel="layers" bindtap="openPanel"><cover-view class="rail-icon">▣</cover-view><cover-view>图层</cover-view></cover-view>
+    <cover-view class="rail-button {{viewButtonClass}}" data-panel="view" bindtap="openPanel"><cover-view class="rail-icon">◌</cover-view><cover-view>视角</cover-view></cover-view>
+    <cover-view class="rail-button" data-view="reset" bindtap="setViewPreset"><cover-view class="rail-icon">⌖</cover-view><cover-view>总览</cover-view></cover-view>
+  </cover-view>
 
   <view wx:if="{{panel !== 'none'}}" class="panel-shade" bindtap="closePanel"></view>
   <view wx:if="{{panel !== 'none'}}" class="material-panel panel-{{panel}}">
     <view wx:if="{{panel === 'route'}}" class="panel-card">
       <view class="panel-head">
-        <text class="panel-title">路线引导</text>
-        <text class="panel-meta">{{routeDistanceLabel}}</text>
-        <button class="panel-close" bindtap="closePanel">×</button>
+        <view class="panel-title">路线引导</view>
+        <view class="panel-meta">{{routeDistanceLabel}}</view>
+        <view class="panel-close" bindtap="closePanel">×</view>
       </view>
       <view wx:if="{{hasRoute}}" class="route-summary">
-        <text>{{route.summary}}</text>
-      </view>
-      <view wx:else class="route-summary muted">
-        <text>选择终点后按门、走廊、楼梯逐段导引。</text>
-      </view>
-      <scroll-view class="step-strip" scroll-x="true" enhanced="true" show-scrollbar="false">
-        <view wx:for="{{routeSteps}}" wx:key="id" class="{{item.className}}">
-          <text class="step-no">{{item.no}}</text>
-          <text class="step-title">{{item.title}}</text>
-          <text class="step-desc">{{item.desc}}</text>
+        <view class="route-nav-sheet active">
+          <view class="route-nav-endpoint">
+            <view>起</view>
+            <view class="route-endpoint-title">{{routeStartLabel}}</view>
+          </view>
+          <view class="route-nav-arrow">→</view>
+          <view class="route-nav-endpoint target">
+            <view>终</view>
+            <view class="route-endpoint-title">{{routeTargetLabel}}</view>
+          </view>
+          <view class="route-nav-meta">{{routeDistanceLabel}}</view>
         </view>
-      </scroll-view>
-      <view class="quick-row">
-        <button wx:for="{{quickTargets}}" wx:key="id" data-id="{{item.id}}" bindtap="selectQuickTarget">{{item.label}}</button>
-        <button class="plain" bindtap="clearRoute">清路线</button>
+        <view class="route-guidance-card route-guidance-card-primary">
+          <view class="route-guidance-progress">{{activeStepLabel}}</view>
+          <view class="guidance-node">
+            <view class="guidance-node-label">你现在在</view>
+            <view class="guidance-node-title">{{currentStepTitle}}</view>
+          </view>
+          <view class="route-nav-arrow">→</view>
+          <view class="guidance-node next">
+            <view class="guidance-node-label">{{nextStepVerb}}</view>
+            <view class="guidance-node-title">{{nextStepTitle}}</view>
+            <view class="guidance-node-hint">{{activeStepDistanceLabel}}</view>
+          </view>
+        </view>
+        <view class="route-action-controls">
+          <view class="action-button material-secondary {{prevStepDisabledClass}}" bindtap="stepRouteProgress" data-delta="-1">上一步</view>
+          <view class="action-button material-secondary" bindtap="focusActiveStep">聚焦</view>
+          <view class="action-button material-primary" bindtap="advanceRouteCheckpoint">{{stepActionLabel}}</view>
+        </view>
+        <view class="route-secondary-row">
+          <view class="action-button material-secondary" bindtap="closePanel">收起</view>
+          <view class="action-button material-secondary" data-panel="view" bindtap="openPanel">视角</view>
+          <view class="action-button material-secondary" bindtap="clearRoute">清除</view>
+        </view>
+      </view>
+      <view wx:else class="route-mode-banner">
+        <view class="route-mode-icon">⌁</view>
+        <view>
+          <view>选择终点后导引</view>
+          <view>默认从 101 出发，按门、走廊、楼梯逐段提示。</view>
+        </view>
+      </view>
+      <view wx:if="{{hasRoute}}" class="route-step-window">
+        <view wx:for="{{visibleRouteSteps}}" wx:key="id" class="{{item.className}}">
+          <view class="step-no">{{item.no}}</view>
+          <view class="step-title">{{item.title}}</view>
+          <view class="step-desc">{{item.desc}}</view>
+        </view>
+      </view>
+      <view class="route-target-shortcuts route-target-shortcuts-quick">
+        <view wx:for="{{quickTargets}}" wx:key="id" class="tile-button" data-id="{{item.id}}" bindtap="selectQuickTarget">
+          <view class="tile-title">{{item.no}}</view>
+          <view class="tile-subtitle">{{item.label}}</view>
+          <view class="tile-caption">{{item.meta}}</view>
+        </view>
+        <view class="tile-button plain" bindtap="clearRoute">清路线</view>
       </view>
     </view>
 
     <view wx:if="{{panel === 'layers'}}" class="panel-card">
       <view class="panel-head">
-        <text class="panel-title">图层</text>
-        <text class="panel-meta">默认分层总览</text>
-        <button class="panel-close" bindtap="closePanel">×</button>
+        <view class="panel-title">图层显示</view>
+        <view class="panel-meta">默认全楼</view>
+        <view class="panel-close" bindtap="closePanel">×</view>
       </view>
-      <view class="layer-grid">
-        <button class="{{allLayerClass}}" data-layer="all" bindtap="setLayer">全楼</button>
-        <button class="{{layer1FClass}}" data-layer="1F" bindtap="setLayer">一层</button>
-        <button class="{{layer2FClass}}" data-layer="2F" bindtap="setLayer">二层</button>
-        <button class="{{layer25FClass}}" data-layer="25F" bindtap="setLayer">二层半</button>
+      <view class="layer-mode-stack">
+        <view class="tile-button primary-layer {{allLayerClass}}" data-layer="allFloors" bindtap="setLayer">
+          <view class="tile-title">全楼总览</view>
+          <view class="tile-subtitle">默认打开，保留上下对应</view>
+        </view>
+        <view class="tile-button {{explodedLayerClass}}" data-layer="exploded" bindtap="setLayer">
+          <view class="tile-title">分层总览</view>
+          <view class="tile-subtitle">上下层拉开，辨认楼梯连接</view>
+        </view>
+        <view class="tile-button {{layer1FClass}}" data-layer="1F" bindtap="setLayer">
+          <view class="tile-title">一层</view>
+          <view class="tile-subtitle">只看一层门、走廊和房间边界</view>
+        </view>
+        <view class="tile-button {{layer2FClass}}" data-layer="2F" bindtap="setLayer">
+          <view class="tile-title">二层</view>
+          <view class="tile-subtitle">普通二层，包含 202 下方承托</view>
+        </view>
+        <view class="tile-button {{raised202LayerClass}}" data-layer="raised202" bindtap="setLayer">
+          <view class="tile-title">202 平台</view>
+          <view class="tile-subtitle">高平台、下方空间一起看</view>
+        </view>
+        <view class="tile-button {{sectionLayerClass}}" data-layer="section" bindtap="setLayer">
+          <view class="tile-title">剖切</view>
+          <view class="tile-subtitle">辅助理解跨层路径</view>
+        </view>
       </view>
-      <view class="panel-note">全楼用于看跨层关系；单层会自动放大并展开更多标签。</view>
+      <view class="panel-note">图层语义与移动端一致：202 平台不是空二层，分层/剖切只用于辅助看跨层。</view>
+    </view>
+
+    <view wx:if="{{panel === 'view'}}" class="panel-card">
+      <view class="panel-head">
+        <view class="panel-title">视角控制</view>
+        <view class="panel-meta">触控平移缩放</view>
+        <view class="panel-close" bindtap="closePanel">×</view>
+      </view>
+      <view class="view-grid">
+        <view wx:for="{{viewOptions}}" wx:key="id" class="tile-button" data-view="{{item.id}}" bindtap="setViewPreset">
+          <view class="tile-title">{{item.label}}</view>
+          <view class="tile-subtitle">{{item.desc}}</view>
+        </view>
+      </view>
+      <view class="view-control-row">
+        <view class="action-button material-secondary" bindtap="focusActiveStep">聚焦当前</view>
+        <view class="action-button material-primary" data-view="reset" bindtap="setViewPreset">复位总览</view>
+      </view>
+      <view class="panel-note">单指拖拽平移，双指缩放；路线模式会放大当前导引路径。</view>
     </view>
 
     <view wx:if="{{panel === 'room'}}" class="panel-card">
       <view class="panel-head">
-        <text class="panel-title">空间信息</text>
-        <text class="panel-meta">{{selectedFloorLabel}}</text>
-        <button class="panel-close" bindtap="closePanel">×</button>
+        <view class="panel-title">空间信息</view>
+        <view class="panel-meta">{{selectedFloorLabel}}</view>
+        <view class="panel-close" bindtap="closePanel">×</view>
       </view>
       <view wx:if="{{selectedRoom}}" class="room-detail">
-        <text class="detail-title">{{selectedRoom.no}} · {{selectedRoom.name}}</text>
-        <text class="detail-desc">类型：{{selectedRoom.area}}。路线会从房间中心到门点，再进入走廊或楼梯。</text>
-        <button class="start-route-button" data-id="{{selectedRoom.id}}" bindtap="selectQuickTarget">导航到这里</button>
+        <view class="detail-title">{{selectedRoom.no}} · {{selectedRoom.name}}</view>
+        <view class="detail-desc">类型：{{selectedRoom.area}}。路线会从房间中心到门点，再进入走廊或楼梯。</view>
+        <view class="start-route-button" data-id="{{selectedRoom.id}}" bindtap="selectQuickTarget">导航到这里</view>
       </view>
-      <view wx:else class="room-detail muted">
-        <text>点击地图中的房间查看信息。</text>
-      </view>
+      <view wx:else class="room-detail muted">点击地图中的房间查看信息。</view>
     </view>
   </view>
 </view>

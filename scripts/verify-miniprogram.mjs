@@ -16,6 +16,7 @@ const requiredFiles = [
   "miniprogram/miniprogram/pages/map/map.js",
   "miniprogram/miniprogram/pages/map/map.wxss",
   "miniprogram/miniprogram/data/map-data.js",
+  "miniprogram/miniprogram/data/map-data.json",
   "miniprogram/miniprogram/pages/chat/chat.json",
   "miniprogram/miniprogram/pages/chat/chat.wxml",
   "miniprogram/miniprogram/pages/chat/chat.js",
@@ -30,6 +31,13 @@ const requiredFiles = [
   "miniprogram/miniprogram/assets/ui/route-stairs.png",
   "miniprogram/miniprogram/assets/ui/map-layered.png",
   "miniprogram/miniprogram/assets/ui/map-building-pin.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-overview.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-main.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202.png",
   "src/shared/miniProgramBridge.ts",
 ];
 
@@ -56,6 +64,9 @@ const appJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprog
 const pages = new Set(appJson.pages || []);
 for (const page of ["pages/home/home", "pages/map/map", "pages/chat/chat", "pages/expert/expert"]) {
   if (!pages.has(page)) throw new Error(`app.json does not declare page: ${page}`);
+}
+if (appJson.pages?.[0] !== "pages/map/map") {
+  throw new Error("mini program must launch directly into the usable native map page");
 }
 if (appJson.window?.navigationStyle !== "custom") {
   throw new Error("app.json must use custom navigation style");
@@ -89,7 +100,7 @@ for (const token of ["source: \"miniprogram\"", "ui: \"mobile\"", "targetRoomId"
 if (!home.includes("mapDirects")) {
   throw new Error("home.js must pass MapDirect query parameters to the native map page");
 }
-for (const token of ["primaryMapDirects", "secondaryMapDirects", "showAppDrawer", "showMoreRoutes", "buildMapQuery", "wx.reLaunch", "navigating"]) {
+for (const token of ["primaryMapDirects", "secondaryMapDirects", "showAppDrawer", "showMoreRoutes", "buildMapQuery", "wx.navigateTo", "navigating"]) {
   if (!home.includes(token)) {
     throw new Error(`home.js must keep landscape route grouping: ${token}`);
   }
@@ -119,14 +130,23 @@ const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/ma
 if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap.includes("src='{{src}}'")) {
   throw new Error("map page must be native and must not use web-view");
 }
-for (const token of ["native-map-page layer-{{layerMode}}", "map-stage", "mapCanvas", "map-canvas", "map3d-guidance-strip", "material-panel", "map-legend", "panel-close"]) {
+if (!webMap.includes("mapImageSrc")) {
+  throw new Error("map page must keep the self-contained PNG map fallback");
+}
+if (!webMap.includes("map-native-start-bar") || !webMap.includes("native-start-button") || !webMap.includes("<cover-view class=\"map-rail\"")) {
+  throw new Error("map page must use cover-view for critical controls above canvas");
+}
+if (webMap.includes("style=\"width:1px;height:1px;\"")) {
+  throw new Error("map canvas must not be hidden; mini program map has to remain interactive");
+}
+for (const token of ["native-map-page layer-{{layerMode}}", "map-stage", "map-static-fallback", "native-map-hit-layer", "nativeRooms", "map3d-guidance-strip", "map-native-start-bar", "native-start-button", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
   if (!webMap.includes(token)) {
     throw new Error(`map page must keep native map token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "handleCanvasTap", "handleTouchMove", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handleTouchMove", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104.png", "miniprogram-map-layer-202.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!webMapJs.includes(token)) {
     throw new Error(`map.js must keep native map logic token: ${token}`);
   }
@@ -134,24 +154,113 @@ for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buil
 if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJs.includes("localhost") || webMapJs.includes("canRenderWebView")) {
   throw new Error("map.js must not depend on web-view or local H5 URLs");
 }
+if (webMapJs.includes("wx.createCanvasContext") || webMapJs.includes(".select(\"#mapCanvas\")")) {
+  throw new Error("mini program map must not create legacy canvas contexts; native WXML layer is the stable renderer");
+}
+
+function smokeLoadMapPage() {
+  let pageDef;
+  const mapPagePath = path.join(root, "miniprogram/miniprogram/pages/map/map.js");
+  const wxMock = {
+    getWindowInfo: () => ({ windowWidth: 390, windowHeight: 180 }),
+    getDeviceInfo: () => ({}),
+    nextTick: (fn) => { if (typeof fn === "function") fn(); },
+    reLaunch: () => {},
+    navigateBack: () => {},
+    showToast: () => {},
+  };
+  const localRequire = (specifier) => {
+    const resolved = path.resolve(path.dirname(mapPagePath), specifier);
+    if (resolved.endsWith("data/map-data")) {
+      const module = { exports: {} };
+      vm.runInNewContext(
+        fs.readFileSync(`${resolved}.js`, "utf8"),
+        { module, exports: module.exports },
+        { filename: `${resolved}.js` },
+      );
+      return module.exports;
+    }
+    throw new Error(`Unexpected map page require in smoke test: ${specifier}`);
+  };
+  const context = {
+    require: localRequire,
+    module: { exports: {} },
+    exports: {},
+    console,
+    wx: wxMock,
+    getCurrentPages: () => [],
+    Page: (definition) => { pageDef = definition; },
+    setTimeout: (fn) => { if (typeof fn === "function") fn(); },
+    Math,
+    Number,
+    String,
+    Boolean,
+    Set,
+    Map,
+    Array,
+    Object,
+    RegExp,
+  };
+  vm.createContext(context);
+  vm.runInContext(webMapJs, context, { filename: mapPagePath });
+  if (!pageDef) throw new Error("map page smoke test did not register Page definition");
+  const instance = {
+    data: JSON.parse(JSON.stringify(pageDef.data)),
+    setData(next, callback) {
+      this.data = { ...this.data, ...next };
+      if (callback) callback();
+    },
+    ...pageDef,
+  };
+  instance.onLoad.call(instance, { targetRoomId: "202-5", announce: "summary,distance,direction,floorChange" });
+  const styledItems = [
+    ...instance.data.nativeRooms,
+  ];
+  if (instance.data.nativeRooms.length < 40) {
+    throw new Error("map page smoke test did not generate enough room hit areas");
+  }
+  if (!instance.data.route || !instance.data.mapImageSrc.includes("miniprogram-map-route-202.png")) {
+    throw new Error("map page smoke test did not generate a route for 202-5");
+  }
+  if (styledItems.some((item) => /NaN|undefined/.test(item.style || ""))) {
+    throw new Error("map page smoke test generated invalid native map styles");
+  }
+}
+
+smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-stage", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".native-map-hit-layer", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".map-start-card", ".start-target", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
   }
 }
+const canvasCssBlock = webMapWxss.match(/\.map-canvas\s*\{[^}]*\}/)?.[0] || "";
+if (/width:\s*1px/.test(canvasCssBlock)) {
+  throw new Error("map canvas must not be collapsed to 1px");
+}
+const nativeHitLayerCssBlock = webMapWxss.match(/\.native-map-hit-layer\s*\{[^}]*\}/)?.[0] || "";
+if (!nativeHitLayerCssBlock || !webMap.includes("bindtap=\"selectNativeRoom\"")) {
+  throw new Error("native WXML map hit layer must remain tappable");
+}
+if (!/opacity:\s*0/.test(webMapWxss.match(/\.native-room\s*\{[^}]*\}/)?.[0] || "")) {
+  throw new Error("native room hit areas must stay transparent so the 5-31 current map asset is not polluted");
+}
 
-const miniMapData = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.js"), "utf8");
-for (const token of ["Generated by scripts/generate-miniprogram-map-data.mjs", "src/features/map/data/mapData.ts", "rooms", "spaces", "doors", "stairs", "nodes", "edges", "202-5", "104-2F01", "108-2F04"]) {
-  if (!miniMapData.includes(token)) {
+const miniMapDataJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.js"), "utf8");
+if (miniMapDataJs.includes("require(\"./map-data.json\")") || miniMapDataJs.includes("require('./map-data.json')")) {
+  throw new Error("WeChat runtime cannot require JSON here; map-data.js must inline the generated object");
+}
+const miniMapData = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.json"), "utf8");
+for (const token of ["Generated by scripts/generate-miniprogram-map-data.mjs", "src/features/map/data/mapData.ts", "rooms", "spaces", "doors", "stairs", "walls", "centerlines", "nodes", "edges", "202-5", "104-2F01", "108-2F04"]) {
+  if (!miniMapData.includes(token) && !miniMapDataJs.includes(token)) {
     throw new Error(`map-data.js must keep synchronized map token: ${token}`);
   }
 }
 const miniMapModule = { exports: {} };
-vm.runInNewContext(miniMapData, { module: miniMapModule, exports: miniMapModule.exports }, { filename: "miniprogram/miniprogram/data/map-data.js" });
+vm.runInNewContext(miniMapDataJs, { module: miniMapModule, exports: miniMapModule.exports }, { filename: "miniprogram/miniprogram/data/map-data.js" });
 const syncedMapData = miniMapModule.exports;
-for (const key of ["rooms", "spaces", "doors", "stairs", "nodes", "edges"]) {
+for (const key of ["rooms", "spaces", "doors", "stairs", "walls", "centerlines", "nodes", "edges"]) {
   if (!Array.isArray(syncedMapData[key]) || syncedMapData[key].length === 0) {
     throw new Error(`map-data.js exported ${key} must be a non-empty array`);
   }

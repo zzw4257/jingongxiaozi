@@ -133,20 +133,25 @@ if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap
 if (!webMap.includes("mapImageSrc")) {
   throw new Error("map page must keep the self-contained PNG map fallback");
 }
-if (!webMap.includes("map-native-start-bar") || !webMap.includes("native-start-button") || !webMap.includes("<cover-view class=\"map-rail\"")) {
-  throw new Error("map page must use cover-view for critical controls above canvas");
+if (!webMap.includes("map-native-start-bar") || !webMap.includes("native-start-button") || !webMap.includes("<cover-view class=\"map-rail native-control-rail\"")) {
+  throw new Error("map page must keep a real native right rail for reliable touch controls");
+}
+for (const duplicatedLabel of ["<view>金工中心地图</view>", "<view>点终点，立即导引</view>"]) {
+  if (webMap.includes(duplicatedLabel)) {
+    throw new Error(`map page must not duplicate screenshot-owned visible UI text: ${duplicatedLabel}`);
+  }
 }
 if (webMap.includes("style=\"width:1px;height:1px;\"")) {
   throw new Error("map canvas must not be hidden; mini program map has to remain interactive");
 }
-for (const token of ["native-map-page layer-{{layerMode}}", "map-stage", "map-static-fallback", "native-map-hit-layer", "nativeRooms", "map3d-guidance-strip", "map-native-start-bar", "native-start-button", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
+for (const token of ["native-map-page layer-{{layerMode}}", "map-stage", "map-static-fallback", "mapImageTransformStyle", "native-map-hit-layer", "native-screenshot-owned-ui", "nativeRooms", "map3d-guidance-strip", "map-native-start-bar", "native-start-button", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
   if (!webMap.includes(token)) {
     throw new Error(`map page must keep native map token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handleTouchMove", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104.png", "miniprogram-map-layer-202.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handleTouchMove", "normalizeTransform", "imageTransformStyle", "userImageTransformStyle", "mapImageTransformStyle", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104.png", "miniprogram-map-layer-202.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!webMapJs.includes(token)) {
     throw new Error(`map.js must keep native map logic token: ${token}`);
   }
@@ -222,6 +227,21 @@ function smokeLoadMapPage() {
   if (!instance.data.route || !instance.data.mapImageSrc.includes("miniprogram-map-route-202.png")) {
     throw new Error("map page smoke test did not generate a route for 202-5");
   }
+  if (!instance.data.mapImageTransformStyle.includes("scale(1.000)") || !instance.data.mapImageTransformStyle.includes("rotate(0.00deg)")) {
+    throw new Error("map PNG must open at the un-cropped current baseline before user gestures");
+  }
+  const beforeTransform = instance.data.mapImageTransformStyle;
+  instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }] });
+  instance.handleTouchMove.call(instance, { touches: [{ clientX: 128, clientY: 96 }] });
+  if (!instance.data.mapImageTransformStyle || instance.data.mapImageTransformStyle === beforeTransform || !instance.data.mapImageTransformStyle.includes("translate(")) {
+    throw new Error("map page touch pan must update the visible PNG transform");
+  }
+  const afterPanTransform = instance.data.mapImageTransformStyle;
+  instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }, { clientX: 160, clientY: 80 }] });
+  instance.handleTouchMove.call(instance, { touches: [{ clientX: 92, clientY: 76 }, { clientX: 176, clientY: 92 }] });
+  if (!instance.data.mapImageTransformStyle || instance.data.mapImageTransformStyle === afterPanTransform || !/scale\((?!1\.000)/.test(instance.data.mapImageTransformStyle)) {
+    throw new Error("map page pinch gesture must update the visible PNG scale/rotation");
+  }
   if (styledItems.some((item) => /NaN|undefined/.test(item.style || ""))) {
     throw new Error("map page smoke test generated invalid native map styles");
   }
@@ -230,7 +250,7 @@ function smokeLoadMapPage() {
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".native-map-hit-layer", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".map-start-card", ".start-target", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".native-map-hit-layer", ".native-screenshot-owned-ui", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".map-start-card", ".start-target", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
   }
@@ -242,6 +262,22 @@ if (/width:\s*1px/.test(canvasCssBlock)) {
 const nativeHitLayerCssBlock = webMapWxss.match(/\.native-map-hit-layer\s*\{[^}]*\}/)?.[0] || "";
 if (!nativeHitLayerCssBlock || !webMap.includes("bindtap=\"selectNativeRoom\"")) {
   throw new Error("native WXML map hit layer must remain tappable");
+}
+if (!/pointer-events:\s*auto/.test(nativeHitLayerCssBlock)) {
+  throw new Error("native map hit layer must receive touch gestures");
+}
+const staticMapCssBlock = webMapWxss.match(/\.map-static-fallback\s*\{[^}]*\}/)?.[0] || "";
+if (!/pointer-events:\s*none/.test(staticMapCssBlock)) {
+  throw new Error("static map image must not steal gestures from the transparent hit layer");
+}
+if (!/\.map-native-start-bar\.native-hot-start\s*,\s*\.map3d-guidance-strip\.native-hot-guidance\s*,\s*\.map-rail\.native-hot-rail\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
+  throw new Error("screenshot-owned rail/guidance/start hot zones must stay visually transparent to avoid duplicate overlap");
+}
+if (!/\.map-native-start-bar\.native-hot-start \.native-start-copy\s*,\s*\.map-native-start-bar\.native-hot-start \.native-start-button\s*,\s*\.map3d-guidance-strip\.native-hot-guidance \.guidance-hot-action\s*\{[^}]*color:\s*transparent/s.test(webMapWxss)) {
+  throw new Error("transparent bottom/guidance hot-zone children must not render visible duplicate labels");
+}
+if (!/\.native-control-rail \.rail-button\s*\{[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.96\)/s.test(webMapWxss)) {
+  throw new Error("right rail must be visible native buttons, not unreliable transparent hit areas");
 }
 if (!/opacity:\s*0/.test(webMapWxss.match(/\.native-room\s*\{[^}]*\}/)?.[0] || "")) {
   throw new Error("native room hit areas must stay transparent so the 5-31 current map asset is not polluted");

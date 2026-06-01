@@ -409,7 +409,28 @@ function cloneTransform(transform) {
     panX: transform.panX,
     panY: transform.panY,
     zoom: transform.zoom,
-    rotation: transform.rotation || 0
+    rotation: transform.rotation || 0,
+    imagePanX: transform.imagePanX || 0,
+    imagePanY: transform.imagePanY || 0,
+    imageZoom: transform.imageZoom || 1,
+    imageRotation: transform.imageRotation || 0
+  };
+}
+
+function normalizeTransform(transform) {
+  const panX = Number(transform?.panX || 0);
+  const panY = Number(transform?.panY || 0);
+  const zoom = Number(transform?.zoom || 1);
+  const rotation = Number(transform?.rotation || 0);
+  return {
+    panX,
+    panY,
+    zoom,
+    rotation,
+    imagePanX: Number(transform?.imagePanX || 0),
+    imagePanY: Number(transform?.imagePanY || 0),
+    imageZoom: Number(transform?.imageZoom || 1),
+    imageRotation: Number(transform?.imageRotation || 0)
   };
 }
 
@@ -425,6 +446,39 @@ function roomLabel(roomId) {
 function mapImageSrc(layerMode, route) {
   if (route && mapImageByTarget[route.targetRoomId]) return mapImageByTarget[route.targetRoomId];
   return mapImageByLayer[layerMode] || mapImageByLayer.allFloors;
+}
+
+function imageTransformStyle(transform) {
+  const panX = Number(transform?.panX || 0);
+  const panY = Number(transform?.panY || 0);
+  const zoom = Math.min(2.4, Math.max(0.72, Number(transform?.zoom || 1)));
+  const rotation = Math.min(0.26, Math.max(-0.26, Number(transform?.rotation || 0)));
+  const deg = rotation * 180 / Math.PI;
+  return `transform: translate(${panX.toFixed(1)}px, ${panY.toFixed(1)}px) scale(${zoom.toFixed(3)}) rotate(${deg.toFixed(2)}deg);`;
+}
+
+function userImageTransformStyle(transform) {
+  const panX = Number(transform?.imagePanX || 0);
+  const panY = Number(transform?.imagePanY || 0);
+  const zoom = Math.min(2.4, Math.max(1, Number(transform?.imageZoom || 1)));
+  const rotation = Math.min(0.18, Math.max(-0.18, Number(transform?.imageRotation || 0)));
+  const deg = rotation * 180 / Math.PI;
+  return `transform: translate(${panX.toFixed(1)}px, ${panY.toFixed(1)}px) scale(${zoom.toFixed(3)}) rotate(${deg.toFixed(2)}deg);`;
+}
+
+function imagePresetTransform(transform, viewPreset) {
+  const next = normalizeTransform(transform);
+  if (viewPreset === "near") {
+    next.imageZoom = 1.18;
+  } else if (viewPreset === "route") {
+    next.imageZoom = 1.08;
+  } else {
+    next.imagePanX = 0;
+    next.imagePanY = 0;
+    next.imageZoom = 1;
+    next.imageRotation = 0;
+  }
+  return next;
 }
 
 function shouldKeepRouteOverviewAsset(route) {
@@ -808,6 +862,7 @@ Page({
     targetCStyle: "",
     targetDStyle: "",
     mapImageSrc: mapImageByLayer.allFloors,
+    mapImageTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
     nativeFloors: [],
     nativeSpaces: [],
     nativeRooms: [],
@@ -818,12 +873,12 @@ Page({
   },
 
   onLoad(options) {
-    this.transform = { panX: 0, panY: 0, zoom: 1, rotation: 0 };
+    this.transform = normalizeTransform({ panX: 0, panY: 0, zoom: 1, rotation: 0 });
     this.touchState = null;
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
-    if (route) this.transform = this.defaultTransform("allFloors", "route");
+    if (route) this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
     this.initCanvas();
     this.setRouteState({
       ...coverStylesForWindow(),
@@ -868,12 +923,13 @@ Page({
     canvasRef = null;
     ctxRef = null;
     if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
-      this.transform = this.defaultTransform(this.data.layerMode, this.data.viewPreset);
+      this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
     }
     updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
     this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
-      mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route)
+      mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
+      mapImageTransformStyle: userImageTransformStyle(this.transform)
     });
   },
 
@@ -891,6 +947,7 @@ Page({
       ...buildNativeMapVisual(route, activeStepIndex, layerMode),
       route,
       mapImageSrc: mapImageSrc(layerMode, route),
+      mapImageTransformStyle: userImageTransformStyle(this.transform),
       hasRoute: Boolean(route),
       routeSteps: steps,
       visibleRouteSteps,
@@ -918,6 +975,7 @@ Page({
   },
 
   drawMap() {
+    this.setData({ mapImageTransformStyle: userImageTransformStyle(this.transform) });
     if (!ctxRef) return;
     if (!ctxRef || !canvasBox.width || !canvasBox.height) return;
     const ctx = ctxRef;
@@ -1558,16 +1616,16 @@ Page({
     if (!this.touchState) return;
     const touches = event.touches || [];
     if (this.touchState.mode === "pan" && touches.length === 1) {
-      this.transform.panX = this.touchState.transform.panX + touches[0].clientX - this.touchState.startX;
-      this.transform.panY = this.touchState.transform.panY + touches[0].clientY - this.touchState.startY;
+      this.transform.imagePanX = this.touchState.transform.imagePanX + touches[0].clientX - this.touchState.startX;
+      this.transform.imagePanY = this.touchState.transform.imagePanY + touches[0].clientY - this.touchState.startY;
       this.drawMap();
     } else if (this.touchState.mode === "pinch" && touches.length >= 2) {
       const dx = touches[0].clientX - touches[1].clientX;
       const dy = touches[0].clientY - touches[1].clientY;
       const distance = Math.max(1, Math.hypot(dx, dy));
       const angle = Math.atan2(dy, dx);
-      this.transform.zoom = Math.min(2.2, Math.max(0.74, this.touchState.transform.zoom * (distance / this.touchState.distance)));
-      this.transform.rotation = Math.min(0.22, Math.max(-0.22, (this.touchState.transform.rotation || 0) + (angle - this.touchState.angle) * 0.35));
+      this.transform.imageZoom = Math.min(2.4, Math.max(1, this.touchState.transform.imageZoom * (distance / this.touchState.distance)));
+      this.transform.imageRotation = Math.min(0.18, Math.max(-0.18, (this.touchState.transform.imageRotation || 0) + (angle - this.touchState.angle) * 0.35));
       this.drawMap();
     }
   },
@@ -1578,7 +1636,7 @@ Page({
 
   setLayer(event) {
     const layerMode = event.currentTarget.dataset.layer;
-    this.transform = this.defaultTransform(layerMode, this.data.viewPreset);
+    this.transform = normalizeTransform(this.defaultTransform(layerMode, this.data.viewPreset));
     updateNativeVisualMetrics(layerMode, this.data.hasRoute);
     this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, layerMode),
@@ -1600,22 +1658,24 @@ Page({
     const compactLandscape = canvasBox.height > 0 && (canvasBox.height < 280 || canvasBox.width < 520);
     const base = compactLandscape ? (grouped ? 1.46 : layerMode === "raised202" ? 1.42 : 1.36) : grouped ? 1.18 : layerMode === "raised202" ? 1.2 : 1.16;
     const rotation = grouped || layerMode === "raised202" ? (compactLandscape ? -0.045 : -0.075) : 0;
-    if (viewPreset === "near") return { panX: 0, panY: 0, zoom: Math.max(1.22, base + 0.16), rotation };
-    if (viewPreset === "route") return { panX: 0, panY: 0, zoom: this.data.route ? Math.max(1.16, base + 0.12) : base, rotation };
-    return { panX: 0, panY: 0, zoom: base, rotation };
+    let zoom = base;
+    if (viewPreset === "near") zoom = Math.max(1.22, base + 0.16);
+    if (viewPreset === "route") zoom = this.data.route ? Math.max(1.16, base + 0.12) : base;
+    return normalizeTransform({ panX: 0, panY: 0, zoom, rotation });
   },
 
   setViewPreset(event) {
     const viewPreset = event.currentTarget.dataset.view;
     const nextPreset = viewPreset === "reset" ? "overview" : viewPreset;
-    this.transform = this.defaultTransform(this.data.layerMode, nextPreset);
+    this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, nextPreset));
+    this.transform = imagePresetTransform(this.transform, nextPreset);
     this.setData({ viewPreset: nextPreset }, () => this.drawMap());
   },
 
   focusActiveStep() {
     const route = this.data.route;
     if (!route) {
-      this.transform = this.defaultTransform("allFloors", "overview");
+      this.transform = normalizeTransform(this.defaultTransform("allFloors", "overview"));
       updateNativeVisualMetrics("allFloors", false);
       this.setData({
         ...buildNativeMapVisual(null, 0, "allFloors"),
@@ -1629,7 +1689,7 @@ Page({
     const point = route.points[Math.min(route.points.length - 1, (this.data.activeStepIndex || 0) + 1)];
     const targetFloor = displayFloorForRoutePoint(point);
     const layerMode = shouldKeepRouteOverviewAsset(route) ? "allFloors" : targetFloor === "25F" ? "raised202" : targetFloor;
-    this.transform = this.defaultTransform(layerMode, "route");
+    this.transform = normalizeTransform(this.defaultTransform(layerMode, "route"));
     const ids = layerMode === "allFloors" ? floorOrder : layerMode === "raised202" ? ["2F", "25F"] : [layerMode];
     const floorId = layerMode === "allFloors" ? targetFloor : targetFloor === "25F" ? "25F" : targetFloor;
     const state = this.floorDrawState(floorId, Math.max(0, ids.indexOf(floorId)), ids.length, layerMode);
@@ -1715,7 +1775,7 @@ Page({
   selectQuickTarget(event) {
     const targetRoomId = event.currentTarget.dataset.id;
     const route = calculateRoute(this.data.startRoomId, targetRoomId);
-    this.transform = this.defaultTransform("allFloors", "route");
+    this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
     this.setRouteState({
       layerMode: "allFloors",
       layerHint: layerHints.allFloors,

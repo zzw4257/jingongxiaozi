@@ -795,14 +795,11 @@ page {
 
 .map-rail {
   position: absolute;
-  right: 6px;
-  top: 6px;
-  bottom: 6px;
-  z-index: 90;
-  display: grid;
-  align-content: center;
-  gap: 8px;
-  width: 62px;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 240;
+  width: 96px;
 }
 
 .map-native-start-bar.native-hot-start,
@@ -812,6 +809,7 @@ page {
   border-color: transparent;
   box-shadow: none;
   backdrop-filter: none;
+  pointer-events: auto;
 }
 
 .map-native-start-bar.native-hot-start .native-start-copy,
@@ -824,11 +822,12 @@ page {
 }
 
 .rail-button {
+  position: absolute;
+  right: 28px;
   display: grid;
-  grid-template-rows: 24px 18px;
   place-items: center;
-  width: 62px;
-  height: 48px;
+  width: 32px;
+  height: 26px;
   padding: 0;
   color: #20344f;
   background: rgba(255, 255, 255, 0.94);
@@ -840,13 +839,6 @@ page {
   line-height: 1;
 }
 
-.native-control-rail .rail-button {
-  color: #20344f;
-  background: rgba(255, 255, 255, 0.96);
-  border-color: rgba(194, 211, 232, 0.94);
-  box-shadow: 0 10px 24px rgba(20, 53, 94, 0.16);
-}
-
 .rail-icon {
   font-size: 20px;
   line-height: 1;
@@ -856,6 +848,35 @@ page {
   color: #ffffff;
   background: #0b6cff;
 }
+
+.map-rail.native-hot-rail .rail-hot-button,
+.map-rail.native-hot-rail .rail-hot-button.active {
+  color: #20344f;
+  background: rgba(255, 255, 255, 0.82);
+  border-color: rgba(214, 224, 238, 0.82);
+  box-shadow: 0 8px 18px rgba(20, 53, 94, 0.08);
+  pointer-events: auto;
+}
+
+.map-rail.native-hot-rail .rail-hot-button.active {
+  color: #0b6cff;
+  background: rgba(255, 255, 255, 0.9);
+  border-color: rgba(11, 108, 255, 0.3);
+}
+
+.rail-visible-icon {
+  display: block;
+  color: inherit;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+.map-rail.native-hot-rail .rail-hot-button:nth-child(1) { top: 24px; }
+.map-rail.native-hot-rail .rail-hot-button:nth-child(2) { top: 52px; }
+.map-rail.native-hot-rail .rail-hot-button:nth-child(3) { top: 78px; }
+.map-rail.native-hot-rail .rail-hot-button:nth-child(4) { top: 104px; }
+.map-rail.native-hot-rail .rail-hot-button:nth-child(5) { top: 134px; }
 
 .panel-shade {
   position: absolute;
@@ -1347,16 +1368,15 @@ page {
   }
 
   .map-rail {
-    right: 4px;
-    top: 6px;
-    bottom: 6px;
-    gap: 5px;
-    width: 64px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 96px;
   }
 
   .rail-button {
-    grid-template-rows: 18px 14px;
-    width: 64px;
+    right: 28px;
+    width: 32px;
     height: 34px;
     border-width: 1px;
     border-radius: 14px;
@@ -1655,16 +1675,15 @@ page {
   }
 
   .map-rail {
-    right: 3px;
-    top: 6px;
-    bottom: 6px;
-    gap: 5px;
-    width: 64px;
+    right: 0;
+    top: 0;
+    bottom: 0;
+    width: 94px;
   }
 
   .rail-button {
-    grid-template-rows: 18px 14px;
-    width: 64px;
+    right: 27px;
+    width: 32px;
     height: 34px;
     border-radius: 14px;
     font-size: 11px;

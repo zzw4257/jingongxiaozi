@@ -35,9 +35,9 @@ cp src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-r
 
 2026-05-31 存档见 `docs/releases/2026-05-31-precision-mobile.md`。构建产物、截图和校准 JSON 默认不入库。
 
-## 微信小程序演示壳
+## 微信小程序版
 
-小程序 WebView 复用版位于 `miniprogram/`，用于在微信里演示现有 H5/React/Three.js 地图，不重写地图渲染。导入微信开发者工具时选择 `miniprogram/` 目录，并在 `miniprogram/miniprogram/app.js` 中配置 H5 部署地址。
+小程序位于 `miniprogram/`，是自包含包内版本，不依赖 WebView、本地开发服务或外部 H5 页面。当前地图发布基线来自 2026-05-31 最新移动端/网页端截图资产；不要使用历史坏版截图或旧 SVG 手绘图覆盖这些 PNG。
 
 ```bash
 npm run check:miniprogram

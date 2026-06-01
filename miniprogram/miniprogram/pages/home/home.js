@@ -81,7 +81,7 @@ Page({
     if (this.data.navigating) return;
     this.setData({ navigating: true });
     app.globalData.lastMapDirective = { source: "manual" };
-    wx.reLaunch({
+    wx.navigateTo({
       url: `/pages/map/map${buildMapQuery()}`,
       complete: () => this.setData({ navigating: false }),
       fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
@@ -100,7 +100,7 @@ Page({
       announce
     };
     app.globalData.lastMapDirective = { source: "miniprogram", request };
-    wx.reLaunch({
+    wx.navigateTo({
       url: `/pages/map/map${buildMapQuery(request)}`,
       complete: () => this.setData({ navigating: false }),
       fail: () => wx.showToast({ title: "地图未打开", icon: "none" })

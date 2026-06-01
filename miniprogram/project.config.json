@@ -10,5 +10,23 @@
     "postcss": true,
     "minified": true,
     "minifyWXML": true
+  },
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "地图页-默认总览",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile",
+          "scene": null
+        },
+        {
+          "name": "地图页-202路线",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile&targetRoomId=202-5&announce=summary,distance,direction,floorChange",
+          "scene": null
+        }
+      ]
+    }
   }
 }

@@ -6,6 +6,7 @@
     <image
       class="map-static-fallback map-static-{{layerMode}}"
       src="{{mapImageSrc}}"
+      style="{{mapImageTransformStyle}}"
       mode="aspectFit"
       bindtap="handleCanvasTap"
       bindtouchstart="handleTouchStart"
@@ -13,20 +14,22 @@
       bindtouchend="handleTouchEnd"
       bindtouchcancel="handleTouchEnd"
     ></image>
-    <view class="native-map-hit-layer" catchtap="noop">
+    <view
+      class="native-map-hit-layer"
+      style="{{mapImageTransformStyle}}"
+      bindtap="handleCanvasTap"
+      bindtouchstart="handleTouchStart"
+      bindtouchmove="handleTouchMove"
+      bindtouchend="handleTouchEnd"
+      bindtouchcancel="handleTouchEnd"
+    >
       <view wx:for="{{nativeRooms}}" wx:key="id" class="native-room native-room-{{item.area}} {{item.activeClass}}" style="{{item.style}}" data-id="{{item.id}}" bindtap="selectNativeRoom">
         <text wx:if="{{item.label}}" class="native-room-label">{{item.label}}</text>
       </view>
     </view>
   </view>
 
-  <cover-view class="map-compass">
-    <cover-view class="north-arrow">N</cover-view>
-    <cover-view class="compass-copy">
-      <cover-view>真北</cover-view>
-      <cover-view>{{sensorHint}}</cover-view>
-    </cover-view>
-  </cover-view>
+  <cover-view class="map-compass native-screenshot-owned-ui native-hot-compass" aria-hidden="true"></cover-view>
 
   <view class="map-legend">
     <view class="legend-item"><view class="legend-dot corridor"></view><view>走廊</view></view>
@@ -40,36 +43,20 @@
     <view wx:if="{{hasRoute}}">{{route.summary}} · {{routeDistanceLabel}}</view>
   </view>
 
-  <view wx:if="{{hasRoute}}" class="map3d-guidance-strip">
-    <view class="guidance-strip-step">{{activeStepLabel}}</view>
-    <view class="guidance-strip-node">
-      <view>当前</view>
-      <view class="guidance-strong">{{currentStepTitle}}</view>
-    </view>
-    <view class="guidance-arrow">→</view>
-    <view class="guidance-strip-node next">
-      <view>{{nextStepVerb}}</view>
-      <view class="guidance-strong">{{nextStepTitle}}</view>
-    </view>
-    <view class="guidance-strip-distance">{{activeStepDistanceLabel}}</view>
-    <view class="guidance-strip-actions">
-      <view class="guidance-action secondary" bindtap="focusActiveStep">聚焦</view>
-      <view class="guidance-action primary" bindtap="advanceRouteCheckpoint">{{stepActionLabel}}</view>
-    </view>
+  <view wx:if="{{hasRoute}}" class="map3d-guidance-strip native-screenshot-owned-ui native-hot-guidance" aria-hidden="true">
+    <view class="guidance-hot-action guidance-hot-focus" bindtap="focusActiveStep"></view>
+    <view class="guidance-hot-action guidance-hot-next" bindtap="advanceRouteCheckpoint"></view>
   </view>
 
-  <view wx:else class="map-native-start-bar">
-    <view class="native-start-copy" bindtap="openPanel" data-panel="route">
-      <view>金工中心地图</view>
-      <view>点终点，立即导引</view>
-    </view>
-    <view class="native-start-button" data-id="104-2F01" bindtap="selectQuickTarget">104</view>
-    <view class="native-start-button" data-id="202-5" bindtap="selectQuickTarget">202-5</view>
-    <view class="native-start-button" data-id="108-2F04" bindtap="selectQuickTarget">108</view>
-    <view class="native-start-button more" bindtap="openPanel" data-panel="route">更多</view>
+  <view wx:else class="map-native-start-bar native-screenshot-owned-ui native-hot-start" aria-hidden="true">
+    <view class="native-start-copy" bindtap="openPanel" data-panel="route"></view>
+    <view class="native-start-button" data-id="104-2F01" bindtap="selectQuickTarget"></view>
+    <view class="native-start-button" data-id="202-5" bindtap="selectQuickTarget"></view>
+    <view class="native-start-button" data-id="108-2F04" bindtap="selectQuickTarget"></view>
+    <view class="native-start-button more" bindtap="openPanel" data-panel="route"></view>
   </view>
 
-  <cover-view class="map-rail">
+  <cover-view class="map-rail native-control-rail">
     <cover-view class="rail-button" bindtap="goBack"><cover-view class="rail-icon">●</cover-view><cover-view>待机</cover-view></cover-view>
     <cover-view class="rail-button {{routeButtonClass}}" data-panel="route" bindtap="openPanel"><cover-view class="rail-icon">⌁</cover-view><cover-view>路线</cover-view></cover-view>
     <cover-view class="rail-button {{layersButtonClass}}" data-panel="layers" bindtap="openPanel"><cover-view class="rail-icon">▣</cover-view><cover-view>图层</cover-view></cover-view>

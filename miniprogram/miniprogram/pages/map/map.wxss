@@ -29,7 +29,7 @@ page {
   position: absolute;
   left: 0;
   top: 0;
-  right: 68px;
+  right: 76px;
   bottom: 0;
   z-index: 1;
   overflow: hidden;
@@ -56,9 +56,11 @@ page {
   width: 100%;
   height: 100%;
   opacity: 0.98;
-  pointer-events: auto;
+  pointer-events: none;
   border-radius: 20px;
   filter: saturate(1.02) contrast(1.02);
+  transform-origin: center center;
+  will-change: transform;
 }
 
 .map-static-1F,
@@ -81,7 +83,7 @@ page {
   border-radius: 20px;
   border: 0;
   box-shadow: none;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .native-floor,
@@ -165,6 +167,37 @@ page {
   box-shadow: none;
   opacity: 0;
   pointer-events: auto;
+}
+
+.native-screenshot-owned-ui {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.native-screenshot-owned-ui,
+.native-hot-rail,
+.native-hot-guidance,
+.native-hot-start,
+.native-hot-compass {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.map-compass.native-hot-compass {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.native-hot-rail .rail-hot-button,
+.native-hot-guidance .guidance-hot-action,
+.native-hot-start .native-start-button,
+.native-hot-start .native-start-copy {
+  opacity: 1;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  color: transparent;
 }
 
 .native-room-teaching,
@@ -659,6 +692,23 @@ page {
   box-shadow: 0 18px 38px rgba(6, 24, 56, 0.28);
 }
 
+.guidance-hot-action {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  border-radius: 999px;
+}
+
+.guidance-hot-focus {
+  right: 70px;
+  width: 58px;
+}
+
+.guidance-hot-next {
+  right: 10px;
+  width: 58px;
+}
+
 .guidance-strip-actions {
   display: flex;
   gap: 6px;
@@ -745,21 +795,40 @@ page {
 
 .map-rail {
   position: absolute;
-  right: 10px;
-  top: 10px;
-  bottom: 10px;
-  z-index: 34;
+  right: 6px;
+  top: 6px;
+  bottom: 6px;
+  z-index: 90;
   display: grid;
   align-content: center;
   gap: 8px;
+  width: 62px;
+}
+
+.map-native-start-bar.native-hot-start,
+.map3d-guidance-strip.native-hot-guidance,
+.map-rail.native-hot-rail {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.map-native-start-bar.native-hot-start .native-start-copy,
+.map-native-start-bar.native-hot-start .native-start-button,
+.map3d-guidance-strip.native-hot-guidance .guidance-hot-action {
+  color: transparent;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .rail-button {
   display: grid;
   grid-template-rows: 24px 18px;
   place-items: center;
-  width: 52px;
-  height: 46px;
+  width: 62px;
+  height: 48px;
   padding: 0;
   color: #20344f;
   background: rgba(255, 255, 255, 0.94);
@@ -769,6 +838,13 @@ page {
   font-size: 12px;
   font-weight: 950;
   line-height: 1;
+}
+
+.native-control-rail .rail-button {
+  color: #20344f;
+  background: rgba(255, 255, 255, 0.96);
+  border-color: rgba(194, 211, 232, 0.94);
+  box-shadow: 0 10px 24px rgba(20, 53, 94, 0.16);
 }
 
 .rail-icon {
@@ -1266,20 +1342,21 @@ page {
 
 @media (orientation: landscape) {
   .map-stage {
-    right: 58px;
+    right: 72px;
     bottom: 0;
   }
 
   .map-rail {
-    right: 6px;
+    right: 4px;
     top: 6px;
     bottom: 6px;
     gap: 5px;
+    width: 64px;
   }
 
   .rail-button {
     grid-template-rows: 18px 14px;
-    width: 44px;
+    width: 64px;
     height: 34px;
     border-width: 1px;
     border-radius: 14px;
@@ -1292,9 +1369,9 @@ page {
   }
 
   .material-panel {
-    right: 56px;
+    right: 72px;
     top: 8px;
-    width: min(330px, calc(100vw - 68px));
+    width: min(282px, calc(100vw - 88px));
     height: min(176px, calc(100vh - 16px));
     padding: 8px;
     border-width: 1px;
@@ -1302,8 +1379,8 @@ page {
   }
 
   .material-panel.panel-route {
-    right: 56px;
-    width: min(300px, calc(100vw - 68px));
+    right: 72px;
+    width: min(282px, calc(100vw - 88px));
     max-height: min(176px, calc(100vh - 16px));
   }
 
@@ -1481,8 +1558,12 @@ page {
   }
 
   .layer-mode-stack {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 5px;
+  }
+
+  .primary-layer {
+    grid-column: span 1;
   }
 
   .tile-button {
@@ -1569,20 +1650,21 @@ page {
 
 @media (max-width: 700px) and (orientation: landscape) {
   .map-stage {
-    right: 54px;
+    right: 70px;
     bottom: 0;
   }
 
   .map-rail {
-    right: 6px;
+    right: 3px;
     top: 6px;
     bottom: 6px;
     gap: 5px;
+    width: 64px;
   }
 
   .rail-button {
     grid-template-rows: 18px 14px;
-    width: 42px;
+    width: 64px;
     height: 34px;
     border-radius: 14px;
     font-size: 11px;
@@ -1592,10 +1674,16 @@ page {
     font-size: 17px;
   }
 
+  .material-panel,
+  .material-panel.panel-route {
+    right: 72px;
+    width: min(262px, calc(100vw - 88px));
+  }
+
   .map-native-start-bar,
   .map3d-guidance-strip {
     left: 8px;
-    right: 58px;
+    right: 72px;
     bottom: 6px;
   }
 

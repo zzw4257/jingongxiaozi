@@ -1,4 +1,4 @@
-<view class="native-map-page layer-{{layerMode}} panel-{{panel}}">
+<view class="native-map-page layer-{{layerMode}} panel-{{panel}}" catchtap="handlePageTap">
   <view class="map-backplate"></view>
   <view class="map-stage">
     <view class="map-ambient map-ambient-a"></view>
@@ -56,13 +56,13 @@
     <view class="native-start-button more" bindtap="openPanel" data-panel="route"></view>
   </view>
 
-  <cover-view class="map-rail native-control-rail">
-    <cover-view class="rail-button" bindtap="goBack"><cover-view class="rail-icon">●</cover-view><cover-view>待机</cover-view></cover-view>
-    <cover-view class="rail-button {{routeButtonClass}}" data-panel="route" bindtap="openPanel"><cover-view class="rail-icon">⌁</cover-view><cover-view>路线</cover-view></cover-view>
-    <cover-view class="rail-button {{layersButtonClass}}" data-panel="layers" bindtap="openPanel"><cover-view class="rail-icon">▣</cover-view><cover-view>图层</cover-view></cover-view>
-    <cover-view class="rail-button {{viewButtonClass}}" data-panel="view" bindtap="openPanel"><cover-view class="rail-icon">◌</cover-view><cover-view>视角</cover-view></cover-view>
-    <cover-view class="rail-button" data-view="reset" bindtap="setViewPreset"><cover-view class="rail-icon">⌖</cover-view><cover-view>总览</cover-view></cover-view>
-  </cover-view>
+  <view class="map-rail native-screenshot-owned-ui native-hot-rail" aria-hidden="true">
+    <view class="rail-button rail-hot-button" catchtap="goBack"><text class="rail-visible-icon">‹</text></view>
+    <view class="rail-button rail-hot-button {{routeButtonClass}}" data-panel="route" catchtap="openPanel"><text class="rail-visible-icon">⌁</text></view>
+    <view class="rail-button rail-hot-button {{layersButtonClass}}" data-panel="layers" catchtap="openPanel"><text class="rail-visible-icon">▣</text></view>
+    <view class="rail-button rail-hot-button {{viewButtonClass}}" data-panel="view" catchtap="openPanel"><text class="rail-visible-icon">◌</text></view>
+    <view class="rail-button rail-hot-button" data-view="reset" catchtap="setViewPreset"><text class="rail-visible-icon">⌖</text></view>
+  </view>
 
   <view wx:if="{{panel !== 'none'}}" class="panel-shade" bindtap="closePanel"></view>
   <view wx:if="{{panel !== 'none'}}" class="material-panel panel-{{panel}}">
@@ -184,7 +184,7 @@
         <view class="action-button material-secondary" bindtap="focusActiveStep">聚焦当前</view>
         <view class="action-button material-primary" data-view="reset" bindtap="setViewPreset">复位总览</view>
       </view>
-      <view class="panel-note">单指拖拽平移，双指缩放；路线模式会放大当前导引路径。</view>
+      <view class="panel-note">单指拖拽平移，双指缩放；左转/右转可直接调整视角。</view>
     </view>
 
     <view wx:if="{{panel === 'room'}}" class="panel-card">

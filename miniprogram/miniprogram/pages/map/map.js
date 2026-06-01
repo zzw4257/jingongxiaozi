@@ -34,7 +34,16 @@ const viewOptions = [
   { id: "overview", label: "总览", desc: "整楼视角" },
   { id: "near", label: "近看", desc: "展开标签" },
   { id: "route", label: "路线", desc: "聚焦导引" },
+  { id: "rotateLeft", label: "左转", desc: "逆时针视角" },
+  { id: "rotateRight", label: "右转", desc: "顺时针视角" },
   { id: "reset", label: "复位", desc: "回到默认" }
+];
+const railTapZones = [
+  { top: 28, bottom: 52, action: "back" },
+  { top: 54, bottom: 76, panel: "route" },
+  { top: 80, bottom: 102, panel: "layers" },
+  { top: 106, bottom: 128, panel: "view" },
+  { top: 136, bottom: 160, view: "reset" }
 ];
 const overviewLabelRoomIds = new Set(["101", "104-1F01", "106", "107-core", "108-lobby", "202-5", "208", "210"]);
 const mapImageByLayer = {
@@ -464,6 +473,12 @@ function userImageTransformStyle(transform) {
   const rotation = Math.min(0.18, Math.max(-0.18, Number(transform?.imageRotation || 0)));
   const deg = rotation * 180 / Math.PI;
   return `transform: translate(${panX.toFixed(1)}px, ${panY.toFixed(1)}px) scale(${zoom.toFixed(3)}) rotate(${deg.toFixed(2)}deg);`;
+}
+
+function railTapAction(tap) {
+  const width = Number(canvasBox.width || 390);
+  if (!width || tap.x < width - 96) return null;
+  return railTapZones.find((zone) => tap.y >= zone.top && tap.y <= zone.bottom) || null;
 }
 
 function imagePresetTransform(transform, viewPreset) {
@@ -1577,6 +1592,21 @@ Page({
       x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
       y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
     };
+    const railAction = railTapAction(tap);
+    if (railAction) {
+      if (railAction.action === "back") {
+        this.goBack();
+        return;
+      }
+      if (railAction.panel) {
+        this.openPanel({ currentTarget: { dataset: { panel: railAction.panel } } });
+        return;
+      }
+      if (railAction.view) {
+        this.setViewPreset({ currentTarget: { dataset: { view: railAction.view } } });
+        return;
+      }
+    }
     const ids = this.visibleFloorIds();
     for (let f = ids.length - 1; f >= 0; f -= 1) {
       const state = this.floorDrawState(ids[f], f, ids.length);
@@ -1588,6 +1618,28 @@ Page({
           return;
         }
       }
+    }
+  },
+
+  handlePageTap(event) {
+    const touch = event.changedTouches && event.changedTouches[0];
+    const raw = touch || event.detail || {};
+    const tap = {
+      x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
+      y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
+    };
+    const railAction = railTapAction(tap);
+    if (!railAction) return;
+    if (railAction.action === "back") {
+      this.goBack();
+      return;
+    }
+    if (railAction.panel) {
+      this.openPanel({ currentTarget: { dataset: { panel: railAction.panel } } });
+      return;
+    }
+    if (railAction.view) {
+      this.setViewPreset({ currentTarget: { dataset: { view: railAction.view } } });
     }
   },
 
@@ -1666,6 +1718,13 @@ Page({
 
   setViewPreset(event) {
     const viewPreset = event.currentTarget.dataset.view;
+    if (viewPreset === "rotateLeft" || viewPreset === "rotateRight") {
+      const delta = viewPreset === "rotateLeft" ? -0.09 : 0.09;
+      this.transform = normalizeTransform(this.transform || {});
+      this.transform.imageRotation = Math.min(0.28, Math.max(-0.28, (this.transform.imageRotation || 0) + delta));
+      this.setData({ viewPreset: "near" }, () => this.drawMap());
+      return;
+    }
     const nextPreset = viewPreset === "reset" ? "overview" : viewPreset;
     this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, nextPreset));
     this.transform = imagePresetTransform(this.transform, nextPreset);

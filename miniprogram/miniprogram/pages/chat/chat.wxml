@@ -1,5 +1,5 @@
 <view class="response-page chat-page">
-  <image class="response-asset" src="/assets/ui/robot-speaking.png" mode="aspectFit"></image>
+  <image class="response-asset" src="../../assets/ui/robot-speaking.png" mode="aspectFit"></image>
   <view class="answer-zone">
     <text class="answer-text">{{answer}}</text>
     <view class="keyword-row">

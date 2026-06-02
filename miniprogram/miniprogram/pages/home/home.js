@@ -67,6 +67,14 @@ function buildMapQuery(options = {}) {
   return query ? `?${query}` : "";
 }
 
+function launchPage(url, onComplete) {
+  wx.reLaunch({
+    url,
+    complete: onComplete,
+    fail: () => wx.showToast({ title: "页面未打开", icon: "none" })
+  });
+}
+
 Page({
   data: {
     mapDirects,
@@ -81,11 +89,7 @@ Page({
     if (this.data.navigating) return;
     this.setData({ navigating: true });
     app.globalData.lastMapDirective = { source: "manual" };
-    wx.navigateTo({
-      url: `/pages/map/map${buildMapQuery()}`,
-      complete: () => this.setData({ navigating: false }),
-      fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
-    });
+    launchPage(`/pages/map/map${buildMapQuery()}`, () => this.setData({ navigating: false }));
   },
 
   openMapDirect(event) {
@@ -100,27 +104,17 @@ Page({
       announce
     };
     app.globalData.lastMapDirective = { source: "miniprogram", request };
-    wx.navigateTo({
-      url: `/pages/map/map${buildMapQuery(request)}`,
-      complete: () => this.setData({ navigating: false }),
-      fail: () => wx.showToast({ title: "地图未打开", icon: "none" })
-    });
+    launchPage(`/pages/map/map${buildMapQuery(request)}`, () => this.setData({ navigating: false }));
   },
 
   openChat() {
     this.setData({ showAppDrawer: false });
-    wx.navigateTo({
-      url: "/pages/chat/chat",
-      fail: () => wx.showToast({ title: "对话未打开", icon: "none" })
-    });
+    launchPage("/pages/chat/chat");
   },
 
   openExpert() {
     this.setData({ showAppDrawer: false });
-    wx.navigateTo({
-      url: "/pages/expert/expert",
-      fail: () => wx.showToast({ title: "专家问答未打开", icon: "none" })
-    });
+    launchPage("/pages/expert/expert");
   },
 
   openAppDrawer() {

@@ -48,16 +48,16 @@ const railTapActions = [
 ];
 const overviewLabelRoomIds = new Set(["101", "104-1F01", "106", "107-core", "108-lobby", "202-5", "208", "210"]);
 const mapImageByLayer = {
-  allFloors: "../../assets/ui/miniprogram-map-main.png?v=live-0531",
-  "1F": "../../assets/ui/miniprogram-map-main.png?v=live-0531",
-  "2F": "../../assets/ui/miniprogram-map-layer-2f.png?v=live-0531",
-  raised202: "../../assets/ui/miniprogram-map-layer-202.png?v=live-0531",
-  exploded: "../../assets/ui/miniprogram-map-layer-exploded.png?v=live-0531",
-  section: "../../assets/ui/miniprogram-map-layer-exploded.png?v=live-0531"
+  allFloors: "../../assets/ui/miniprogram-map-main-mobile-0603.png",
+  "1F": "../../assets/ui/miniprogram-map-main-mobile-0603.png",
+  "2F": "../../assets/ui/miniprogram-map-layer-2f-mobile-0603.png",
+  raised202: "../../assets/ui/miniprogram-map-layer-202-mobile-0603.png",
+  exploded: "../../assets/ui/miniprogram-map-layer-exploded-mobile-0603.png",
+  section: "../../assets/ui/miniprogram-map-layer-exploded-mobile-0603.png"
 };
 const mapImageByTarget = {
-  "104-2F01": "../../assets/ui/miniprogram-map-route-104.png?v=live-0531",
-  "202-5": "../../assets/ui/miniprogram-map-route-202.png?v=live-0531"
+  "104-2F01": "../../assets/ui/miniprogram-map-route-104-mobile-0603.png",
+  "202-5": "../../assets/ui/miniprogram-map-route-202-mobile-0603.png"
 };
 
 const palette = {
@@ -943,64 +943,20 @@ Page({
       width: Math.max(1, fallback.width),
       height: Math.max(1, fallback.height)
     };
-    const finish = (ready = false) => {
-      if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
-        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
-      }
-      updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
-      this.setData({
-        ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
-        mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
-        mapImageTransformStyle: userImageTransformStyle(this.transform),
-        rendererReadyClass: ready ? "renderer-canvas-ready" : ""
-      }, () => this.drawMap());
-    };
-    if (!wx.createSelectorQuery) {
-      dprRef = 1;
-      legacyCanvas = false;
-      canvasRef = null;
-      ctxRef = null;
-      finish(false);
-      return;
+    dprRef = 1;
+    canvasRef = null;
+    ctxRef = null;
+    legacyCanvas = false;
+    if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
+      this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
     }
-    wx.createSelectorQuery()
-      .in(this)
-      .select("#mapCanvas")
-      .fields({ node: true, size: true })
-      .exec((res) => {
-        const item = res && res[0];
-        if (item && item.node && item.node.getContext) {
-          const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-          dprRef = Number(windowInfo.pixelRatio || 1);
-          canvasRef = item.node;
-          const measuredWidth = Number(item.width || fallback.width);
-          const measuredHeight = Number(item.height || fallback.height);
-          if (measuredWidth < 200 || measuredHeight < 120) {
-            dprRef = 1;
-            canvasRef = null;
-            ctxRef = null;
-            legacyCanvas = false;
-            finish(false);
-            return;
-          }
-          canvasBox = {
-            width: Math.max(1, measuredWidth),
-            height: Math.max(1, measuredHeight)
-          };
-          canvasRef.width = Math.round(canvasBox.width * dprRef);
-          canvasRef.height = Math.round(canvasBox.height * dprRef);
-          ctxRef = canvasRef.getContext("2d");
-          legacyCanvas = false;
-          if (ctxRef && ctxRef.scale) ctxRef.scale(dprRef, dprRef);
-          finish(Boolean(ctxRef));
-          return;
-        }
-        dprRef = 1;
-        canvasRef = null;
-        ctxRef = null;
-        legacyCanvas = false;
-        finish(false);
-      });
+    updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
+    this.setData({
+      ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
+      mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
+      mapImageTransformStyle: userImageTransformStyle(this.transform),
+      rendererReadyClass: "renderer-canvas-ready"
+    }, () => this.drawMap());
   },
 
   setRouteState(next) {

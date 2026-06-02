@@ -37,17 +37,15 @@ page {
 
 .map-canvas {
   position: absolute;
-  left: 6px;
-  top: 6px;
-  right: 6px;
-  bottom: 6px;
-  z-index: 8;
-  width: calc(100% - 12px);
-  height: calc(100% - 12px);
-  opacity: 0.82;
-  pointer-events: auto;
+  left: -9999px;
+  top: -9999px;
+  z-index: 0;
+  display: none;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
   touch-action: none;
-  border-radius: 20px;
 }
 
 .map-static-fallback {
@@ -59,16 +57,16 @@ page {
   z-index: 5;
   width: calc(100% - 12px);
   height: calc(100% - 12px);
-  opacity: 0.96;
+  opacity: 1;
   pointer-events: none;
   border-radius: 20px;
-  filter: saturate(1.02) contrast(1.02);
+  filter: none;
   transform-origin: center center;
   will-change: transform;
 }
 
 .renderer-canvas-ready .map-static-fallback {
-  opacity: 0.94;
+  opacity: 1;
 }
 
 .map-static-1F,
@@ -861,22 +859,24 @@ page {
 
 .map-rail.native-hot-rail .rail-hot-button,
 .map-rail.native-hot-rail .rail-hot-button.active {
-  color: #20344f;
-  background: rgba(255, 255, 255, 0.82);
-  border-color: rgba(214, 224, 238, 0.82);
-  box-shadow: 0 8px 18px rgba(20, 53, 94, 0.08);
+  color: transparent;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
   pointer-events: auto;
 }
 
 .map-rail.native-hot-rail .rail-hot-button.active {
-  color: #0b6cff;
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(11, 108, 255, 0.3);
+  color: transparent;
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .rail-visible-icon {
   display: block;
-  color: inherit;
+  color: transparent;
+  opacity: 0;
   font-size: 15px;
   font-weight: 950;
   line-height: 1;

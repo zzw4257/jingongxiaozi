@@ -1,6 +1,6 @@
 <view class="home">
   <view class="standby-stage" bindtap="openMap" hover-class="standby-hover">
-    <image class="robot-expression-image" src="/assets/ui/robot-standby.png" mode="aspectFit"></image>
+    <image class="robot-expression-image" src="../../assets/ui/robot-standby.png" mode="aspectFit"></image>
   </view>
 
   <view class="drawer-handle" catchtap="openAppDrawer" hover-class="entry-hover">
@@ -19,28 +19,28 @@
         <button class="sheet-close" bindtap="closeAppDrawer" hover-class="entry-hover">关闭</button>
       </view>
       <view class="drawer-item primary" bindtap="openMap" hover-class="entry-hover">
-        <image class="drawer-item-asset" src="/assets/ui/map-building-pin.png" mode="aspectFit"></image>
+        <image class="drawer-item-asset" src="../../assets/ui/map-building-pin.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">地图导航</text>
           <text class="drawer-item-desc">独立浏览、起终点导航、2.5D 分层</text>
         </view>
       </view>
       <view class="drawer-item" bindtap="showMoreRoutes" hover-class="entry-hover">
-        <image class="drawer-item-asset" src="/assets/ui/route-stairs.png" mode="aspectFit"></image>
+        <image class="drawer-item-asset" src="../../assets/ui/route-stairs.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">快速路线</text>
           <text class="drawer-item-desc">带 MapDirect 参数打开地图</text>
         </view>
       </view>
       <view class="drawer-item" bindtap="openChat" hover-class="entry-hover">
-        <image class="drawer-item-asset" src="/assets/ui/robot-speaking.png" mode="aspectFit"></image>
+        <image class="drawer-item-asset" src="../../assets/ui/robot-speaking.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">常态对话</text>
           <text class="drawer-item-desc">突出显示后端回复与核心词</text>
         </view>
       </view>
       <view class="drawer-item" bindtap="openExpert" hover-class="entry-hover">
-        <image class="drawer-item-asset" src="/assets/ui/robot-expert.png" mode="aspectFit"></image>
+        <image class="drawer-item-asset" src="../../assets/ui/robot-expert.png" mode="aspectFit"></image>
         <view class="drawer-item-copy">
           <text class="drawer-item-title">专家问答</text>
           <text class="drawer-item-desc">检索型回答与引用信息展示</text>

@@ -12,6 +12,8 @@ const currentMobileMapHashes = {
   layerExploded: "d23ee8fed88862bc0adc759274da0d891b21151bab5e1304afa7121f29c2df37",
   route104: "0c5c19cac96b6c72689a324594ed77ea394b5d58d0f38bc8da7b753ca940aa3e",
   route202: "c722d8d65f9f302d62576f6403fb21862a34535a3a316ced659aaf5e546593e1",
+  route108: "b4df1a25a6ed481055ae10280ad879c40717d7058b50086d00ea1d80f99fe8be",
+  route208: "7fa0bba12e1005486ceffbbaa8d642cf7fd364eee1a180ce06a90642bb316e8b",
 };
 const sha256File = (file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, file))).digest("hex");
 const pngSize = (file) => {
@@ -53,12 +55,16 @@ const requiredFiles = [
   "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-main-mobile-0603.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f-mobile-0603.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202-mobile-0603.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded-mobile-0603.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104-mobile-0603.png",
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202-mobile-0603.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108-mobile-0603.png",
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208-mobile-0603.png",
   "src/shared/miniProgramBridge.ts",
 ];
 
@@ -97,6 +103,10 @@ const routeAssetHashes = {
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104.png": currentMobileMapHashes.route104,
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202-mobile-0603.png": currentMobileMapHashes.route202,
   "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202.png": currentMobileMapHashes.route202,
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108-mobile-0603.png": currentMobileMapHashes.route108,
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108.png": currentMobileMapHashes.route108,
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208-mobile-0603.png": currentMobileMapHashes.route208,
+  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208.png": currentMobileMapHashes.route208,
 };
 for (const [file, expectedHash] of Object.entries(routeAssetHashes)) {
   const size = pngSize(file);
@@ -198,7 +208,10 @@ if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap
 if (!webMap.includes("mapImageSrc")) {
   throw new Error("map page must keep the self-contained PNG map fallback");
 }
-if (!webMap.includes("map-native-start-bar") || !webMap.includes("native-start-button") || !webMap.includes("<view class=\"map-rail native-screenshot-owned-ui native-hot-rail\"")) {
+if (webMap.includes("map-native-start-bar") || webMap.includes("native-start-button")) {
+  throw new Error("map page must not render invisible bottom shortcut hit zones in the default browsing state");
+}
+if (!webMap.includes("<view class=\"map-rail native-screenshot-owned-ui native-hot-rail\"")) {
   throw new Error("map page must keep transparent hit zones over the screenshot-owned mobile right rail");
 }
 for (const duplicatedLabel of [
@@ -222,16 +235,26 @@ for (const token of ["catchtap=\"openPanel\"", "catchtap=\"setViewPreset\"", "ra
 if (!webMap.includes("id=\"mapCanvas\"") || !webMap.includes("type=\"2d\"") || !webMap.includes("class=\"map-canvas native-map-visual\"")) {
   throw new Error("map page must keep a real native canvas for gesture semantics");
 }
-for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "map-static-fallback", "mapImageTransformStyle", "native-map-hit-layer", "native-screenshot-owned-ui", "nativeRooms", "map3d-guidance-strip", "map-native-start-bar", "native-start-button", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
+for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "map-static-fallback", "mapImageTransformStyle", "native-map-hit-layer", "native-screenshot-owned-ui", "nativeRooms", "map3d-guidance-strip", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
   if (!webMap.includes(token)) {
     throw new Error(`map page must keep native map token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handlePageTap", "handleTouchMove", "normalizeTransform", "imageTransformStyle", "userImageTransformStyle", "mapImageTransformStyle", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104-mobile-0603.png", "miniprogram-map-layer-202-mobile-0603.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handlePageTap", "handleTouchMove", "normalizeTransform", "imageTransformStyle", "userImageTransformStyle", "mapImageTransformStyle", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104-mobile-0603.png", "miniprogram-map-route-108-mobile-0603.png", "miniprogram-map-route-208-mobile-0603.png", "miniprogram-map-layer-202-mobile-0603.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!webMapJs.includes(token)) {
     throw new Error(`map.js must keep native map logic token: ${token}`);
+  }
+}
+for (const [targetId, asset] of Object.entries({
+  "104-2F01": "miniprogram-map-route-104-mobile-0603.png",
+  "202-5": "miniprogram-map-route-202-mobile-0603.png",
+  "108-2F04": "miniprogram-map-route-108-mobile-0603.png",
+  "208": "miniprogram-map-route-208-mobile-0603.png",
+})) {
+  if (!webMapJs.includes(`"${targetId}"`) || !webMapJs.includes(asset)) {
+    throw new Error(`quick target ${targetId} must keep an explicit packaged route asset ${asset}`);
   }
 }
 if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJs.includes("localhost") || webMapJs.includes("canRenderWebView")) {
@@ -396,9 +419,14 @@ function smokeLoadMapPage() {
     throw new Error("manual 104-2F01 target must pass a 104 internal stair node");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "108-2F04" } } });
-  assertRoute("108-2F04", "miniprogram-map-main-mobile-0603.png", "internal-stair", "manual 108-2F04 target");
+  assertRoute("108-2F04", "miniprogram-map-route-108-mobile-0603.png", "internal-stair", "manual 108-2F04 target");
   if (instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public") || nodeId === "stair-public-upper")) {
     throw new Error("manual 108-2F04 target must not use the public stair");
+  }
+  instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "208" } } });
+  assertRoute("208", "miniprogram-map-route-208-mobile-0603.png", "stair", "manual 208 target");
+  if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public"))) {
+    throw new Error("manual 208 target must use the public stair connection");
   }
   instance.clearRoute.call(instance);
   if (instance.data.hasRoute || instance.data.route || instance.data.targetRoomId) {
@@ -412,9 +440,14 @@ function smokeLoadMapPage() {
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-map-hit-layer", ".native-screenshot-owned-ui", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".map-start-card", ".start-target", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-map-hit-layer", ".native-screenshot-owned-ui", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
+  }
+}
+for (const token of [".map-native-start-bar", ".native-start-button", ".native-start-copy", ".native-hot-start", ".map-start-card", ".start-target"]) {
+  if (webMapWxss.includes(token)) {
+    throw new Error(`map.wxss must not keep obsolete bottom shortcut styling: ${token}`);
   }
 }
 const canvasCssBlock = webMapWxss.match(/\.map-canvas\s*\{[^}]*\}/)?.[0] || "";
@@ -443,11 +476,11 @@ const readyFallbackCssBlock = webMapWxss.match(/\.renderer-canvas-ready \.map-st
 if (!/opacity:\s*1\b/.test(readyFallbackCssBlock)) {
   throw new Error("self-contained mini program must keep the high-fidelity mobile map asset visible as the stable release baseline");
 }
-if (!/\.map-native-start-bar\.native-hot-start\s*,\s*\.map3d-guidance-strip\.native-hot-guidance\s*,\s*\.map-rail\.native-hot-rail\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("screenshot-owned rail/guidance/start hot zones must stay visually transparent to avoid duplicate overlap");
+if (!/\.map3d-guidance-strip\.native-hot-guidance\s*,\s*\.map-rail\.native-hot-rail\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
+  throw new Error("screenshot-owned rail/guidance hot zones must stay visually transparent to avoid duplicate overlap");
 }
-if (!/\.map-native-start-bar\.native-hot-start \.native-start-copy\s*,\s*\.map-native-start-bar\.native-hot-start \.native-start-button\s*,\s*\.map3d-guidance-strip\.native-hot-guidance \.guidance-hot-action\s*\{[^}]*color:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("transparent bottom/guidance hot-zone children must not render visible duplicate labels");
+if (!/\.map3d-guidance-strip\.native-hot-guidance \.guidance-hot-action\s*\{[^}]*color:\s*transparent/s.test(webMapWxss)) {
+  throw new Error("transparent guidance hot-zone children must not render visible duplicate labels");
 }
 if (!/\.map-rail\.native-hot-rail \.rail-hot-button\s*,\s*\.map-rail\.native-hot-rail \.rail-hot-button\.active\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
   throw new Error("right rail buttons must be transparent hot-zones over the mobile screenshot rail");

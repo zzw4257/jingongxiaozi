@@ -1,8 +1,18 @@
-<view class="native-map-page layer-{{layerMode}} panel-{{panel}}" catchtap="handlePageTap">
+<view class="native-map-page layer-{{layerMode}} panel-{{panel}} {{rendererReadyClass}}" catchtap="handlePageTap">
   <view class="map-backplate"></view>
   <view class="map-stage">
     <view class="map-ambient map-ambient-a"></view>
     <view class="map-ambient map-ambient-b"></view>
+    <canvas
+      id="mapCanvas"
+      type="2d"
+      class="map-canvas native-map-visual"
+      bindtap="handleCanvasTap"
+      bindtouchstart="handleTouchStart"
+      bindtouchmove="handleTouchMove"
+      bindtouchend="handleTouchEnd"
+      bindtouchcancel="handleTouchEnd"
+    ></canvas>
     <image
       class="map-static-fallback map-static-{{layerMode}}"
       src="{{mapImageSrc}}"

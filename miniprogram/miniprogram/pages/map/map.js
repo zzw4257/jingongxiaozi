@@ -38,12 +38,13 @@ const viewOptions = [
   { id: "rotateRight", label: "右转", desc: "顺时针视角" },
   { id: "reset", label: "复位", desc: "回到默认" }
 ];
-const railTapZones = [
-  { top: 28, bottom: 52, action: "back" },
-  { top: 54, bottom: 76, panel: "route" },
-  { top: 80, bottom: 102, panel: "layers" },
-  { top: 106, bottom: 128, panel: "view" },
-  { top: 136, bottom: 160, view: "reset" }
+const railButtonTops = [4, 40, 76, 112, 148];
+const railTapActions = [
+  { action: "back" },
+  { panel: "route" },
+  { panel: "layers" },
+  { panel: "view" },
+  { view: "reset" }
 ];
 const overviewLabelRoomIds = new Set(["101", "104-1F01", "106", "107-core", "108-lobby", "202-5", "208", "210"]);
 const mapImageByLayer = {
@@ -477,8 +478,16 @@ function userImageTransformStyle(transform) {
 
 function railTapAction(tap) {
   const width = Number(canvasBox.width || 390);
-  if (!width || tap.x < width - 96) return null;
-  return railTapZones.find((zone) => tap.y >= zone.top && tap.y <= zone.bottom) || null;
+  const height = Number(canvasBox.height || 180);
+  const railLeft = width - 64;
+  const railTop = height / 2 - 94;
+  if (!width || tap.x < railLeft) return null;
+  for (let i = 0; i < railButtonTops.length; i += 1) {
+    const top = railTop + railButtonTops[i] - 4;
+    const bottom = top + 42;
+    if (tap.y >= top && tap.y <= bottom) return railTapActions[i];
+  }
+  return null;
 }
 
 function imagePresetTransform(transform, viewPreset) {
@@ -583,7 +592,7 @@ const nativeVisual = {
 
 function updateNativeVisualMetrics(layerMode = "allFloors", hasRoute = false) {
   const fallback = fallbackCanvasSize();
-  nativeVisual.stageWidth = Math.max(320, fallback.width - 10);
+  nativeVisual.stageWidth = Math.max(320, fallback.width - 12);
   nativeVisual.stageHeight = Math.max(176, fallback.height - 12);
   nativeVisual.layerMode = layerMode;
 }
@@ -878,6 +887,7 @@ Page({
     targetDStyle: "",
     mapImageSrc: mapImageByLayer.allFloors,
     mapImageTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
+    rendererReadyClass: "",
     nativeFloors: [],
     nativeSpaces: [],
     nativeRooms: [],
@@ -933,19 +943,64 @@ Page({
       width: Math.max(1, fallback.width),
       height: Math.max(1, fallback.height)
     };
-    dprRef = 1;
-    legacyCanvas = false;
-    canvasRef = null;
-    ctxRef = null;
-    if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
-      this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
+    const finish = (ready = false) => {
+      if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
+        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
+      }
+      updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
+      this.setData({
+        ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
+        mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
+        mapImageTransformStyle: userImageTransformStyle(this.transform),
+        rendererReadyClass: ready ? "renderer-canvas-ready" : ""
+      }, () => this.drawMap());
+    };
+    if (!wx.createSelectorQuery) {
+      dprRef = 1;
+      legacyCanvas = false;
+      canvasRef = null;
+      ctxRef = null;
+      finish(false);
+      return;
     }
-    updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
-    this.setData({
-      ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
-      mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
-      mapImageTransformStyle: userImageTransformStyle(this.transform)
-    });
+    wx.createSelectorQuery()
+      .in(this)
+      .select("#mapCanvas")
+      .fields({ node: true, size: true })
+      .exec((res) => {
+        const item = res && res[0];
+        if (item && item.node && item.node.getContext) {
+          const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+          dprRef = Number(windowInfo.pixelRatio || 1);
+          canvasRef = item.node;
+          const measuredWidth = Number(item.width || fallback.width);
+          const measuredHeight = Number(item.height || fallback.height);
+          if (measuredWidth < 200 || measuredHeight < 120) {
+            dprRef = 1;
+            canvasRef = null;
+            ctxRef = null;
+            legacyCanvas = false;
+            finish(false);
+            return;
+          }
+          canvasBox = {
+            width: Math.max(1, measuredWidth),
+            height: Math.max(1, measuredHeight)
+          };
+          canvasRef.width = Math.round(canvasBox.width * dprRef);
+          canvasRef.height = Math.round(canvasBox.height * dprRef);
+          ctxRef = canvasRef.getContext("2d");
+          legacyCanvas = false;
+          if (ctxRef && ctxRef.scale) ctxRef.scale(dprRef, dprRef);
+          finish(Boolean(ctxRef));
+          return;
+        }
+        dprRef = 1;
+        canvasRef = null;
+        ctxRef = null;
+        legacyCanvas = false;
+        finish(false);
+      });
   },
 
   setRouteState(next) {
@@ -991,10 +1046,10 @@ Page({
 
   drawMap() {
     this.setData({ mapImageTransformStyle: userImageTransformStyle(this.transform) });
-    if (!ctxRef) return;
     if (!ctxRef || !canvasBox.width || !canvasBox.height) return;
     const ctx = ctxRef;
-    if (legacyCanvas && ctx.setTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (ctx.setTransform) ctx.setTransform(dprRef, 0, 0, dprRef, 0, 0);
+    else if (legacyCanvas && ctx.setTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
     lastTapTargets = [];
     const ids = this.visibleFloorIds();
@@ -1668,6 +1723,8 @@ Page({
     if (!this.touchState) return;
     const touches = event.touches || [];
     if (this.touchState.mode === "pan" && touches.length === 1) {
+      this.transform.panX = this.touchState.transform.panX + touches[0].clientX - this.touchState.startX;
+      this.transform.panY = this.touchState.transform.panY + touches[0].clientY - this.touchState.startY;
       this.transform.imagePanX = this.touchState.transform.imagePanX + touches[0].clientX - this.touchState.startX;
       this.transform.imagePanY = this.touchState.transform.imagePanY + touches[0].clientY - this.touchState.startY;
       this.drawMap();
@@ -1676,6 +1733,8 @@ Page({
       const dy = touches[0].clientY - touches[1].clientY;
       const distance = Math.max(1, Math.hypot(dx, dy));
       const angle = Math.atan2(dy, dx);
+      this.transform.zoom = Math.min(2.55, Math.max(0.82, this.touchState.transform.zoom * (distance / this.touchState.distance)));
+      this.transform.rotation = Math.min(0.32, Math.max(-0.32, (this.touchState.transform.rotation || 0) + (angle - this.touchState.angle) * 0.42));
       this.transform.imageZoom = Math.min(2.4, Math.max(1, this.touchState.transform.imageZoom * (distance / this.touchState.distance)));
       this.transform.imageRotation = Math.min(0.18, Math.max(-0.18, (this.touchState.transform.imageRotation || 0) + (angle - this.touchState.angle) * 0.35));
       this.drawMap();
@@ -1721,6 +1780,7 @@ Page({
     if (viewPreset === "rotateLeft" || viewPreset === "rotateRight") {
       const delta = viewPreset === "rotateLeft" ? -0.09 : 0.09;
       this.transform = normalizeTransform(this.transform || {});
+      this.transform.rotation = Math.min(0.36, Math.max(-0.36, (this.transform.rotation || 0) + delta));
       this.transform.imageRotation = Math.min(0.28, Math.max(-0.28, (this.transform.imageRotation || 0) + delta));
       this.setData({ viewPreset: "near" }, () => this.drawMap());
       return;

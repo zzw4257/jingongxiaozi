@@ -57,7 +57,9 @@ const mapImageByLayer = {
 };
 const mapImageByTarget = {
   "104-2F01": "../../assets/ui/miniprogram-map-route-104-mobile-0603.png",
-  "202-5": "../../assets/ui/miniprogram-map-route-202-mobile-0603.png"
+  "202-5": "../../assets/ui/miniprogram-map-route-202-mobile-0603.png",
+  "108-2F04": "../../assets/ui/miniprogram-map-route-108-mobile-0603.png",
+  "208": "../../assets/ui/miniprogram-map-route-208-mobile-0603.png"
 };
 
 const palette = {
@@ -103,35 +105,6 @@ function fallbackCanvasSize() {
   return {
     width: Math.max(240, width - (landscape ? 66 : 0)),
     height: Math.max(132, height)
-  };
-}
-
-function coverStylesForWindow() {
-  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
-  const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
-  const width = Number(windowInfo.windowWidth || deviceInfo.windowWidth || 390);
-  const height = Number(windowInfo.windowHeight || deviceInfo.windowHeight || 180);
-  const rail = 56;
-  const left = 8;
-  const bottom = 8;
-  const cardH = 58;
-  const right = rail + 6;
-  const cardW = Math.max(292, width - left - right);
-  const top = Math.max(6, height - bottom - cardH);
-  const buttonW = 44;
-  const buttonH = 42;
-  const gap = 5;
-  const buttonTop = top + 8;
-  const buttonStart = left + cardW - 8 - buttonW * 4 - gap * 3;
-  const copyW = Math.max(108, buttonStart - left - 10);
-  const box = (x, y, w, h) => `left:${Math.round(x)}px;top:${Math.round(y)}px;width:${Math.round(w)}px;height:${Math.round(h)}px;`;
-  return {
-    startCoverStyle: box(left, top, cardW, cardH),
-    startCopyStyle: box(left + 8, top + 7, copyW, 44),
-    targetAStyle: box(buttonStart, buttonTop, buttonW, buttonH),
-    targetBStyle: box(buttonStart + (buttonW + gap), buttonTop, buttonW, buttonH),
-    targetCStyle: box(buttonStart + (buttonW + gap) * 2, buttonTop, buttonW, buttonH),
-    targetDStyle: box(buttonStart + (buttonW + gap) * 3, buttonTop, buttonW, buttonH)
   };
 }
 
@@ -879,12 +852,6 @@ Page({
     primaryQuickTargets: quickTargets.slice(0, 3),
     layerOptions,
     viewOptions,
-    startCoverStyle: "",
-    startCopyStyle: "",
-    targetAStyle: "",
-    targetBStyle: "",
-    targetCStyle: "",
-    targetDStyle: "",
     mapImageSrc: mapImageByLayer.allFloors,
     mapImageTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
     rendererReadyClass: "",
@@ -906,7 +873,6 @@ Page({
     if (route) this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
     this.initCanvas();
     this.setRouteState({
-      ...coverStylesForWindow(),
       layerMode: "allFloors",
       layerHint: layerHints.allFloors,
       targetRoomId,
@@ -933,7 +899,6 @@ Page({
   },
 
   onResize() {
-    this.setData(coverStylesForWindow());
     this.initCanvas();
   },
 

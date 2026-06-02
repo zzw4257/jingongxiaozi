@@ -58,14 +58,6 @@
     <view class="guidance-hot-action guidance-hot-next" bindtap="advanceRouteCheckpoint"></view>
   </view>
 
-  <view wx:else class="map-native-start-bar native-screenshot-owned-ui native-hot-start" aria-hidden="true">
-    <view class="native-start-copy" bindtap="openPanel" data-panel="route"></view>
-    <view class="native-start-button" data-id="104-2F01" bindtap="selectQuickTarget"></view>
-    <view class="native-start-button" data-id="202-5" bindtap="selectQuickTarget"></view>
-    <view class="native-start-button" data-id="108-2F04" bindtap="selectQuickTarget"></view>
-    <view class="native-start-button more" bindtap="openPanel" data-panel="route"></view>
-  </view>
-
   <view class="map-rail native-screenshot-owned-ui native-hot-rail" aria-hidden="true">
     <view class="rail-button rail-hot-button" catchtap="goBack"><text class="rail-visible-icon">‹</text></view>
     <view class="rail-button rail-hot-button {{routeButtonClass}}" data-panel="route" catchtap="openPanel"><text class="rail-visible-icon">⌁</text></view>

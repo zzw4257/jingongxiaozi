@@ -5,8 +5,8 @@
     <view class="map-ambient map-ambient-b"></view>
     <canvas
       id="mapCanvas"
-      type="2d"
-      class="map-canvas native-map-visual"
+      type="webgl"
+      class="map-canvas native-map-visual native-webgl-map"
       bindtap="handleCanvasTap"
       bindtouchstart="handleTouchStart"
       bindtouchmove="handleTouchMove"
@@ -18,11 +18,6 @@
       src="{{mapImageSrc}}"
       style="{{mapImageTransformStyle}}"
       mode="aspectFit"
-      bindtap="handleCanvasTap"
-      bindtouchstart="handleTouchStart"
-      bindtouchmove="handleTouchMove"
-      bindtouchend="handleTouchEnd"
-      bindtouchcancel="handleTouchEnd"
     ></image>
     <view
       class="native-map-hit-layer"
@@ -33,8 +28,20 @@
       bindtouchend="handleTouchEnd"
       bindtouchcancel="handleTouchEnd"
     >
+      <view wx:for="{{nativeFloors}}" wx:key="id" class="native-floor native-floor-{{item.floorId}}" style="{{item.style}}">
+        <text class="native-floor-title">{{item.title}}</text>
+      </view>
+      <view wx:for="{{nativeSpaces}}" wx:key="id" class="native-space native-space-{{item.kind}}" style="{{item.style}}">
+        <text wx:if="{{item.label}}" class="native-space-label">{{item.label}}</text>
+      </view>
       <view wx:for="{{nativeRooms}}" wx:key="id" class="native-room native-room-{{item.area}} {{item.activeClass}}" style="{{item.style}}" data-id="{{item.id}}" bindtap="selectNativeRoom">
         <text wx:if="{{item.label}}" class="native-room-label">{{item.label}}</text>
+      </view>
+      <view wx:for="{{nativeDoors}}" wx:key="id" class="native-door {{item.activeClass}}" style="{{item.style}}"></view>
+      <view wx:for="{{nativeStairs}}" wx:key="id" class="native-stair {{item.activeClass}}" style="{{item.style}}"></view>
+      <view wx:for="{{nativeRouteSegments}}" wx:key="id" class="native-route-segment {{item.kindClass}} {{item.activeClass}}" style="{{item.style}}"></view>
+      <view wx:for="{{nativeRoutePins}}" wx:key="id" class="native-route-pin native-route-pin-{{item.kind}}" style="{{item.style}}">
+        <text>{{item.label}}</text>
       </view>
     </view>
   </view>

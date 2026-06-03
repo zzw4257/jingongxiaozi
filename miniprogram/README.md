@@ -29,6 +29,14 @@ source=miniprogram&ui=mobile
 startRoomId=...&targetRoomId=...&announce=summary,distance,direction,floorChange
 ```
 
+`project.config.json` 已内置以下编译场景，导入后可直接在微信开发者工具顶部场景里切换检查：
+
+- 地图页-默认总览
+- 地图页-104路线
+- 地图页-108路线
+- 地图页-202路线
+- 地图页-208路线
+
 ## 开发者工具 CLI
 
 如果命令行打开时报 `IDE service port timeout`，先彻底退出微信开发者工具，再用固定端口启动：

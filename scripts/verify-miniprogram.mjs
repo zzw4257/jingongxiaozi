@@ -12,8 +12,8 @@ const currentMobileMapHashes = {
   layerExploded: "d23ee8fed88862bc0adc759274da0d891b21151bab5e1304afa7121f29c2df37",
   route104: "0c5c19cac96b6c72689a324594ed77ea394b5d58d0f38bc8da7b753ca940aa3e",
   route202: "c722d8d65f9f302d62576f6403fb21862a34535a3a316ced659aaf5e546593e1",
-  route108: "b4df1a25a6ed481055ae10280ad879c40717d7058b50086d00ea1d80f99fe8be",
-  route208: "7fa0bba12e1005486ceffbbaa8d642cf7fd364eee1a180ce06a90642bb316e8b",
+  route108: "a968bd00376f41e963ad93a6c381b2411e0f15dc879ad941d8602e34bfce096d",
+  route208: "b059e90cd11ad0f5f10fedbbdec4ffbf32e594b6bb698059b78ef6a0d4da0557",
 };
 const sha256File = (file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, file))).digest("hex");
 const pngSize = (file) => {
@@ -125,6 +125,27 @@ if (projectConfig.miniprogramRoot !== "miniprogram/") {
 }
 if (releaseMode && (!projectConfig.appid || projectConfig.appid === "touristappid")) {
   throw new Error("release check requires a real WeChat AppID in miniprogram/project.config.json");
+}
+const conditionList = projectConfig.condition?.miniprogram?.list || [];
+const expectedConditions = new Map([
+  ["地图页-默认总览", "source=miniprogram&ui=mobile"],
+  ["地图页-104路线", "targetRoomId=104-2F01"],
+  ["地图页-108路线", "targetRoomId=108-2F04"],
+  ["地图页-202路线", "targetRoomId=202-5"],
+  ["地图页-208路线", "targetRoomId=208"],
+]);
+for (const [name, queryToken] of expectedConditions) {
+  const condition = conditionList.find((item) => item.name === name);
+  if (!condition) throw new Error(`project.config.json must keep DevTools condition: ${name}`);
+  if (condition.pathName !== "pages/map/map") {
+    throw new Error(`DevTools condition ${name} must open the native map page`);
+  }
+  if (!condition.query?.includes("source=miniprogram") || !condition.query?.includes("ui=mobile") || !condition.query?.includes(queryToken)) {
+    throw new Error(`DevTools condition ${name} must keep synchronized query token: ${queryToken}`);
+  }
+  if (condition.query.includes("127.0.0.1") || condition.query.includes("localhost") || condition.query.includes("5173")) {
+    throw new Error(`DevTools condition ${name} must not depend on a local H5 service`);
+  }
 }
 
 const appJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/app.js"), "utf8");

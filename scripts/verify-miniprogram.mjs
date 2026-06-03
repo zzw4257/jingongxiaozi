@@ -289,9 +289,14 @@ if (!webMapJs.includes("select(\"#mapCanvas\")") || !webMapJs.includes("getConte
 }
 for (const token of [
   "createWebglProgram",
+  "createWebglTextureProgram",
   "compileWebglShader",
   "buildWebglMapGeometry",
   "drawWebglMap",
+  "drawWebglBaselineTexture",
+  "ensureWebglMapTexture",
+  "texImage2D",
+  "createImage",
   "pushWebglFloor",
   "pushWebglSpaces",
   "pushWebglRooms",
@@ -309,6 +314,9 @@ for (const token of [
 }
 if (/if\s*\(webglRef\s*&&\s*canvasRef\)\s*\{\s*renderWebglBackdrop\([^;]+;\s*return;\s*\}/s.test(webMapJs)) {
   throw new Error("mini program WebGL map renderer must not stop after clearing the backdrop");
+}
+if (!webMapJs.includes("drawWebglBaselineTexture();") || !webMapJs.includes("mapImageSrc(this.data.layerMode, this.data.route)")) {
+  throw new Error("mini program WebGL renderer must draw the current mobile baseline texture before dynamic route geometry");
 }
 
 function smokeLoadMapPage() {
@@ -411,14 +419,14 @@ function smokeLoadMapPage() {
 
   instance.onLoad.call(instance, {});
   assertMapAsset("miniprogram-map-main-mobile-0603.png", "manual map open must use the current mobile overview");
-  assertRuntimeGeometry(["1F", "2F", "25F"], 900, "manual all-floor runtime WebGL map");
+  assertRuntimeGeometry(["1F", "2F", "25F"], 900, "manual all-floor fallback WebGL geometry");
   if (instance.data.hasRoute || instance.data.route) {
     throw new Error("manual map open must start without a route");
   }
   setLayerAndAssert("2F", "miniprogram-map-layer-2f-mobile-0603.png");
-  assertRuntimeGeometry(["2F"], 240, "2F runtime WebGL map");
+  assertRuntimeGeometry(["2F"], 240, "2F fallback WebGL geometry");
   setLayerAndAssert("raised202", "miniprogram-map-layer-202-mobile-0603.png");
-  assertRuntimeGeometry(["2F", "25F"], 300, "202 platform runtime WebGL map");
+  assertRuntimeGeometry(["2F", "25F"], 300, "202 platform fallback WebGL geometry");
   setLayerAndAssert("exploded", "miniprogram-map-layer-exploded-mobile-0603.png");
   setLayerAndAssert("allFloors", "miniprogram-map-main-mobile-0603.png");
 
@@ -432,7 +440,7 @@ function smokeLoadMapPage() {
   if (!instance.data.route || !instance.data.mapImageSrc.includes("miniprogram-map-route-202-mobile-0603.png")) {
     throw new Error("map page smoke test did not generate a route for 202-5");
   }
-  assertRuntimeGeometry(["1F", "2F", "25F"], 1000, "MapDirect 202-5 runtime WebGL route map");
+  assertRuntimeGeometry(["1F", "2F", "25F"], 1000, "MapDirect 202-5 fallback WebGL route geometry");
   assertRoute("202-5", "miniprogram-map-route-202-mobile-0603.png", "stair", "MapDirect 202-5");
   if (!instance.data.route.nodeIds.includes("stair-public-upper") && !instance.data.route.nodeIds.includes("door-202-5")) {
     throw new Error("MapDirect 202-5 route must pass the public stair / 202 platform connector");

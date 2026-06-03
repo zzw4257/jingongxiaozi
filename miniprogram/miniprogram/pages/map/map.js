@@ -96,6 +96,10 @@ let canvasBox = { width: 0, height: 0 };
 let legacyCanvas = false;
 let webglRef = null;
 let webglProgramRef = null;
+let webglTextureProgramRef = null;
+let webglMapTextureRef = null;
+let webglMapTextureSrc = "";
+let webglTextureReady = false;
 let lastTapTargets = [];
 
 function fallbackCanvasSize() {
@@ -632,6 +636,42 @@ function createWebglProgram(gl) {
   };
 }
 
+function createWebglTextureProgram(gl) {
+  const vertexShader = compileWebglShader(gl, gl.VERTEX_SHADER, `
+    attribute vec2 a_position;
+    attribute vec2 a_texCoord;
+    varying vec2 v_texCoord;
+    void main() {
+      gl_Position = vec4(a_position, 0.0, 1.0);
+      v_texCoord = a_texCoord;
+    }
+  `);
+  const fragmentShader = compileWebglShader(gl, gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec2 v_texCoord;
+    uniform sampler2D u_image;
+    void main() {
+      gl_FragColor = texture2D(u_image, v_texCoord);
+    }
+  `);
+  const program = gl.createProgram();
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(`WebGL texture program link failed: ${message}`);
+  }
+  return {
+    program,
+    buffer: gl.createBuffer(),
+    position: gl.getAttribLocation(program, "a_position"),
+    texCoord: gl.getAttribLocation(program, "a_texCoord"),
+    image: gl.getUniformLocation(program, "u_image")
+  };
+}
+
 function pushWebglVertex(vertices, point, rgba) {
   const x = (point.x / Math.max(1, canvasBox.width)) * 2 - 1;
   const y = 1 - (point.y / Math.max(1, canvasBox.height)) * 2;
@@ -683,6 +723,37 @@ function pushWebglCircle(vertices, center, radius, color, alpha = 1, segments = 
       rgba
     );
   }
+}
+
+function webglStageImageRect(width, height) {
+  const imageW = 844;
+  const imageH = 390;
+  const stageW = Math.max(1, width);
+  const stageH = Math.max(1, height);
+  const scale = Math.min(stageW / imageW, stageH / imageH);
+  const drawnW = imageW * scale;
+  const drawnH = imageH * scale;
+  return {
+    x: (stageW - drawnW) / 2,
+    y: (stageH - drawnH) / 2,
+    w: drawnW,
+    h: drawnH
+  };
+}
+
+function pushWebglTextureQuad(vertices, rect) {
+  const left = (rect.x / Math.max(1, canvasBox.width)) * 2 - 1;
+  const right = ((rect.x + rect.w) / Math.max(1, canvasBox.width)) * 2 - 1;
+  const top = 1 - (rect.y / Math.max(1, canvasBox.height)) * 2;
+  const bottom = 1 - ((rect.y + rect.h) / Math.max(1, canvasBox.height)) * 2;
+  vertices.push(
+    left, top, 0, 0,
+    right, top, 1, 0,
+    left, bottom, 0, 1,
+    left, bottom, 0, 1,
+    right, top, 1, 0,
+    right, bottom, 1, 1
+  );
 }
 
 function measureTextWidth(ctx, text, fontSize) {
@@ -1011,7 +1082,6 @@ Page({
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
     if (route) this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
-    this.initCanvas();
     this.setRouteState({
       layerMode: "allFloors",
       layerHint: layerHints.allFloors,
@@ -1030,7 +1100,8 @@ Page({
       sectionLayerClass: "",
       layersButtonClass: "",
       roomButtonClass: ""
-    });
+    }, { skipDraw: true });
+    this.initCanvas();
   },
 
   onReady() {
@@ -1054,6 +1125,10 @@ Page({
     ctxRef = null;
     webglRef = null;
     webglProgramRef = null;
+    webglTextureProgramRef = null;
+    webglMapTextureRef = null;
+    webglMapTextureSrc = "";
+    webglTextureReady = false;
     legacyCanvas = false;
     if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
       this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
@@ -1087,21 +1162,27 @@ Page({
       if (webglRef) {
         try {
           webglProgramRef = createWebglProgram(webglRef);
+          webglTextureProgramRef = createWebglTextureProgram(webglRef);
           renderWebglBackdrop(webglRef, canvasRef.width, canvasRef.height, this.data.hasRoute);
         } catch (error) {
           console.warn("WebGL map renderer unavailable", error);
           webglRef = null;
           webglProgramRef = null;
+          webglTextureProgramRef = null;
         }
       }
       ctxRef = null;
       legacyCanvas = false;
       updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
-      publishVisualState(Boolean(webglRef));
+      if (webglRef) {
+        this.ensureWebglMapTexture(mapImageSrc(this.data.layerMode, this.data.route), () => publishVisualState(Boolean(webglRef && webglTextureReady)));
+      } else {
+        publishVisualState(false);
+      }
     });
   },
 
-  setRouteState(next) {
+  setRouteState(next, options = {}) {
     const route = next.route || null;
     const layerMode = next.layerMode || this.data.layerMode || "allFloors";
     const steps = route ? route.steps : [];
@@ -1133,7 +1214,9 @@ Page({
       canNextStep: Boolean(route && activeStepIndex < steps.length - 1),
       prevStepDisabledClass: route && activeStepIndex > 0 ? "" : "disabled",
       routeButtonClass: route ? "active" : this.data.routeButtonClass
-    }, () => this.drawMap());
+    }, () => {
+      if (!options.skipDraw) this.drawMap();
+    });
   },
 
   visibleFloorIds(layerMode = this.data.layerMode) {
@@ -1145,6 +1228,11 @@ Page({
   drawMap() {
     this.setData({ mapImageTransformStyle: userImageTransformStyle(this.transform) });
     if (webglRef && canvasRef) {
+      const nextTextureSrc = mapImageSrc(this.data.layerMode, this.data.route);
+      if (nextTextureSrc !== webglMapTextureSrc || !webglTextureReady) {
+        this.ensureWebglMapTexture(nextTextureSrc, () => this.drawWebglMap());
+        return;
+      }
       this.drawWebglMap();
       return;
     }
@@ -1162,10 +1250,54 @@ Page({
     if (legacyCanvas && ctx.draw) ctx.draw();
   },
 
+  ensureWebglMapTexture(src, callback) {
+    const gl = webglRef;
+    if (!gl || !canvasRef || !webglTextureProgramRef || !src) {
+      if (callback) callback();
+      return;
+    }
+    if (webglMapTextureRef && webglMapTextureSrc === src && webglTextureReady) {
+      if (callback) callback();
+      return;
+    }
+    webglTextureReady = false;
+    webglMapTextureSrc = src;
+    const image = canvasRef.createImage ? canvasRef.createImage() : null;
+    if (!image) {
+      if (callback) callback();
+      return;
+    }
+    image.onload = () => {
+      if (!webglRef || webglMapTextureSrc !== src) return;
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      webglMapTextureRef = texture;
+      webglTextureReady = true;
+      this.setData({ rendererReadyClass: "renderer-canvas-ready" }, () => {
+        this.drawWebglMap();
+        if (callback) callback();
+      });
+    };
+    image.onerror = () => {
+      webglTextureReady = false;
+      this.setData({ rendererReadyClass: "" }, () => {
+        if (callback) callback();
+      });
+    };
+    image.src = src;
+  },
+
   drawWebglMap() {
     const gl = webglRef;
     if (!gl || !webglProgramRef || !canvasRef) return;
     renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+    this.drawWebglBaselineTexture();
     const ids = this.visibleFloorIds();
     const vertices = this.buildWebglMapGeometry(ids);
     if (!vertices.length) return;
@@ -1182,17 +1314,41 @@ Page({
     gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
   },
 
+  drawWebglBaselineTexture() {
+    const gl = webglRef;
+    if (!gl || !webglTextureProgramRef || !webglMapTextureRef || !webglTextureReady) return false;
+    const vertices = [];
+    pushWebglTextureQuad(vertices, webglStageImageRect(canvasBox.width, canvasBox.height));
+    gl.useProgram(webglTextureProgramRef.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, webglTextureProgramRef.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    const stride = 4 * 4;
+    gl.enableVertexAttribArray(webglTextureProgramRef.position);
+    gl.vertexAttribPointer(webglTextureProgramRef.position, 2, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(webglTextureProgramRef.texCoord);
+    gl.vertexAttribPointer(webglTextureProgramRef.texCoord, 2, gl.FLOAT, false, stride, 2 * 4);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, webglMapTextureRef);
+    gl.uniform1i(webglTextureProgramRef.image, 0);
+    gl.disable(gl.BLEND);
+    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 4);
+    gl.enable(gl.BLEND);
+    return true;
+  },
+
   buildWebglMapGeometry(ids) {
     const vertices = [];
     ids.forEach((floorId, index) => {
       const state = this.floorDrawState(floorId, index, ids.length);
-      this.pushWebglFloor(vertices, floorId, state);
-      this.pushWebglSpaces(vertices, floorId, state);
-      this.pushWebglRooms(vertices, floorId, state);
-      this.pushWebglWalls(vertices, floorId, state);
-      this.pushWebglDoors(vertices, floorId, state);
-      this.pushWebglStairs(vertices, floorId, state);
-      this.pushWebglCenterlines(vertices, floorId, state);
+      if (!webglTextureReady) {
+        this.pushWebglFloor(vertices, floorId, state);
+        this.pushWebglSpaces(vertices, floorId, state);
+        this.pushWebglRooms(vertices, floorId, state);
+        this.pushWebglWalls(vertices, floorId, state);
+        this.pushWebglDoors(vertices, floorId, state);
+        this.pushWebglStairs(vertices, floorId, state);
+        this.pushWebglCenterlines(vertices, floorId, state);
+      }
       this.pushWebglRoute(vertices, floorId, state);
       this.pushWebglRouteNodes(vertices, floorId, state);
     });

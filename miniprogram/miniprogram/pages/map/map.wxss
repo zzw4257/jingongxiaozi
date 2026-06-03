@@ -84,8 +84,16 @@ page {
 .renderer-canvas-ready .native-floor-title,
 .renderer-canvas-ready .native-space-label,
 .renderer-canvas-ready .native-room-label {
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: 0 3px 10px rgba(20, 53, 94, 0.08);
+  background: transparent;
+  box-shadow: none;
+}
+
+.renderer-canvas-ready .native-space-label {
+  color: transparent;
+}
+
+.renderer-canvas-ready .native-room-label {
+  color: transparent;
 }
 
 .renderer-canvas-ready .native-route-pin {

@@ -1,43 +1,10 @@
 const mapDataModule = require("../../data/map-data");
+const mapRuntimeModule = require("../../data/map-runtime");
 const mapData = mapDataModule.default || mapDataModule;
+const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 
 const defaultStartRoomId = mapData.defaultStartRoomId || "101";
-const floorOrder = ["1F", "2F", "25F"];
-const floorTitles = {
-  "1F": "一层",
-  "2F": "二层",
-  "25F": "202 二层半"
-};
-const layerHints = {
-  allFloors: "整楼导航",
-  "1F": "一层 · 房间、门口和走廊",
-  "2F": "二层 · 普通二层与 202 下方承托",
-  raised202: "202 平台 · 高平台和下方承托",
-  exploded: "分层总览 · 上下层拉开",
-  section: "剖切路线 · 保留跨层关系"
-};
-const quickTargets = [
-  { id: "104-2F01", no: "104", label: "104 二层", meta: "内部楼梯" },
-  { id: "202-5", no: "202-5", label: "202 平台", meta: "公共楼梯" },
-  { id: "108-2F04", no: "108", label: "108 二层", meta: "内部楼梯" },
-  { id: "208", no: "208", label: "208", meta: "二层走廊" }
-];
-const layerOptions = [
-  { id: "allFloors", label: "全楼", desc: "整楼导航" },
-  { id: "1F", label: "一层", desc: "门点走廊" },
-  { id: "2F", label: "二层", desc: "含下方承托" },
-  { id: "raised202", label: "202平台", desc: "平台+承托" },
-  { id: "exploded", label: "分层总览", desc: "上下展开" },
-  { id: "section", label: "剖切路线", desc: "看跨层" }
-];
-const viewOptions = [
-  { id: "overview", label: "总览", desc: "整楼视角" },
-  { id: "near", label: "近看", desc: "展开标签" },
-  { id: "route", label: "路线", desc: "聚焦导引" },
-  { id: "rotateLeft", label: "左转", desc: "逆时针视角" },
-  { id: "rotateRight", label: "右转", desc: "顺时针视角" },
-  { id: "reset", label: "复位", desc: "回到默认" }
-];
+const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, overviewLabelRoomIds, palette } = mapRuntime;
 const railButtonTops = [4, 40, 76, 112, 148];
 const railTapActions = [
   { action: "back" },
@@ -46,49 +13,6 @@ const railTapActions = [
   { panel: "view" },
   { view: "reset" }
 ];
-const overviewLabelRoomIds = new Set(["101", "104-1F01", "106", "107-core", "108-lobby", "202-5", "208", "210"]);
-const mapImageByLayer = {
-  allFloors: "../../assets/ui/miniprogram-map-main-mobile-0603.png",
-  "1F": "../../assets/ui/miniprogram-map-main-mobile-0603.png",
-  "2F": "../../assets/ui/miniprogram-map-layer-2f-mobile-0603.png",
-  raised202: "../../assets/ui/miniprogram-map-layer-202-mobile-0603.png",
-  exploded: "../../assets/ui/miniprogram-map-layer-exploded-mobile-0603.png",
-  section: "../../assets/ui/miniprogram-map-layer-exploded-mobile-0603.png"
-};
-const mapImageByTarget = {
-  "104-2F01": "../../assets/ui/miniprogram-map-route-104-mobile-0603.png",
-  "202-5": "../../assets/ui/miniprogram-map-route-202-mobile-0603.png",
-  "108-2F04": "../../assets/ui/miniprogram-map-route-108-mobile-0603.png",
-  "208": "../../assets/ui/miniprogram-map-route-208-mobile-0603.png"
-};
-
-const palette = {
-  floor: "#f1f8ff",
-  floorEdge: "#58708b",
-  floorSide: "#a9bfd3",
-  corridor: "#c8efff",
-  corridorLine: "#308fbd",
-  service: "#dff5e8",
-  restroom: "#d9f3e9",
-  storage: "#e7edf4",
-  reserved: "#edf1f6",
-  teaching: "#dbeafe",
-  processing: "#ffdca8",
-  lab: "#fff0bd",
-  office: "#d8c4ff",
-  other: "#eef2f6",
-  wall: "#2f445a",
-  door: "#ffffff",
-  inferredDoor: "#9aaabc",
-  route: "#0b6cff",
-  stairRoute: "#ff9700",
-  start: "#16a060",
-  target: "#ff3f6c",
-  stair: "#ffc25b",
-  stairEdge: "#b66b00",
-  text: "#17253a"
-};
-
 let canvasRef = null;
 let ctxRef = null;
 let dprRef = 1;
@@ -96,10 +20,6 @@ let canvasBox = { width: 0, height: 0 };
 let legacyCanvas = false;
 let webglRef = null;
 let webglProgramRef = null;
-let webglTextureProgramRef = null;
-let webglMapTextureRef = null;
-let webglMapTextureSrc = "";
-let webglTextureReady = false;
 let lastTapTargets = [];
 
 function fallbackCanvasSize() {
@@ -185,18 +105,15 @@ function floorViewport(floorId, layerMode = "allFloors") {
 }
 
 function displayFloorForRoom(room) {
-  if (room.id === "202-5") return "25F";
-  return room.floor;
+  return mapRuntime.displayFloorForRoom(room);
 }
 
 function displayFloorForDoor(door) {
-  if (door.nodeId === "door-202-5") return "25F";
-  return door.floor;
+  return mapRuntime.displayFloorForDoor(door);
 }
 
 function displayFloorForRoutePoint(point) {
-  if (point.nodeId === "center-202-5" || point.nodeId === "door-202-5") return "25F";
-  return point.floor;
+  return mapRuntime.displayFloorForRoutePoint(point);
 }
 
 function roomColor(room) {
@@ -230,145 +147,24 @@ function labelForRoom(room, density, onRoute) {
 }
 
 function nodeTitle(node, nodeId) {
-  const room = roomForNode(nodeId);
-  if (room && node.kind === "room-center") return `${room.roomNo} 房间内`;
-  if (room && node.kind === "door") return `${room.roomNo} 门口`;
-  return node.label || "走廊节点";
-}
-
-function roomForNode(nodeId) {
-  const center = nodeId.match(/^center-(.+)$/);
-  if (center) return mapData.rooms.find((room) => room.id === center[1]);
-  return mapData.rooms.find((room) => room.doorNodeId === nodeId);
+  return mapRuntime.nodeTitle(mapData, node, nodeId);
 }
 
 function stepInstruction(edge, from, to, meters) {
-  if (edge.kind === "room-entry") return "从房间中心走到门口";
-  if (edge.kind === "door") return from.kind === "door" ? "出门进入走廊" : "通过门点进入空间";
-  if (edge.kind === "internal-stair") return "经房间内部楼梯上下楼";
-  if (edge.kind === "stair") return "经公共楼梯上下楼";
-  return `沿走廊前进约 ${Math.max(1, meters)} 米`;
-}
-
-function metersFromWeight(weight) {
-  return Math.max(1, Math.round(Number(weight) || 0));
+  return mapRuntime.stepInstruction(edge, from, to, meters);
 }
 
 function checkpointVerb(kind) {
-  if (kind === "stair") return "到达楼梯";
-  if (kind === "door") return "到达门口";
-  if (kind === "destination") return "到达终点";
-  return "到达节点";
+  return mapRuntime.checkpointVerb(kind);
 }
 
 function buildGraph() {
-  const nodeMap = new Map(mapData.nodes.map((node) => [node.id, node]));
-  const adjacency = new Map();
-  const distance = (from, to) => {
-    const dx = from.point[0] - to.point[0];
-    const dy = from.point[1] - to.point[1];
-    return Math.hypot(dx, dy) * mapData.scaleMetersPerUnit;
-  };
-  for (const edge of mapData.edges) {
-    const from = nodeMap.get(edge.from);
-    const to = nodeMap.get(edge.to);
-    if (!from || !to) continue;
-    const weight = edge.distance || distance(from, to);
-    const add = (a, b) => {
-      const list = adjacency.get(a) || [];
-      list.push({ to: b, edge, weight });
-      adjacency.set(a, list);
-    };
-    add(edge.from, edge.to);
-    add(edge.to, edge.from);
-  }
-  return { nodeMap, adjacency };
+  return mapRuntime.buildGraph(mapData);
 }
 
 function calculateRoute(startRoomId, targetRoomId) {
-  if (!targetRoomId || startRoomId === targetRoomId) return null;
-  const startRoom = mapData.rooms.find((room) => room.id === startRoomId) || mapData.rooms.find((room) => room.id === defaultStartRoomId);
-  const targetRoom = mapData.rooms.find((room) => room.id === targetRoomId);
-  if (!startRoom || !targetRoom) return null;
-  const { nodeMap, adjacency } = buildGraph();
-  const startNodeId = `center-${startRoom.id}`;
-  const targetNodeId = `center-${targetRoom.id}`;
-  const distances = new Map();
-  const previous = new Map();
-  const unvisited = new Set(nodeMap.keys());
-  for (const nodeId of nodeMap.keys()) distances.set(nodeId, Number.POSITIVE_INFINITY);
-  distances.set(startNodeId, 0);
-  while (unvisited.size) {
-    let current;
-    let best = Number.POSITIVE_INFINITY;
-    for (const nodeId of unvisited) {
-      const score = distances.get(nodeId);
-      if (score < best) {
-        best = score;
-        current = nodeId;
-      }
-    }
-    if (!current || current === targetNodeId) break;
-    unvisited.delete(current);
-    for (const next of adjacency.get(current) || []) {
-      if (!unvisited.has(next.to)) continue;
-      const alt = best + next.weight;
-      if (alt < distances.get(next.to)) {
-        distances.set(next.to, alt);
-        previous.set(next.to, { nodeId: current, edge: next.edge, weight: next.weight });
-      }
-    }
-  }
-  if (!previous.has(targetNodeId)) return null;
-  const nodeIds = [targetNodeId];
-  const edgePath = [];
-  let cursor = targetNodeId;
-  while (cursor !== startNodeId) {
-    const prior = previous.get(cursor);
-    if (!prior) return null;
-    edgePath.unshift({ from: prior.nodeId, to: cursor, edge: prior.edge, weight: prior.weight });
-    cursor = prior.nodeId;
-    nodeIds.unshift(cursor);
-  }
-  const points = nodeIds.map((nodeId, index) => {
-    const node = nodeMap.get(nodeId);
-    const incoming = edgePath[index - 1]?.edge;
-    return {
-      nodeId,
-      floor: node.floor,
-      point: node.point,
-      kind: incoming?.kind || node.kind,
-      label: node.label || nodeId
-    };
-  });
-  const totalMeters = Math.round(distances.get(targetNodeId) || 0);
-  const steps = edgePath.map((edgeItem, index) => {
-    const from = nodeMap.get(edgeItem.from);
-    const to = nodeMap.get(edgeItem.to);
-    const checkpointKind = edgeItem.edge.kind.includes("stair") || to.kind === "stair" ? "stair" : to.kind === "door" ? "door" : to.kind === "room-center" ? "destination" : "corridor";
-    return {
-      id: `${edgeItem.from}-${edgeItem.to}-${index}`,
-      no: index + 1,
-      fromTitle: nodeTitle(from, edgeItem.from),
-      title: nodeTitle(to, edgeItem.to),
-      desc: stepInstruction(edgeItem.edge, from, to, Math.round(edgeItem.weight)),
-      kind: edgeItem.edge.kind,
-      weight: metersFromWeight(edgeItem.weight),
-      checkpointKind,
-      className: ["step-card", checkpointKind === "stair" ? "stair" : "", edgeItem.to === targetNodeId ? "target" : ""].filter(Boolean).join(" ")
-    };
-  });
-  return {
-    id: `${startRoom.id}->${targetRoom.id}`,
-    startRoomId: startRoom.id,
-    targetRoomId: targetRoom.id,
-    nodeIds,
-    points,
-    steps,
-    summary: `${startRoom.roomNo} → ${targetRoom.roomNo}`,
-    distance: `${totalMeters}m`,
-    totalMeters
-  };
+  if (!targetRoomId) return null;
+  return mapRuntime.calculateRoute(mapData, startRoomId || defaultStartRoomId, targetRoomId) || null;
 }
 
 function pointInPolygon(point, polygon) {
@@ -386,106 +182,43 @@ function pointInPolygon(point, polygon) {
 }
 
 function layerButtonClass(layerMode, value) {
-  return layerMode === value ? "active" : "";
+  return mapRuntime.layerButtonClass(layerMode, value);
 }
 
 function panelButtonClass(panel, value) {
-  return panel === value ? "active" : "";
+  return mapRuntime.panelButtonClass(panel, value);
 }
 
 function cloneTransform(transform) {
-  return {
-    panX: transform.panX,
-    panY: transform.panY,
-    zoom: transform.zoom,
-    rotation: transform.rotation || 0,
-    imagePanX: transform.imagePanX || 0,
-    imagePanY: transform.imagePanY || 0,
-    imageZoom: transform.imageZoom || 1,
-    imageRotation: transform.imageRotation || 0
-  };
+  return mapRuntime.cloneTransform(transform);
 }
 
 function normalizeTransform(transform) {
-  const panX = Number(transform?.panX || 0);
-  const panY = Number(transform?.panY || 0);
-  const zoom = Number(transform?.zoom || 1);
-  const rotation = Number(transform?.rotation || 0);
-  return {
-    panX,
-    panY,
-    zoom,
-    rotation,
-    imagePanX: Number(transform?.imagePanX || 0),
-    imagePanY: Number(transform?.imagePanY || 0),
-    imageZoom: Number(transform?.imageZoom || 1),
-    imageRotation: Number(transform?.imageRotation || 0)
-  };
+  return mapRuntime.normalizeTransform(transform);
 }
 
 function activeLayerClass(layerMode, id) {
-  return layerMode === id ? "active" : "";
+  return mapRuntime.activeLayerClass(layerMode, id);
 }
 
 function roomLabel(roomId) {
-  const room = mapData.rooms.find((candidate) => candidate.id === roomId);
-  return room ? room.roomNo : roomId || "--";
-}
-
-function mapImageSrc(layerMode, route) {
-  if (route && mapImageByTarget[route.targetRoomId]) return mapImageByTarget[route.targetRoomId];
-  return mapImageByLayer[layerMode] || mapImageByLayer.allFloors;
+  return mapRuntime.roomLabel(mapData, roomId);
 }
 
 function imageTransformStyle(transform) {
-  const panX = Number(transform?.panX || 0);
-  const panY = Number(transform?.panY || 0);
-  const zoom = Math.min(2.4, Math.max(0.72, Number(transform?.zoom || 1)));
-  const rotation = Math.min(0.26, Math.max(-0.26, Number(transform?.rotation || 0)));
-  const deg = rotation * 180 / Math.PI;
-  return `transform: translate(${panX.toFixed(1)}px, ${panY.toFixed(1)}px) scale(${zoom.toFixed(3)}) rotate(${deg.toFixed(2)}deg);`;
+  return mapRuntime.imageTransformStyle(transform);
 }
 
 function userImageTransformStyle(transform) {
-  const panX = Number(transform?.imagePanX || 0);
-  const panY = Number(transform?.imagePanY || 0);
-  const zoom = Math.min(2.4, Math.max(1, Number(transform?.imageZoom || 1)));
-  const rotation = Math.min(0.18, Math.max(-0.18, Number(transform?.imageRotation || 0)));
-  const deg = rotation * 180 / Math.PI;
-  return `transform: translate(${panX.toFixed(1)}px, ${panY.toFixed(1)}px) scale(${zoom.toFixed(3)}) rotate(${deg.toFixed(2)}deg);`;
+  return mapRuntime.userImageTransformStyle(transform);
 }
 
 function railTapAction(tap) {
-  const width = Number(canvasBox.width || 390);
-  const height = Number(canvasBox.height || 180);
-  const railLeft = width - 64;
-  const railTop = height / 2 - 94;
-  if (!width || tap.x < railLeft) return null;
-  for (let i = 0; i < railButtonTops.length; i += 1) {
-    const top = railTop + railButtonTops[i] - 4;
-    const bottom = top + 42;
-    if (tap.y >= top && tap.y <= bottom) return railTapActions[i];
-  }
-  return null;
+  return mapRuntime.railTapAction(tap, canvasBox.width, canvasBox.height);
 }
 
 function imagePresetTransform(transform, viewPreset) {
-  const next = normalizeTransform(transform);
-  if (viewPreset === "near") {
-    next.imageZoom = 1.18;
-  } else if (viewPreset === "route") {
-    next.imageZoom = 1.08;
-  } else {
-    next.imagePanX = 0;
-    next.imagePanY = 0;
-    next.imageZoom = 1;
-    next.imageRotation = 0;
-  }
-  return next;
-}
-
-function shouldKeepRouteOverviewAsset(route) {
-  return Boolean(route && mapImageByTarget[route.targetRoomId]);
+  return mapRuntime.imagePresetTransform(transform, viewPreset);
 }
 
 function setFillStyle(ctx, value) {
@@ -636,42 +369,6 @@ function createWebglProgram(gl) {
   };
 }
 
-function createWebglTextureProgram(gl) {
-  const vertexShader = compileWebglShader(gl, gl.VERTEX_SHADER, `
-    attribute vec2 a_position;
-    attribute vec2 a_texCoord;
-    varying vec2 v_texCoord;
-    void main() {
-      gl_Position = vec4(a_position, 0.0, 1.0);
-      v_texCoord = a_texCoord;
-    }
-  `);
-  const fragmentShader = compileWebglShader(gl, gl.FRAGMENT_SHADER, `
-    precision mediump float;
-    varying vec2 v_texCoord;
-    uniform sampler2D u_image;
-    void main() {
-      gl_FragColor = texture2D(u_image, v_texCoord);
-    }
-  `);
-  const program = gl.createProgram();
-  gl.attachShader(program, vertexShader);
-  gl.attachShader(program, fragmentShader);
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    const message = gl.getProgramInfoLog(program);
-    gl.deleteProgram(program);
-    throw new Error(`WebGL texture program link failed: ${message}`);
-  }
-  return {
-    program,
-    buffer: gl.createBuffer(),
-    position: gl.getAttribLocation(program, "a_position"),
-    texCoord: gl.getAttribLocation(program, "a_texCoord"),
-    image: gl.getUniformLocation(program, "u_image")
-  };
-}
-
 function pushWebglVertex(vertices, point, rgba) {
   const x = (point.x / Math.max(1, canvasBox.width)) * 2 - 1;
   const y = 1 - (point.y / Math.max(1, canvasBox.height)) * 2;
@@ -725,43 +422,26 @@ function pushWebglCircle(vertices, center, radius, color, alpha = 1, segments = 
   }
 }
 
-function webglStageImageRect(width, height) {
-  const imageW = 844;
-  const imageH = 390;
-  const stageW = Math.max(1, width);
-  const stageH = Math.max(1, height);
-  const scale = Math.min(stageW / imageW, stageH / imageH);
-  const drawnW = imageW * scale;
-  const drawnH = imageH * scale;
-  return {
-    x: (stageW - drawnW) / 2,
-    y: (stageH - drawnH) / 2,
-    w: drawnW,
-    h: drawnH
-  };
-}
-
-function pushWebglTextureQuad(vertices, rect) {
-  const left = (rect.x / Math.max(1, canvasBox.width)) * 2 - 1;
-  const right = ((rect.x + rect.w) / Math.max(1, canvasBox.width)) * 2 - 1;
-  const top = 1 - (rect.y / Math.max(1, canvasBox.height)) * 2;
-  const bottom = 1 - ((rect.y + rect.h) / Math.max(1, canvasBox.height)) * 2;
-  vertices.push(
-    left, top, 0, 0,
-    right, top, 1, 0,
-    left, bottom, 0, 1,
-    left, bottom, 0, 1,
-    right, top, 1, 0,
-    right, bottom, 1, 1
-  );
-}
-
 function measureTextWidth(ctx, text, fontSize) {
   if (ctx.measureText) {
     const metrics = ctx.measureText(text);
     if (metrics && Number.isFinite(metrics.width)) return metrics.width;
   }
   return String(text).length * fontSize * 0.62;
+}
+
+function routeStepCardForLeg(leg) {
+  return {
+    id: leg.id,
+    no: leg.index + 1,
+    title: leg.checkpointLabel || leg.toLabel,
+    desc: leg.instruction,
+    className: [
+      "step-card",
+      leg.checkpointKind === "stair" ? "stair" : "",
+      leg.checkpointKind === "destination" ? "target" : ""
+    ].filter(Boolean).join(" ")
+  };
 }
 
 const nativeVisual = {
@@ -776,8 +456,10 @@ const nativeVisual = {
 
 function updateNativeVisualMetrics(layerMode = "allFloors", hasRoute = false) {
   const fallback = fallbackCanvasSize();
-  nativeVisual.stageWidth = Math.max(320, fallback.width - 12);
-  nativeVisual.stageHeight = Math.max(176, fallback.height - 12);
+  const width = Number(canvasBox.width || fallback.width);
+  const height = Number(canvasBox.height || fallback.height);
+  nativeVisual.stageWidth = Math.max(320, width);
+  nativeVisual.stageHeight = Math.max(176, height);
   nativeVisual.layerMode = layerMode;
 }
 
@@ -1063,8 +745,7 @@ Page({
     primaryQuickTargets: quickTargets.slice(0, 3),
     layerOptions,
     viewOptions,
-    mapImageSrc: mapImageByLayer.allFloors,
-    mapImageTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
+    mapTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
     rendererReadyClass: "",
     nativeFloors: [],
     nativeSpaces: [],
@@ -1125,10 +806,6 @@ Page({
     ctxRef = null;
     webglRef = null;
     webglProgramRef = null;
-    webglTextureProgramRef = null;
-    webglMapTextureRef = null;
-    webglMapTextureSrc = "";
-    webglTextureReady = false;
     legacyCanvas = false;
     if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
       this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
@@ -1136,8 +813,7 @@ Page({
     updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
     const publishVisualState = (rendererReady) => this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
-      mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
-      mapImageTransformStyle: userImageTransformStyle(this.transform),
+      mapTransformStyle: userImageTransformStyle(this.transform),
       rendererReadyClass: rendererReady ? "renderer-canvas-ready" : ""
     }, () => this.drawMap());
 
@@ -1155,6 +831,11 @@ Page({
       const width = Math.max(1, Math.floor(result[0].width || fallback.width));
       const height = Math.max(1, Math.floor(result[0].height || fallback.height));
       canvasBox = { width, height };
+      if (this.data.viewPreset === "route") {
+        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, "route"));
+      } else if (this.data.viewPreset === "overview") {
+        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, "overview"));
+      }
       canvasRef = canvasNode;
       canvasRef.width = Math.floor(width * dprRef);
       canvasRef.height = Math.floor(height * dprRef);
@@ -1162,20 +843,18 @@ Page({
       if (webglRef) {
         try {
           webglProgramRef = createWebglProgram(webglRef);
-          webglTextureProgramRef = createWebglTextureProgram(webglRef);
           renderWebglBackdrop(webglRef, canvasRef.width, canvasRef.height, this.data.hasRoute);
         } catch (error) {
           console.warn("WebGL map renderer unavailable", error);
           webglRef = null;
           webglProgramRef = null;
-          webglTextureProgramRef = null;
         }
       }
       ctxRef = null;
       legacyCanvas = false;
       updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
       if (webglRef) {
-        this.ensureWebglMapTexture(mapImageSrc(this.data.layerMode, this.data.route), () => publishVisualState(Boolean(webglRef && webglTextureReady)));
+        publishVisualState(true);
       } else {
         publishVisualState(false);
       }
@@ -1185,18 +864,17 @@ Page({
   setRouteState(next, options = {}) {
     const route = next.route || null;
     const layerMode = next.layerMode || this.data.layerMode || "allFloors";
-    const steps = route ? route.steps : [];
+    const steps = route ? route.guidanceLegs || [] : [];
     const requestedIndex = Number.isFinite(next.activeStepIndex) ? next.activeStepIndex : this.data.activeStepIndex || 0;
     const activeStepIndex = route ? Math.min(Math.max(0, requestedIndex), Math.max(0, steps.length - 1)) : 0;
     const currentStep = steps[activeStepIndex];
-    const visibleRouteSteps = route ? steps.slice(Math.max(0, activeStepIndex - 1), Math.max(0, activeStepIndex - 1) + 3) : [];
+    const visibleRouteSteps = route ? steps.slice(Math.max(0, activeStepIndex - 1), Math.max(0, activeStepIndex - 1) + 3).map(routeStepCardForLeg) : [];
     updateNativeVisualMetrics(layerMode, Boolean(route));
     this.setData({
       ...next,
       ...buildNativeMapVisual(route, activeStepIndex, layerMode),
       route,
-      mapImageSrc: mapImageSrc(layerMode, route),
-      mapImageTransformStyle: userImageTransformStyle(this.transform),
+      mapTransformStyle: userImageTransformStyle(this.transform),
       hasRoute: Boolean(route),
       routeSteps: steps,
       visibleRouteSteps,
@@ -1205,11 +883,11 @@ Page({
       routeStartLabel: route ? roomLabel(route.startRoomId) : roomLabel(this.data.startRoomId || defaultStartRoomId),
       routeTargetLabel: route ? roomLabel(route.targetRoomId) : "未选择",
       activeStepLabel: route ? `${activeStepIndex + 1}/${Math.max(1, steps.length)}` : "1/1",
-      currentStepTitle: currentStep ? currentStep.fromTitle : "当前位置",
-      nextStepTitle: currentStep ? currentStep.title : "选择终点",
+      currentStepTitle: currentStep ? currentStep.fromLabel : "当前位置",
+      nextStepTitle: currentStep ? currentStep.checkpointLabel || currentStep.toLabel : "选择终点",
       nextStepVerb: currentStep ? checkpointVerb(currentStep.checkpointKind) : "下一处",
-      activeStepDistanceLabel: currentStep ? `${Math.max(1, Math.round(currentStep.weight || 0))}m` : "--",
-      stepActionLabel: route && activeStepIndex < steps.length - 1 ? "到达" : "完成",
+      activeStepDistanceLabel: currentStep ? `${Math.max(1, Math.round(currentStep.distanceMeters || 0))}m` : "--",
+      stepActionLabel: currentStep ? currentStep.actionLabel : route && activeStepIndex < steps.length - 1 ? "到达" : "完成",
       canPrevStep: Boolean(route && activeStepIndex > 0),
       canNextStep: Boolean(route && activeStepIndex < steps.length - 1),
       prevStepDisabledClass: route && activeStepIndex > 0 ? "" : "disabled",
@@ -1226,13 +904,8 @@ Page({
   },
 
   drawMap() {
-    this.setData({ mapImageTransformStyle: userImageTransformStyle(this.transform) });
+    this.setData({ mapTransformStyle: userImageTransformStyle(this.transform) });
     if (webglRef && canvasRef) {
-      const nextTextureSrc = mapImageSrc(this.data.layerMode, this.data.route);
-      if (nextTextureSrc !== webglMapTextureSrc || !webglTextureReady) {
-        this.ensureWebglMapTexture(nextTextureSrc, () => this.drawWebglMap());
-        return;
-      }
       this.drawWebglMap();
       return;
     }
@@ -1250,54 +923,10 @@ Page({
     if (legacyCanvas && ctx.draw) ctx.draw();
   },
 
-  ensureWebglMapTexture(src, callback) {
-    const gl = webglRef;
-    if (!gl || !canvasRef || !webglTextureProgramRef || !src) {
-      if (callback) callback();
-      return;
-    }
-    if (webglMapTextureRef && webglMapTextureSrc === src && webglTextureReady) {
-      if (callback) callback();
-      return;
-    }
-    webglTextureReady = false;
-    webglMapTextureSrc = src;
-    const image = canvasRef.createImage ? canvasRef.createImage() : null;
-    if (!image) {
-      if (callback) callback();
-      return;
-    }
-    image.onload = () => {
-      if (!webglRef || webglMapTextureSrc !== src) return;
-      const texture = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, texture);
-      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-      webglMapTextureRef = texture;
-      webglTextureReady = true;
-      this.setData({ rendererReadyClass: "renderer-canvas-ready" }, () => {
-        this.drawWebglMap();
-        if (callback) callback();
-      });
-    };
-    image.onerror = () => {
-      webglTextureReady = false;
-      this.setData({ rendererReadyClass: "" }, () => {
-        if (callback) callback();
-      });
-    };
-    image.src = src;
-  },
-
   drawWebglMap() {
     const gl = webglRef;
     if (!gl || !webglProgramRef || !canvasRef) return;
     renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
-    this.drawWebglBaselineTexture();
     const ids = this.visibleFloorIds();
     const vertices = this.buildWebglMapGeometry(ids);
     if (!vertices.length) return;
@@ -1314,41 +943,17 @@ Page({
     gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
   },
 
-  drawWebglBaselineTexture() {
-    const gl = webglRef;
-    if (!gl || !webglTextureProgramRef || !webglMapTextureRef || !webglTextureReady) return false;
-    const vertices = [];
-    pushWebglTextureQuad(vertices, webglStageImageRect(canvasBox.width, canvasBox.height));
-    gl.useProgram(webglTextureProgramRef.program);
-    gl.bindBuffer(gl.ARRAY_BUFFER, webglTextureProgramRef.buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
-    const stride = 4 * 4;
-    gl.enableVertexAttribArray(webglTextureProgramRef.position);
-    gl.vertexAttribPointer(webglTextureProgramRef.position, 2, gl.FLOAT, false, stride, 0);
-    gl.enableVertexAttribArray(webglTextureProgramRef.texCoord);
-    gl.vertexAttribPointer(webglTextureProgramRef.texCoord, 2, gl.FLOAT, false, stride, 2 * 4);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, webglMapTextureRef);
-    gl.uniform1i(webglTextureProgramRef.image, 0);
-    gl.disable(gl.BLEND);
-    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 4);
-    gl.enable(gl.BLEND);
-    return true;
-  },
-
   buildWebglMapGeometry(ids) {
     const vertices = [];
     ids.forEach((floorId, index) => {
       const state = this.floorDrawState(floorId, index, ids.length);
-      if (!webglTextureReady) {
-        this.pushWebglFloor(vertices, floorId, state);
-        this.pushWebglSpaces(vertices, floorId, state);
-        this.pushWebglRooms(vertices, floorId, state);
-        this.pushWebglWalls(vertices, floorId, state);
-        this.pushWebglDoors(vertices, floorId, state);
-        this.pushWebglStairs(vertices, floorId, state);
-        this.pushWebglCenterlines(vertices, floorId, state);
-      }
+      this.pushWebglFloor(vertices, floorId, state);
+      this.pushWebglSpaces(vertices, floorId, state);
+      this.pushWebglRooms(vertices, floorId, state);
+      this.pushWebglWalls(vertices, floorId, state);
+      this.pushWebglDoors(vertices, floorId, state);
+      this.pushWebglStairs(vertices, floorId, state);
+      this.pushWebglCenterlines(vertices, floorId, state);
       this.pushWebglRoute(vertices, floorId, state);
       this.pushWebglRouteNodes(vertices, floorId, state);
     });
@@ -2281,7 +1886,6 @@ Page({
     this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, layerMode),
       layerMode,
-      mapImageSrc: mapImageSrc(layerMode, this.data.route),
       layerHint: layerHints[layerMode] || layerHints.allFloors,
       allLayerClass: activeLayerClass(layerMode, "allFloors"),
       layer1FClass: layerButtonClass(layerMode, "1F"),
@@ -2301,7 +1905,18 @@ Page({
     let zoom = base;
     if (viewPreset === "near") zoom = Math.max(1.22, base + 0.16);
     if (viewPreset === "route") zoom = this.data.route ? Math.max(1.16, base + 0.12) : base;
-    return normalizeTransform({ panX: 0, panY: 0, zoom, rotation });
+    const imageZoom = viewPreset === "route" ? 1.08 : viewPreset === "near" ? 1.14 : 1;
+    const imageRotation = viewPreset === "overview" ? 0 : rotation;
+    return normalizeTransform({
+      panX: 0,
+      panY: 0,
+      zoom,
+      rotation,
+      imagePanX: 0,
+      imagePanY: 0,
+      imageZoom,
+      imageRotation
+    });
   },
 
   setViewPreset(event) {
@@ -2328,7 +1943,6 @@ Page({
       this.setData({
         ...buildNativeMapVisual(null, 0, "allFloors"),
         layerMode: "allFloors",
-        mapImageSrc: mapImageSrc("allFloors", null),
         viewPreset: "overview",
         layerHint: layerHints.allFloors
       }, () => this.drawMap());
@@ -2336,7 +1950,7 @@ Page({
     }
     const point = route.points[Math.min(route.points.length - 1, (this.data.activeStepIndex || 0) + 1)];
     const targetFloor = displayFloorForRoutePoint(point);
-    const layerMode = shouldKeepRouteOverviewAsset(route) ? "allFloors" : targetFloor === "25F" ? "raised202" : targetFloor;
+    const layerMode = targetFloor === "25F" ? "raised202" : targetFloor;
     this.transform = normalizeTransform(this.defaultTransform(layerMode, "route"));
     const ids = layerMode === "allFloors" ? floorOrder : layerMode === "raised202" ? ["2F", "25F"] : [layerMode];
     const floorId = layerMode === "allFloors" ? targetFloor : targetFloor === "25F" ? "25F" : targetFloor;
@@ -2348,7 +1962,6 @@ Page({
     this.setData({
       ...buildNativeMapVisual(route, this.data.activeStepIndex || 0, layerMode),
       layerMode,
-      mapImageSrc: mapImageSrc(layerMode, route),
       viewPreset: "route",
       layerHint: layerHints[layerMode] || layerHints.allFloors,
       allLayerClass: activeLayerClass(layerMode, "allFloors"),

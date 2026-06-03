@@ -198,6 +198,9 @@ export type RouteResult = {
   id: string;
   startRoomId: string;
   targetRoomId: string;
+  nodeIds: string[];
+  summary: string;
+  distance: string;
   totalMeters: number;
   estimatedSeconds: number;
   steps: RouteStep[];

@@ -94,6 +94,8 @@ let ctxRef = null;
 let dprRef = 1;
 let canvasBox = { width: 0, height: 0 };
 let legacyCanvas = false;
+let webglRef = null;
+let webglProgramRef = null;
 let lastTapTargets = [];
 
 function fallbackCanvasSize() {
@@ -545,6 +547,144 @@ function setLineDashCompat(ctx, segments) {
   if (ctx.setLineDash) ctx.setLineDash(segments);
 }
 
+function renderWebglBackdrop(gl, width, height, hasRoute = false) {
+  if (!gl) return false;
+  gl.viewport(0, 0, Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)));
+  const tint = hasRoute ? [0.9, 0.96, 1, 1] : [0.965, 0.985, 1, 1];
+  gl.clearColor(tint[0], tint[1], tint[2], tint[3]);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  return true;
+}
+
+function colorToRgba(value, fallback = [1, 1, 1, 1]) {
+  if (!value || typeof value !== "string") return fallback;
+  const hex = value.trim();
+  if (hex[0] === "#") {
+    const raw = hex.slice(1);
+    const full = raw.length === 3 ? raw.split("").map((part) => `${part}${part}`).join("") : raw;
+    if (full.length >= 6) {
+      return [
+        parseInt(full.slice(0, 2), 16) / 255,
+        parseInt(full.slice(2, 4), 16) / 255,
+        parseInt(full.slice(4, 6), 16) / 255,
+        full.length >= 8 ? parseInt(full.slice(6, 8), 16) / 255 : 1
+      ];
+    }
+  }
+  const rgba = hex.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgba) {
+    const parts = rgba[1].split(",").map((part) => Number(part.trim()));
+    if (parts.length >= 3) {
+      return [
+        Math.max(0, Math.min(1, parts[0] / 255)),
+        Math.max(0, Math.min(1, parts[1] / 255)),
+        Math.max(0, Math.min(1, parts[2] / 255)),
+        Number.isFinite(parts[3]) ? Math.max(0, Math.min(1, parts[3])) : 1
+      ];
+    }
+  }
+  return fallback;
+}
+
+function compileWebglShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const message = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error(`WebGL shader compile failed: ${message}`);
+  }
+  return shader;
+}
+
+function createWebglProgram(gl) {
+  const vertexShader = compileWebglShader(gl, gl.VERTEX_SHADER, `
+    attribute vec2 a_position;
+    attribute vec4 a_color;
+    varying vec4 v_color;
+    void main() {
+      gl_Position = vec4(a_position, 0.0, 1.0);
+      v_color = a_color;
+    }
+  `);
+  const fragmentShader = compileWebglShader(gl, gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec4 v_color;
+    void main() {
+      gl_FragColor = v_color;
+    }
+  `);
+  const program = gl.createProgram();
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(`WebGL program link failed: ${message}`);
+  }
+  return {
+    program,
+    buffer: gl.createBuffer(),
+    position: gl.getAttribLocation(program, "a_position"),
+    color: gl.getAttribLocation(program, "a_color")
+  };
+}
+
+function pushWebglVertex(vertices, point, rgba) {
+  const x = (point.x / Math.max(1, canvasBox.width)) * 2 - 1;
+  const y = 1 - (point.y / Math.max(1, canvasBox.height)) * 2;
+  vertices.push(x, y, rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+function pushWebglTriangle(vertices, a, b, c, rgba) {
+  pushWebglVertex(vertices, a, rgba);
+  pushWebglVertex(vertices, b, rgba);
+  pushWebglVertex(vertices, c, rgba);
+}
+
+function pushWebglPolygon(vertices, points, color, alpha = 1) {
+  if (!points || points.length < 3) return;
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    pushWebglTriangle(vertices, points[0], points[index], points[index + 1], rgba);
+  }
+}
+
+function pushWebglLine(vertices, from, to, color, width = 4, alpha = 1) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const nx = (-dy / length) * width / 2;
+  const ny = (dx / length) * width / 2;
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  const a = { x: from.x + nx, y: from.y + ny };
+  const b = { x: to.x + nx, y: to.y + ny };
+  const c = { x: to.x - nx, y: to.y - ny };
+  const d = { x: from.x - nx, y: from.y - ny };
+  pushWebglTriangle(vertices, a, b, c, rgba);
+  pushWebglTriangle(vertices, a, c, d, rgba);
+}
+
+function pushWebglCircle(vertices, center, radius, color, alpha = 1, segments = 24) {
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  for (let index = 0; index < segments; index += 1) {
+    const start = (Math.PI * 2 * index) / segments;
+    const end = (Math.PI * 2 * (index + 1)) / segments;
+    pushWebglTriangle(
+      vertices,
+      center,
+      { x: center.x + Math.cos(start) * radius, y: center.y + Math.sin(start) * radius },
+      { x: center.x + Math.cos(end) * radius, y: center.y + Math.sin(end) * radius },
+      rgba
+    );
+  }
+}
+
 function measureTextWidth(ctx, text, fontSize) {
   if (ctx.measureText) {
     const metrics = ctx.measureText(text);
@@ -908,20 +1048,57 @@ Page({
       width: Math.max(1, fallback.width),
       height: Math.max(1, fallback.height)
     };
-    dprRef = 1;
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+    dprRef = Math.max(1, Number(windowInfo.pixelRatio || 1));
     canvasRef = null;
     ctxRef = null;
+    webglRef = null;
+    webglProgramRef = null;
     legacyCanvas = false;
     if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
       this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
     }
     updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
-    this.setData({
+    const publishVisualState = (rendererReady) => this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
       mapImageSrc: mapImageSrc(this.data.layerMode, this.data.route),
       mapImageTransformStyle: userImageTransformStyle(this.transform),
-      rendererReadyClass: "renderer-canvas-ready"
+      rendererReadyClass: rendererReady ? "renderer-canvas-ready" : ""
     }, () => this.drawMap());
+
+    if (!wx.createSelectorQuery) {
+      publishVisualState(false);
+      return;
+    }
+    const query = wx.createSelectorQuery().in ? wx.createSelectorQuery().in(this) : wx.createSelectorQuery();
+    query.select("#mapCanvas").fields({ node: true, size: true }).exec((result) => {
+      const canvasNode = result && result[0] && result[0].node;
+      if (!canvasNode || !canvasNode.getContext) {
+        publishVisualState(false);
+        return;
+      }
+      const width = Math.max(1, Math.floor(result[0].width || fallback.width));
+      const height = Math.max(1, Math.floor(result[0].height || fallback.height));
+      canvasBox = { width, height };
+      canvasRef = canvasNode;
+      canvasRef.width = Math.floor(width * dprRef);
+      canvasRef.height = Math.floor(height * dprRef);
+      webglRef = canvasRef.getContext("webgl") || canvasRef.getContext("experimental-webgl");
+      if (webglRef) {
+        try {
+          webglProgramRef = createWebglProgram(webglRef);
+          renderWebglBackdrop(webglRef, canvasRef.width, canvasRef.height, this.data.hasRoute);
+        } catch (error) {
+          console.warn("WebGL map renderer unavailable", error);
+          webglRef = null;
+          webglProgramRef = null;
+        }
+      }
+      ctxRef = null;
+      legacyCanvas = false;
+      updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
+      publishVisualState(Boolean(webglRef));
+    });
   },
 
   setRouteState(next) {
@@ -967,6 +1144,10 @@ Page({
 
   drawMap() {
     this.setData({ mapImageTransformStyle: userImageTransformStyle(this.transform) });
+    if (webglRef && canvasRef) {
+      this.drawWebglMap();
+      return;
+    }
     if (!ctxRef || !canvasBox.width || !canvasBox.height) return;
     const ctx = ctxRef;
     if (ctx.setTransform) ctx.setTransform(dprRef, 0, 0, dprRef, 0, 0);
@@ -979,6 +1160,277 @@ Page({
       this.drawFloor(ctx, floorId, state);
     });
     if (legacyCanvas && ctx.draw) ctx.draw();
+  },
+
+  drawWebglMap() {
+    const gl = webglRef;
+    if (!gl || !webglProgramRef || !canvasRef) return;
+    renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+    const ids = this.visibleFloorIds();
+    const vertices = this.buildWebglMapGeometry(ids);
+    if (!vertices.length) return;
+    gl.useProgram(webglProgramRef.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, webglProgramRef.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    const stride = 6 * 4;
+    gl.enableVertexAttribArray(webglProgramRef.position);
+    gl.vertexAttribPointer(webglProgramRef.position, 2, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(webglProgramRef.color);
+    gl.vertexAttribPointer(webglProgramRef.color, 4, gl.FLOAT, false, stride, 2 * 4);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
+  },
+
+  buildWebglMapGeometry(ids) {
+    const vertices = [];
+    ids.forEach((floorId, index) => {
+      const state = this.floorDrawState(floorId, index, ids.length);
+      this.pushWebglFloor(vertices, floorId, state);
+      this.pushWebglSpaces(vertices, floorId, state);
+      this.pushWebglRooms(vertices, floorId, state);
+      this.pushWebglWalls(vertices, floorId, state);
+      this.pushWebglDoors(vertices, floorId, state);
+      this.pushWebglStairs(vertices, floorId, state);
+      this.pushWebglCenterlines(vertices, floorId, state);
+      this.pushWebglRoute(vertices, floorId, state);
+      this.pushWebglRouteNodes(vertices, floorId, state);
+    });
+    return vertices;
+  },
+
+  projectWebglPoint(point, state) {
+    const layout = nativeFloorLayout(state.floorId, state.layerMode);
+    const viewport = layout.viewport;
+    const scale = Math.min(layout.w / viewport.width, layout.h / viewport.height);
+    const offsetX = (layout.w - viewport.width * scale) / 2;
+    const offsetY = (layout.h - viewport.height * scale) / 2;
+    const rawX = layout.x + offsetX + (point[0] - viewport.minX) * scale;
+    const rawY = layout.y + offsetY + (point[1] - viewport.minY) * scale;
+    const cx = canvasBox.width / 2;
+    const cy = canvasBox.height / 2;
+    const dx = rawX - cx;
+    const dy = rawY - cy;
+    const rotation = this.transform.imageRotation || 0;
+    const zoom = Math.min(2.4, Math.max(1, Number(this.transform.imageZoom || 1)));
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+      x: cx + (dx * cos - dy * sin) * zoom + Number(this.transform.imagePanX || 0),
+      y: cy + (dx * sin + dy * cos) * zoom + Number(this.transform.imagePanY || 0)
+    };
+  },
+
+  pushWebglProjectedPolygon(vertices, polygon, state, fill, alpha = 1) {
+    pushWebglPolygon(vertices, polygon.map((point) => this.projectWebglPoint(point, state)), fill, alpha);
+  },
+
+  pushWebglProjectedLine(vertices, from, to, state, color, width = 4, alpha = 1) {
+    pushWebglLine(vertices, this.projectWebglPoint(from, state), this.projectWebglPoint(to, state), color, width, alpha);
+  },
+
+  pushWebglExtrudedPolygon(vertices, polygon, state, options = {}) {
+    if (!polygon.length) return;
+    const depthPx = options.depthPx || (state.all ? 28 : 22);
+    const offset = [options.offsetX || 12 / state.scale, depthPx / state.scale];
+    const top = polygon.map((point) => this.projectWebglPoint(point, state));
+    const bottom = polygon.map((point) => this.projectWebglPoint([point[0] + offset[0], point[1] + offset[1]], state));
+    const shadow = top.map((point) => ({ x: point.x + 12, y: point.y + depthPx + 10 }));
+    pushWebglPolygon(vertices, shadow, options.shadowFill || "rgba(18, 45, 78, 0.12)", 0.85);
+    for (let i = 0; i < top.length; i += 1) {
+      const j = (i + 1) % top.length;
+      const avgY = (top[i].y + top[j].y) / 2;
+      const visibleFace = avgY >= state.baseY - canvasBox.height * 0.42 || i % 2 === 0;
+      if (!visibleFace) continue;
+      pushWebglPolygon(vertices, [top[i], top[j], bottom[j], bottom[i]], options.sideFill || palette.floorSide, 0.96);
+    }
+    pushWebglPolygon(vertices, top, options.topFill || palette.floor, 1);
+  },
+
+  pushWebglFloor(vertices, floorId, state) {
+    const sourceFloorId = floorId === "25F" ? "2F" : floorId;
+    const floor = mapData.floors.find((candidate) => candidate.id === sourceFloorId);
+    if (floor && floorId !== "25F") {
+      this.pushWebglExtrudedPolygon(vertices, floor.outline, state, {
+        depthPx: state.exploded ? 64 : state.section ? 42 : 52,
+        offsetX: state.exploded ? 20 / state.scale : 14 / state.scale,
+        topFill: floorId === "2F" ? "#eef7ff" : palette.floor,
+        sideFill: floorId === "2F" ? "#a9bfd4" : "#9fb6cc",
+        shadowFill: "rgba(18,45,78,0.11)"
+      });
+      return;
+    }
+    const space = mapData.spaces.find((candidate) => candidate.id === "space-202-5");
+    const room = mapData.rooms.find((candidate) => candidate.id === "202-5");
+    const outline = space ? space.polygon : room?.polygon;
+    if (outline) {
+      this.pushWebglExtrudedPolygon(vertices, outline, state, {
+        depthPx: 34,
+        offsetX: 9 / state.scale,
+        topFill: "#ffe7b8",
+        sideFill: "#d89b43",
+        shadowFill: "rgba(154,86,0,0.14)"
+      });
+    }
+  },
+
+  pushWebglSpaces(vertices, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.spaces.filter((space) => {
+      if (floorId === "25F") return space.id === "space-202-5";
+      if (space.id === "space-202-5" || space.kind === "room") return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(space.center, raisedBounds, 24);
+      return space.floor === floorId;
+    }).forEach((space) => {
+      this.pushWebglProjectedPolygon(vertices, space.polygon, state, spaceColor(space), space.kind === "corridor" ? 0.98 : 0.94);
+      if (space.kind === "corridor") {
+        const box = boundsForPolygon(space.polygon);
+        this.pushWebglProjectedLine(vertices, [(box.minX + box.maxX) / 2, box.minY + 8], [(box.minX + box.maxX) / 2, box.maxY - 8], state, "rgba(31,118,174,0.24)", 3.2, 1);
+      }
+    });
+  },
+
+  pushWebglRooms(vertices, floorId, state) {
+    const route = this.data.route;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.rooms.filter((room) => {
+      if (displayFloorForRoom(room) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(room.center, raisedBounds, 18) || room.id === "202-5";
+      return true;
+    }).forEach((room) => {
+      const onRoute = Boolean(route && (route.targetRoomId === room.id || route.nodeIds.includes(`center-${room.id}`) || route.nodeIds.includes(room.doorNodeId)));
+      this.pushWebglProjectedPolygon(vertices, room.polygon, state, onRoute ? "#dbeafe" : roomColor(room), onRoute ? 1 : 0.96);
+      const projected = room.polygon.map((point) => this.projectWebglPoint(point, state));
+      for (let index = 0; index < projected.length; index += 1) {
+        this.pushWebglProjectedScreenLine(vertices, projected[index], projected[(index + 1) % projected.length], onRoute ? "#0b6cff" : palette.wall, onRoute ? 2.8 : 1.6, onRoute ? 0.95 : 0.72);
+      }
+    });
+  },
+
+  pushWebglProjectedScreenLine(vertices, from, to, color, width = 4, alpha = 1) {
+    pushWebglLine(vertices, from, to, color, width, alpha);
+  },
+
+  pushWebglWalls(vertices, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const sourceFloor = floorId === "25F" ? "2F" : floorId;
+    (mapData.walls || []).filter((wall) => {
+      if (wall.floor !== sourceFloor) return false;
+      if (floorId === "25F") return wall.roomId === "202-5" || wall.id.includes("202-5");
+      if (raisedBounds && floorId === "2F") return pointInBounds(wall.from, raisedBounds, 18) || pointInBounds(wall.to, raisedBounds, 18);
+      return true;
+    }).forEach((wall) => {
+      const outer = wall.kind === "outer";
+      const low = wall.kind === "low";
+      this.pushWebglProjectedLine(vertices, wall.from, wall.to, state, low ? "rgba(73,92,112,0.58)" : outer ? "#324b66" : "rgba(47,68,90,0.88)", outer ? 5.2 : low ? 2.2 : 3.2, outer ? 0.92 : 0.76);
+    });
+  },
+
+  pushWebglDoors(vertices, floorId, state) {
+    const route = this.data.route;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.doors.filter((door) => {
+      if (displayFloorForDoor(door) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(door.point, raisedBounds, 24);
+      return true;
+    }).forEach((door) => {
+      const active = Boolean(route && route.nodeIds.includes(door.nodeId));
+      this.pushWebglProjectedLine(vertices, door.from, door.to, state, active ? palette.route : door.source === "inferred" ? palette.inferredDoor : palette.door, active ? 7.5 : 5.2, active ? 1 : 0.98);
+      if (active) {
+        pushWebglCircle(vertices, this.projectWebglPoint(door.point, state), 5.5, palette.route, 1, 18);
+      }
+    });
+  },
+
+  pushWebglStairs(vertices, floorId, state) {
+    mapData.stairs.forEach((stair) => {
+      const entries = [];
+      if (floorId === stair.lowerFloor) entries.push({ polygon: stair.lowerLanding, nodeId: stair.lowerNodeId });
+      if (floorId === stair.upperFloor && stair.upperNodeId !== "stair-202-virtual") entries.push({ polygon: stair.upperLanding, nodeId: stair.upperNodeId });
+      if (floorId === "25F" && stair.id === "stair-public") entries.push({ polygon: [[780, 255], [820, 255], [820, 315], [780, 315]], nodeId: "door-202-5" });
+      entries.forEach((entry) => {
+        const active = Boolean(this.data.route && this.data.route.nodeIds.includes(entry.nodeId));
+        this.pushWebglExtrudedPolygon(vertices, entry.polygon, state, {
+          depthPx: active ? 30 : 24,
+          offsetX: 7 / state.scale,
+          topFill: active ? "#ffb12b" : palette.stair,
+          sideFill: active ? "#d77900" : "#d49639",
+          shadowFill: "rgba(130,73,0,0.14)"
+        });
+        const box = boundsForPolygon(entry.polygon);
+        for (let i = 1; i < 7; i += 1) {
+          const y = box.minY + ((box.maxY - box.minY) * i) / 7;
+          const inset = 5 + (i % 2) * 3;
+          this.pushWebglProjectedLine(vertices, [box.minX + inset, y], [box.maxX - inset, y], state, active ? "rgba(255,255,255,0.86)" : "rgba(111,62,0,0.82)", active ? 2.4 : 1.7, 1);
+        }
+      });
+    });
+  },
+
+  pushWebglCenterlines(vertices, floorId, state) {
+    const route = this.data.route;
+    const routeNodePairSet = new Set();
+    if (route) {
+      for (let i = 1; i < route.nodeIds.length; i += 1) {
+        routeNodePairSet.add(`${route.nodeIds[i - 1]}->${route.nodeIds[i]}`);
+        routeNodePairSet.add(`${route.nodeIds[i]}->${route.nodeIds[i - 1]}`);
+      }
+    }
+    (mapData.centerlines || []).forEach((line) => {
+      if (line.floor !== (floorId === "25F" ? "2F" : floorId)) return;
+      const onRoute = routeNodePairSet.has(`${line.from}->${line.to}`);
+      if (!onRoute && this.data.layerMode === "allFloors" && this.transform.zoom < 1.2) return;
+      if (floorId === "25F" && !line.id.includes("202")) return;
+      const from = mapData.nodes.find((node) => node.id === line.from);
+      const to = mapData.nodes.find((node) => node.id === line.to);
+      if (!from || !to) return;
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, onRoute ? "rgba(11,108,255,0.32)" : "rgba(42,116,160,0.16)", onRoute ? 4 : 2, 1);
+    });
+  },
+
+  pushWebglRoute(vertices, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    for (let index = 1; index < route.points.length; index += 1) {
+      const from = route.points[index - 1];
+      const to = route.points[index];
+      const fromFloor = displayFloorForRoutePoint(from);
+      const toFloor = displayFloorForRoutePoint(to);
+      if (fromFloor !== floorId || toFloor !== floorId) continue;
+      const active = index - 1 === this.data.activeStepIndex;
+      const stair = to.kind.includes("stair") || to.kind === "stair";
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, "#ffffff", active ? 15 : 12, 0.38);
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, stair ? palette.stairRoute : palette.route, active ? 9 : stair ? 7 : 5.8, 1);
+      if (active) {
+        const a = this.projectWebglPoint(from.point, state);
+        const b = this.projectWebglPoint(to.point, state);
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        const x = (a.x + b.x) / 2;
+        const y = (a.y + b.y) / 2;
+        const size = stair ? 11 : 10;
+        const arrow = [
+          { x: x + Math.cos(angle) * size, y: y + Math.sin(angle) * size },
+          { x: x + Math.cos(angle + 2.45) * size * 0.75, y: y + Math.sin(angle + 2.45) * size * 0.75 },
+          { x: x + Math.cos(angle - 2.45) * size * 0.75, y: y + Math.sin(angle - 2.45) * size * 0.75 }
+        ];
+        pushWebglPolygon(vertices, arrow, stair ? palette.stairRoute : palette.route, 1);
+      }
+    }
+  },
+
+  pushWebglRouteNodes(vertices, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    route.points.forEach((point, index) => {
+      if (displayFloorForRoutePoint(point) !== floorId) return;
+      const first = index === 0;
+      const last = index === route.points.length - 1;
+      const active = index === this.data.activeStepIndex + 1;
+      if (!first && !last && !active) return;
+      const radius = first || last ? 15 : active ? 11 : 8;
+      pushWebglCircle(vertices, this.projectWebglPoint(point.point, state), radius + 4, "#ffffff", 0.72, 28);
+      pushWebglCircle(vertices, this.projectWebglPoint(point.point, state), radius, first ? palette.start : last ? palette.target : point.kind.includes("stair") ? palette.stairRoute : palette.route, 1, 28);
+    });
   },
 
   floorDrawState(floorId, index, count, overrideLayerMode) {

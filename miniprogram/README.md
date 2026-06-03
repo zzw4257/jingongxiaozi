@@ -18,7 +18,7 @@
 ## 页面
 
 - `pages/home/home`：待机首页，默认只展示金工小子表情、右下地图入口、左侧应用抽屉。
-- `pages/map/map`：包内原生小程序地图页，不依赖 WebView 或外部 H5 服务。
+- `pages/map/map`：包内原生小程序地图页，主视觉使用 WebGL canvas + 原生交互 overlay，不依赖 WebView 或外部 H5 服务；PNG 只作为 WebGL 初始化失败时的 fallback。
 - `pages/chat/chat`：包内常态对话展示页，对齐移动端的“表情 + 大字回答 + 核心词 + 音频状态”。
 - `pages/expert/expert`：包内专家问答展示页，对齐移动端的专家回答与引用卡片。
 

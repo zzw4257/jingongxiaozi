@@ -1,26 +1,9 @@
 import fs from "node:fs";
-import crypto from "node:crypto";
 import path from "node:path";
 import vm from "node:vm";
 
 const root = process.cwd();
 const releaseMode = process.argv.includes("--release") || process.env.MINIPROGRAM_RELEASE_CHECK === "1";
-const currentMobileMapHashes = {
-  default: "2dc5d1544d90f22e6eb58cd66401c9280ce4da0067811eda83249e921bdac4f1",
-  layer2f: "8364a57c2a38342a42879b828a3ac56e784383c2a295a6d85fde530b84ba0ce1",
-  layer202: "d629eaf5bca50cf86f54f8ec6c841e1940e1e3a12b531fc86811c22dd2a42d15",
-  layerExploded: "d23ee8fed88862bc0adc759274da0d891b21151bab5e1304afa7121f29c2df37",
-  route104: "0c5c19cac96b6c72689a324594ed77ea394b5d58d0f38bc8da7b753ca940aa3e",
-  route202: "c722d8d65f9f302d62576f6403fb21862a34535a3a316ced659aaf5e546593e1",
-  route108: "a968bd00376f41e963ad93a6c381b2411e0f15dc879ad941d8602e34bfce096d",
-  route208: "b059e90cd11ad0f5f10fedbbdec4ffbf32e594b6bb698059b78ef6a0d4da0557",
-};
-const sha256File = (file) => crypto.createHash("sha256").update(fs.readFileSync(path.join(root, file))).digest("hex");
-const pngSize = (file) => {
-  const buffer = fs.readFileSync(path.join(root, file));
-  if (buffer.toString("ascii", 1, 4) !== "PNG") throw new Error(`${file} is not a PNG asset`);
-  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
-};
 const requiredFiles = [
   "miniprogram/project.config.json",
   "miniprogram/miniprogram/app.json",
@@ -34,6 +17,7 @@ const requiredFiles = [
   "miniprogram/miniprogram/pages/map/map.wxss",
   "miniprogram/miniprogram/data/map-data.js",
   "miniprogram/miniprogram/data/map-data.json",
+  "miniprogram/miniprogram/data/map-runtime.js",
   "miniprogram/miniprogram/pages/chat/chat.json",
   "miniprogram/miniprogram/pages/chat/chat.wxml",
   "miniprogram/miniprogram/pages/chat/chat.js",
@@ -48,74 +32,12 @@ const requiredFiles = [
   "miniprogram/miniprogram/assets/ui/route-stairs.png",
   "miniprogram/miniprogram/assets/ui/map-layered.png",
   "miniprogram/miniprogram/assets/ui/map-building-pin.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-overview.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-main.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-main-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108-mobile-0603.png",
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208-mobile-0603.png",
   "src/shared/miniProgramBridge.ts",
 ];
 
 for (const file of requiredFiles) {
   if (!fs.existsSync(path.join(root, file))) {
     throw new Error(`Missing required miniprogram file: ${file}`);
-  }
-}
-
-const currentLayerAssetHashes = {
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-main-mobile-0603.png": currentMobileMapHashes.default,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-main.png": currentMobileMapHashes.default,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-overview.png": currentMobileMapHashes.default,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f-mobile-0603.png": currentMobileMapHashes.layer2f,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-2f.png": currentMobileMapHashes.layer2f,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202-mobile-0603.png": currentMobileMapHashes.layer202,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-202.png": currentMobileMapHashes.layer202,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded-mobile-0603.png": currentMobileMapHashes.layerExploded,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-layer-exploded.png": currentMobileMapHashes.layerExploded,
-};
-for (const [file, expectedHash] of Object.entries(currentLayerAssetHashes)) {
-  const size = pngSize(file);
-  if (size.width !== 844 || size.height !== 390) {
-    throw new Error(`${file} must stay at the current mobile landscape baseline size 844x390`);
-  }
-  const hash = sha256File(file);
-  if (hash !== expectedHash) {
-    throw new Error(`${file} must match its current H5/mobile layer baseline; got ${hash}`);
-  }
-}
-if (currentMobileMapHashes.layer2f === currentMobileMapHashes.default || currentMobileMapHashes.layer202 === currentMobileMapHashes.default || currentMobileMapHashes.layerExploded === currentMobileMapHashes.default) {
-  throw new Error("mini program layer assets must be visually distinct from the default overview");
-}
-const routeAssetHashes = {
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104-mobile-0603.png": currentMobileMapHashes.route104,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-104.png": currentMobileMapHashes.route104,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202-mobile-0603.png": currentMobileMapHashes.route202,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-202.png": currentMobileMapHashes.route202,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108-mobile-0603.png": currentMobileMapHashes.route108,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-108.png": currentMobileMapHashes.route108,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208-mobile-0603.png": currentMobileMapHashes.route208,
-  "miniprogram/miniprogram/assets/ui/miniprogram-map-route-208.png": currentMobileMapHashes.route208,
-};
-for (const [file, expectedHash] of Object.entries(routeAssetHashes)) {
-  const size = pngSize(file);
-  if (size.width !== 844 || size.height !== 390) {
-    throw new Error(`${file} must stay at the current mobile landscape baseline size 844x390`);
-  }
-  const hash = sha256File(file);
-  if (hash !== expectedHash) {
-    throw new Error(`${file} must match the current H5/mobile route baseline; got ${hash}`);
   }
 }
 
@@ -226,14 +148,16 @@ const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/ma
 if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap.includes("src='{{src}}'")) {
   throw new Error("map page must be native and must not use web-view");
 }
-if (!webMap.includes("mapImageSrc")) {
-  throw new Error("map page must keep the self-contained PNG map fallback");
+for (const token of ["mapImageSrc", "mapImageTransformStyle", "map-static-fallback", "miniprogram-map-"]) {
+  if (webMap.includes(token)) {
+    throw new Error(`map page must not render packaged map images or fallback texture token: ${token}`);
+  }
 }
 if (webMap.includes("map-native-start-bar") || webMap.includes("native-start-button")) {
   throw new Error("map page must not render invisible bottom shortcut hit zones in the default browsing state");
 }
-if (!webMap.includes("<view class=\"map-rail native-screenshot-owned-ui native-hot-rail\"")) {
-  throw new Error("map page must keep touch hit zones aligned with the runtime mobile right rail");
+if (!webMap.includes("<view class=\"map-rail native-shell-ui native-hot-rail\"")) {
+  throw new Error("map page must keep a native visible right rail");
 }
 for (const duplicatedLabel of [
   "<view>金工中心地图</view>",
@@ -250,32 +174,23 @@ for (const duplicatedLabel of [
 }
 for (const token of ["catchtap=\"openPanel\"", "catchtap=\"setViewPreset\"", "rail-visible-icon"]) {
   if (!webMap.includes(token)) {
-    throw new Error(`transparent right rail must use real catchtap hit nodes: ${token}`);
+    throw new Error(`right rail must use real catchtap nodes: ${token}`);
   }
 }
 if (!webMap.includes("id=\"mapCanvas\"") || !webMap.includes("type=\"webgl\"") || !webMap.includes("class=\"map-canvas native-map-visual native-webgl-map\"")) {
   throw new Error("map page must keep a real native WebGL canvas for runtime map rendering");
 }
-for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "map-static-fallback", "mapImageTransformStyle", "native-map-hit-layer", "native-screenshot-owned-ui", "nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors", "nativeStairs", "nativeRouteSegments", "nativeRoutePins", "map3d-guidance-strip", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
+for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "mapTransformStyle", "native-map-hit-layer", "nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors", "nativeStairs", "nativeRouteSegments", "nativeRoutePins", "native-shell-ui", "map3d-guidance-strip", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
   if (!webMap.includes(token)) {
     throw new Error(`map page must keep native map token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-for (const token of ["require(\"../../data/map-data\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handlePageTap", "handleTouchMove", "normalizeTransform", "imageTransformStyle", "userImageTransformStyle", "mapImageTransformStyle", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "mapImageSrc", "miniprogram-map-route-104-mobile-0603.png", "miniprogram-map-route-108-mobile-0603.png", "miniprogram-map-route-208-mobile-0603.png", "miniprogram-map-layer-202-mobile-0603.png", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
-  if (!webMapJs.includes(token)) {
-    throw new Error(`map.js must keep native map logic token: ${token}`);
-  }
-}
-for (const [targetId, asset] of Object.entries({
-  "104-2F01": "miniprogram-map-route-104-mobile-0603.png",
-  "202-5": "miniprogram-map-route-202-mobile-0603.png",
-  "108-2F04": "miniprogram-map-route-108-mobile-0603.png",
-  "208": "miniprogram-map-route-208-mobile-0603.png",
-})) {
-  if (!webMapJs.includes(`"${targetId}"`) || !webMapJs.includes(asset)) {
-    throw new Error(`quick target ${targetId} must keep an explicit packaged route asset ${asset}`);
+const webMapRuntimeJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-runtime.js"), "utf8");
+for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handlePageTap", "handleTouchMove", "normalizeTransform", "userImageTransformStyle", "mapTransformStyle", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+  if (!(webMapJs + webMapRuntimeJs).includes(token)) {
+    throw new Error(`native map runtime must keep synchronized token: ${token}`);
   }
 }
 if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJs.includes("localhost") || webMapJs.includes("canRenderWebView")) {
@@ -284,19 +199,19 @@ if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJ
 if (webMapJs.includes("wx.createCanvasContext")) {
   throw new Error("mini program map must not use legacy canvas contexts");
 }
+for (const token of ["mapImageSrc", "mapImageTransformStyle", "miniprogram-map-", "createWebglTextureProgram", "drawWebglBaselineTexture", "ensureWebglMapTexture", "texImage2D", "createImage"]) {
+  if (webMapJs.includes(token)) {
+    throw new Error(`mini program map must not use packaged screenshot texture path: ${token}`);
+  }
+}
 if (!webMapJs.includes("select(\"#mapCanvas\")") || !webMapJs.includes("getContext(\"webgl\")") || !webMapJs.includes("renderWebglBackdrop")) {
   throw new Error("mini program map must use the native WebGL canvas as the primary runtime renderer");
 }
 for (const token of [
   "createWebglProgram",
-  "createWebglTextureProgram",
   "compileWebglShader",
   "buildWebglMapGeometry",
   "drawWebglMap",
-  "drawWebglBaselineTexture",
-  "ensureWebglMapTexture",
-  "texImage2D",
-  "createImage",
   "pushWebglFloor",
   "pushWebglSpaces",
   "pushWebglRooms",
@@ -315,9 +230,6 @@ for (const token of [
 if (/if\s*\(webglRef\s*&&\s*canvasRef\)\s*\{\s*renderWebglBackdrop\([^;]+;\s*return;\s*\}/s.test(webMapJs)) {
   throw new Error("mini program WebGL map renderer must not stop after clearing the backdrop");
 }
-if (!webMapJs.includes("drawWebglBaselineTexture();") || !webMapJs.includes("mapImageSrc(this.data.layerMode, this.data.route)")) {
-  throw new Error("mini program WebGL renderer must draw the current mobile baseline texture before dynamic route geometry");
-}
 
 function smokeLoadMapPage() {
   let pageDef;
@@ -333,6 +245,15 @@ function smokeLoadMapPage() {
   const localRequire = (specifier) => {
     const resolved = path.resolve(path.dirname(mapPagePath), specifier);
     if (resolved.endsWith("data/map-data")) {
+      const module = { exports: {} };
+      vm.runInNewContext(
+        fs.readFileSync(`${resolved}.js`, "utf8"),
+        { module, exports: module.exports },
+        { filename: `${resolved}.js` },
+      );
+      return module.exports;
+    }
+    if (resolved.endsWith("data/map-runtime")) {
       const module = { exports: {} };
       vm.runInNewContext(
         fs.readFileSync(`${resolved}.js`, "utf8"),
@@ -374,11 +295,6 @@ function smokeLoadMapPage() {
     ...pageDef,
   };
 
-  const assertMapAsset = (expected, reason) => {
-    if (!instance.data.mapImageSrc || !instance.data.mapImageSrc.includes(expected)) {
-      throw new Error(`${reason}; got ${instance.data.mapImageSrc || "<empty>"}`);
-    }
-  };
   const assertRuntimeGeometry = (floorIds, minimumVertices, reason) => {
     if (typeof instance.buildWebglMapGeometry !== "function") {
       throw new Error(`${reason}: WebGL geometry builder is not exposed on the page instance`);
@@ -394,41 +310,60 @@ function smokeLoadMapPage() {
       throw new Error(`${reason}: WebGL vertex stride must be position+color (6 floats)`);
     }
   };
-  const setLayerAndAssert = (layer, expectedAsset) => {
+  const assertNativeSemanticLayers = (reason) => {
+    if (!instance.data.nativeFloors || instance.data.nativeFloors.length < 1) {
+      throw new Error(`${reason}: missing floor geometry`);
+    }
+    if (!instance.data.nativeRooms || instance.data.nativeRooms.length < 1) {
+      throw new Error(`${reason}: missing room hit geometry`);
+    }
+    if (!instance.data.nativeSpaces || instance.data.nativeSpaces.length < 1) {
+      throw new Error(`${reason}: missing corridor/service geometry`);
+    }
+    if (!instance.data.nativeDoors || instance.data.nativeDoors.length < 1) {
+      throw new Error(`${reason}: missing door geometry`);
+    }
+    if (!instance.data.nativeStairs || instance.data.nativeStairs.length < 1) {
+      throw new Error(`${reason}: missing stair geometry`);
+    }
+  };
+  const setLayerAndAssert = (layer) => {
     instance.setLayer.call(instance, { currentTarget: { dataset: { layer } } });
     if (instance.data.layerMode !== layer) {
       throw new Error(`map layer switch did not select ${layer}`);
     }
-    assertMapAsset(expectedAsset, `map layer ${layer} did not switch to its packaged mobile asset`);
-    if (!instance.data.nativeRooms || instance.data.nativeRooms.length < 1) {
-      throw new Error(`map layer ${layer} did not keep native room hit areas`);
-    }
+    assertNativeSemanticLayers(`map layer ${layer}`);
   };
-  const assertRoute = (targetRoomId, expectedAsset, requiredKind, reason) => {
+  const assertRoute = (targetRoomId, requiredKind, reason) => {
     if (!instance.data.route || instance.data.route.targetRoomId !== targetRoomId) {
       throw new Error(`${reason}: route target mismatch`);
     }
-    assertMapAsset(expectedAsset, `${reason}: route did not switch to expected mobile route asset`);
     if (!instance.data.route.steps.some((step) => String(step.kind || "").includes(requiredKind))) {
       throw new Error(`${reason}: route steps did not include ${requiredKind}`);
     }
     if (!instance.data.route.nodeIds.includes(`center-${targetRoomId}`)) {
       throw new Error(`${reason}: route path did not reach the target room center`);
     }
+    if (!instance.data.nativeRouteSegments || instance.data.nativeRouteSegments.length < 1) {
+      throw new Error(`${reason}: route did not produce runtime route segments`);
+    }
+    if (!instance.data.nativeRoutePins || instance.data.nativeRoutePins.length < 2) {
+      throw new Error(`${reason}: route did not produce runtime start/target pins`);
+    }
   };
 
   instance.onLoad.call(instance, {});
-  assertMapAsset("miniprogram-map-main-mobile-0603.png", "manual map open must use the current mobile overview");
+  assertNativeSemanticLayers("manual map open");
   assertRuntimeGeometry(["1F", "2F", "25F"], 900, "manual all-floor fallback WebGL geometry");
   if (instance.data.hasRoute || instance.data.route) {
     throw new Error("manual map open must start without a route");
   }
-  setLayerAndAssert("2F", "miniprogram-map-layer-2f-mobile-0603.png");
+  setLayerAndAssert("2F");
   assertRuntimeGeometry(["2F"], 240, "2F fallback WebGL geometry");
-  setLayerAndAssert("raised202", "miniprogram-map-layer-202-mobile-0603.png");
+  setLayerAndAssert("raised202");
   assertRuntimeGeometry(["2F", "25F"], 300, "202 platform fallback WebGL geometry");
-  setLayerAndAssert("exploded", "miniprogram-map-layer-exploded-mobile-0603.png");
-  setLayerAndAssert("allFloors", "miniprogram-map-main-mobile-0603.png");
+  setLayerAndAssert("exploded");
+  setLayerAndAssert("allFloors");
 
   instance.onLoad.call(instance, { targetRoomId: "202-5", announce: "summary,distance,direction,floorChange" });
   const styledItems = [
@@ -437,65 +372,65 @@ function smokeLoadMapPage() {
   if (instance.data.nativeRooms.length < 40) {
     throw new Error("map page smoke test did not generate enough room hit areas");
   }
-  if (!instance.data.route || !instance.data.mapImageSrc.includes("miniprogram-map-route-202-mobile-0603.png")) {
+  if (!instance.data.route || instance.data.route.targetRoomId !== "202-5") {
     throw new Error("map page smoke test did not generate a route for 202-5");
   }
   assertRuntimeGeometry(["1F", "2F", "25F"], 1000, "MapDirect 202-5 fallback WebGL route geometry");
-  assertRoute("202-5", "miniprogram-map-route-202-mobile-0603.png", "stair", "MapDirect 202-5");
+  assertRoute("202-5", "stair", "MapDirect 202-5");
   if (!instance.data.route.nodeIds.includes("stair-public-upper") && !instance.data.route.nodeIds.includes("door-202-5")) {
     throw new Error("MapDirect 202-5 route must pass the public stair / 202 platform connector");
   }
-  if (!instance.data.mapImageTransformStyle.includes("scale(1.000)") || !instance.data.mapImageTransformStyle.includes("rotate(0.00deg)")) {
-    throw new Error("map fallback image must open at the un-cropped current baseline before user gestures");
+  if (!instance.data.mapTransformStyle || !/scale\((?!1\.000)/.test(instance.data.mapTransformStyle)) {
+    throw new Error("map geometry must open with an active route-focused scale");
   }
-  const beforeTransform = instance.data.mapImageTransformStyle;
+  const beforeTransform = instance.data.mapTransformStyle;
   instance.handleCanvasTap.call(instance, { detail: { x: 360, y: 89 } });
   if (instance.data.panel !== "layers") {
-    throw new Error("map page right screenshot rail tap zone must open layers panel");
+    throw new Error("map page right rail tap zone must open layers panel");
   }
   instance.closePanel.call(instance);
   instance.handlePageTap.call(instance, { detail: { x: 360, y: 125 } });
   if (instance.data.panel !== "view") {
-    throw new Error("map page right screenshot rail tap zone must open view panel");
+    throw new Error("map page right rail tap zone must open view panel");
   }
   instance.closePanel.call(instance);
   instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }] });
   instance.handleTouchMove.call(instance, { touches: [{ clientX: 128, clientY: 96 }] });
-  if (!instance.data.mapImageTransformStyle || instance.data.mapImageTransformStyle === beforeTransform || !instance.data.mapImageTransformStyle.includes("translate(")) {
-    throw new Error("map page touch pan must update the fallback transform used before canvas readiness");
+  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === beforeTransform || !instance.data.mapTransformStyle.includes("translate(")) {
+    throw new Error("map page touch pan must update the runtime geometry transform");
   }
   if (instance.transform.panX === 0 || instance.transform.panY === 0) {
-    throw new Error("map page touch pan must update the geometric map transform, not only the PNG fallback");
+    throw new Error("map page touch pan must update the geometric map transform");
   }
-  const afterPanTransform = instance.data.mapImageTransformStyle;
+  const afterPanTransform = instance.data.mapTransformStyle;
   instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }, { clientX: 160, clientY: 80 }] });
   instance.handleTouchMove.call(instance, { touches: [{ clientX: 92, clientY: 76 }, { clientX: 176, clientY: 92 }] });
-  if (!instance.data.mapImageTransformStyle || instance.data.mapImageTransformStyle === afterPanTransform || !/scale\((?!1\.000)/.test(instance.data.mapImageTransformStyle)) {
-    throw new Error("map page pinch gesture must update the fallback scale/rotation used before canvas readiness");
+  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === afterPanTransform || !/scale\((?!1\.000)/.test(instance.data.mapTransformStyle)) {
+    throw new Error("map page pinch gesture must update the runtime geometry scale/rotation");
   }
   if (instance.transform.zoom <= 1 || Math.abs(instance.transform.rotation) <= 0.001) {
     throw new Error("map page pinch gesture must update geometric zoom and rotation");
   }
-  const beforeRotateTransform = instance.data.mapImageTransformStyle;
+  const beforeRotateTransform = instance.data.mapTransformStyle;
   instance.setViewPreset.call(instance, { currentTarget: { dataset: { view: "rotateRight" } } });
-  if (!instance.data.mapImageTransformStyle || instance.data.mapImageTransformStyle === beforeRotateTransform || !/rotate\((?!0\.00deg)/.test(instance.data.mapImageTransformStyle)) {
-    throw new Error("map page explicit rotate control must update the fallback rotation used before canvas readiness");
+  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === beforeRotateTransform || !/rotate\((?!0\.00deg)/.test(instance.data.mapTransformStyle)) {
+    throw new Error("map page explicit rotate control must update the runtime geometry rotation");
   }
   if (Math.abs(instance.transform.rotation) <= 0.001) {
     throw new Error("map page explicit rotate control must update geometric map rotation");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "104-2F01" } } });
-  assertRoute("104-2F01", "miniprogram-map-route-104-mobile-0603.png", "internal-stair", "manual 104-2F01 target");
+  assertRoute("104-2F01", "internal-stair", "manual 104-2F01 target");
   if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("104") && nodeId.includes("stair"))) {
     throw new Error("manual 104-2F01 target must pass a 104 internal stair node");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "108-2F04" } } });
-  assertRoute("108-2F04", "miniprogram-map-route-108-mobile-0603.png", "internal-stair", "manual 108-2F04 target");
+  assertRoute("108-2F04", "internal-stair", "manual 108-2F04 target");
   if (instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public") || nodeId === "stair-public-upper")) {
     throw new Error("manual 108-2F04 target must not use the public stair");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "208" } } });
-  assertRoute("208", "miniprogram-map-route-208-mobile-0603.png", "stair", "manual 208 target");
+  assertRoute("208", "stair", "manual 208 target");
   if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public"))) {
     throw new Error("manual 208 target must use the public stair connection");
   }
@@ -511,9 +446,14 @@ function smokeLoadMapPage() {
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-map-hit-layer", ".native-screenshot-owned-ui", ".native-room", ".map-canvas", ".floor-deck", ".space-corridor", ".room", ".door", ".route-segment", ".stair", ".route-node", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-icon"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".native-map-hit-layer", ".native-shell-ui", ".native-room", ".map-canvas", ".native-floor", ".native-space-corridor", ".native-door", ".native-route-segment", ".native-stair", ".native-route-pin", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-visible-icon"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
+  }
+}
+for (const token of [".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-screenshot-owned-ui"]) {
+  if (webMapWxss.includes(token)) {
+    throw new Error(`map.wxss must not keep screenshot/fallback styling: ${token}`);
   }
 }
 for (const token of [".map-native-start-bar", ".native-start-button", ".native-start-copy", ".native-hot-start", ".map-start-card", ".start-target"]) {
@@ -536,35 +476,18 @@ if (!nativeHitLayerCssBlock || !webMap.includes("bindtap=\"selectNativeRoom\""))
 if (!/pointer-events:\s*auto/.test(nativeHitLayerCssBlock)) {
   throw new Error("native map hit layer must receive touch gestures");
 }
-const staticMapCssBlock = webMapWxss.match(/\.map-static-fallback\s*\{[^}]*\}/)?.[0] || "";
-if (!/pointer-events:\s*none/.test(staticMapCssBlock)) {
-  throw new Error("static map image must not steal gestures from the transparent hit layer");
-}
-if (!/opacity:\s*1\b/.test(staticMapCssBlock) || !/filter:\s*none/.test(staticMapCssBlock)) {
-  throw new Error("static map image must render the exact mobile baseline without dimming or filter drift");
-}
-const readyFallbackCssBlock = webMapWxss.match(/\.renderer-canvas-ready \.map-static-fallback\s*\{[^}]*\}/)?.[0] || "";
-if (!/opacity:\s*0\b/.test(readyFallbackCssBlock)) {
-  throw new Error("self-contained mini program must hide the PNG fallback once the canvas renderer is ready");
-}
-if (!/\.map3d-guidance-strip\.native-hot-guidance\s*,\s*\.map-rail\.native-hot-rail\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("rail/guidance hit zones must stay visually transparent to avoid duplicate overlap");
-}
 if (!/\.map3d-guidance-strip\.native-hot-guidance \.guidance-hot-action\s*\{[^}]*color:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("transparent guidance hot-zone children must not render visible duplicate labels");
-}
-if (!/\.map-rail\.native-hot-rail \.rail-hot-button\s*,\s*\.map-rail\.native-hot-rail \.rail-hot-button\.active\s*\{[^}]*background:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("right rail buttons must be transparent hot-zones over the mobile screenshot rail");
+  throw new Error("guidance hot-zone children must stay invisible over the visible guidance strip");
 }
 if (!/\.rail-visible-icon\s*\{[^}]*font-size:\s*15px/s.test(webMapWxss)) {
   throw new Error("right rail hit labels must render as compact icons only");
 }
-if (!/\.rail-visible-icon\s*\{[^}]*opacity:\s*0/s.test(webMapWxss)) {
-  throw new Error("right rail hit labels must be invisible because the runtime rail visual is owned by the map shell");
+if (!/\.rail-visible-icon\s*\{[^}]*opacity:\s*1/s.test(webMapWxss)) {
+  throw new Error("right rail icons must be visible in the native mini program shell");
 }
 for (const nth of ["nth-child(1)", "nth-child(2)", "nth-child(3)", "nth-child(4)", "nth-child(5)"]) {
   if (!webMapWxss.includes(`.map-rail.native-hot-rail .rail-hot-button:${nth}`)) {
-    throw new Error(`transparent rail hot-zone must be explicitly aligned to screenshot rail: ${nth}`);
+    throw new Error(`right rail button must be explicitly positioned: ${nth}`);
   }
 }
 const railCssBlock = webMapWxss.match(/\.map-rail\s*\{[^}]*\}/)?.[0] || "";
@@ -572,7 +495,7 @@ if (!/top:\s*50%/.test(railCssBlock) || !/transform:\s*translateY\(-50%\)/.test(
   throw new Error("right rail must be centered away from the WeChat capsule area");
 }
 if (webMapWxss.includes(".native-control-rail")) {
-  throw new Error("mini program must not draw a separate native right rail over the mobile screenshot rail");
+  throw new Error("mini program must not draw a duplicate native right rail");
 }
 if (!/opacity:\s*1/.test(webMapWxss.match(/\.native-room\s*\{[^}]*\}/)?.[0] || "")) {
   throw new Error("native room geometry overlay must stay visible above the WebGL map");

@@ -160,9 +160,9 @@ export const modelAlignment = {
   wallHeight: 0.38,
   outerWallHeight: 0.54,
   defaultCamera: {
-    position: [7.1, 5.35, 7.8] as ModelPoint,
-    target: [0.16, 0.78, 0.18] as ModelPoint,
-    fov: 38,
+    position: [6.45, 5.95, 8.55] as ModelPoint,
+    target: [-0.02, 0.7, 0.16] as ModelPoint,
+    fov: 34,
   },
   routeLift: 0.18,
   hotspotLift: 0.12,

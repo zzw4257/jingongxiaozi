@@ -13,15 +13,9 @@
       bindtouchend="handleTouchEnd"
       bindtouchcancel="handleTouchEnd"
     ></canvas>
-    <image
-      class="map-static-fallback map-static-{{layerMode}}"
-      src="{{mapImageSrc}}"
-      style="{{mapImageTransformStyle}}"
-      mode="aspectFit"
-    ></image>
     <view
       class="native-map-hit-layer"
-      style="{{mapImageTransformStyle}}"
+      style="{{mapTransformStyle}}"
       bindtap="handleCanvasTap"
       bindtouchstart="handleTouchStart"
       bindtouchmove="handleTouchMove"
@@ -46,7 +40,13 @@
     </view>
   </view>
 
-  <cover-view class="map-compass native-screenshot-owned-ui native-hot-compass" aria-hidden="true"></cover-view>
+  <view class="map-compass native-shell-ui">
+    <view class="north-arrow">N</view>
+    <view class="compass-copy">
+      <view>朝向校准</view>
+      <view>{{sensorHint}}</view>
+    </view>
+  </view>
 
   <view class="map-legend">
     <view class="legend-item"><view class="legend-dot corridor"></view><view>走廊</view></view>
@@ -60,12 +60,27 @@
     <view wx:if="{{hasRoute}}">{{route.summary}} · {{routeDistanceLabel}}</view>
   </view>
 
-  <view wx:if="{{hasRoute}}" class="map3d-guidance-strip native-screenshot-owned-ui native-hot-guidance" aria-hidden="true">
+  <view wx:if="{{hasRoute}}" class="map3d-guidance-strip native-shell-ui native-hot-guidance">
+    <view class="guidance-strip-step">{{activeStepLabel}}</view>
+    <view class="guidance-strip-node">
+      <view>当前位置</view>
+      <view class="guidance-strong">{{currentStepTitle}}</view>
+    </view>
+    <view class="guidance-arrow">→</view>
+    <view class="guidance-strip-node next">
+      <view>{{nextStepVerb}}</view>
+      <view class="guidance-strong">{{nextStepTitle}}</view>
+    </view>
+    <view class="guidance-strip-distance">{{activeStepDistanceLabel}}</view>
+    <view class="guidance-strip-actions">
+      <view class="guidance-action secondary" bindtap="focusActiveStep">聚焦</view>
+      <view class="guidance-action primary" bindtap="advanceRouteCheckpoint">{{stepActionLabel}}</view>
+    </view>
     <view class="guidance-hot-action guidance-hot-focus" bindtap="focusActiveStep"></view>
     <view class="guidance-hot-action guidance-hot-next" bindtap="advanceRouteCheckpoint"></view>
   </view>
 
-  <view class="map-rail native-screenshot-owned-ui native-hot-rail" aria-hidden="true">
+  <view class="map-rail native-shell-ui native-hot-rail">
     <view class="rail-button rail-hot-button" catchtap="goBack"><text class="rail-visible-icon">‹</text></view>
     <view class="rail-button rail-hot-button {{routeButtonClass}}" data-panel="route" catchtap="openPanel"><text class="rail-visible-icon">⌁</text></view>
     <view class="rail-button rail-hot-button {{layersButtonClass}}" data-panel="layers" catchtap="openPanel"><text class="rail-visible-icon">▣</text></view>

@@ -4,6 +4,7 @@ import vm from "node:vm";
 
 const root = process.cwd();
 const releaseMode = process.argv.includes("--release") || process.env.MINIPROGRAM_RELEASE_CHECK === "1";
+const parityMode = process.argv.includes("--parity") || releaseMode || process.env.MINIPROGRAM_PARITY_CHECK === "1";
 const requiredFiles = [
   "miniprogram/project.config.json",
   "miniprogram/miniprogram/app.json",
@@ -229,6 +230,24 @@ for (const token of [
 }
 if (/if\s*\(webglRef\s*&&\s*canvasRef\)\s*\{\s*renderWebglBackdrop\([^;]+;\s*return;\s*\}/s.test(webMapJs)) {
   throw new Error("mini program WebGL map renderer must not stop after clearing the backdrop");
+}
+
+if (parityMode) {
+  const parityInputs = `${webMap}\n${webMapJs}\n${webMapRuntimeJs}`;
+  const hasThreeRuntime =
+    parityInputs.includes("three-platformize") ||
+    parityInputs.includes("createScopedThreejs") ||
+    parityInputs.includes("GLTFLoader") ||
+    parityInputs.includes("OrbitControls");
+  if (!hasThreeRuntime) {
+    throw new Error("parity/release check requires a real mini program Three.js runtime adapter; current native polygon renderer is not visually equivalent to H5/Tauri Map3DApp");
+  }
+  if (webMap.includes("nativeRooms") || webMap.includes("nativeSpaces") || webMap.includes("nativeDoors") || webMap.includes("nativeRouteSegments")) {
+    throw new Error("parity/release check forbids product-visible native polygon overlays; mini program must render the shared Three scene instead");
+  }
+  if (!webMapJs.includes("jingong.glb") && !webMapJs.includes("map-models")) {
+    throw new Error("parity/release check requires packaged model loading, not only semantic map-data polygons");
+  }
 }
 
 function smokeLoadMapPage() {
@@ -585,7 +604,6 @@ const miniProgramText = [
   chatWxss,
   expertWxml,
   expertWxss,
-  fs.readFileSync(path.join(root, "miniprogram/README.md"), "utf8"),
 ].join("\n");
 for (const token of ["5173", "127.0.0.1", "localhost", "webBaseUrl", "<web-view", "业务域名"]) {
   if (miniProgramText.includes(token)) {

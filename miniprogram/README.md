@@ -6,7 +6,9 @@
 - 地图入口和快速路线入口。
 - 包内原生地图页，支持楼层切换、房间点击、常用路线和逐段引导。
 
-当前版本用于和安卓移动端主线保持视觉与流程一致。3D 精确模型渲染仍以安卓/H5 主线为最高保真版本；小程序端地图数据由 `src/features/map/data/mapData.ts` 生成到 `miniprogram/miniprogram/data/map-data.js`，路线、图层、标签与触控语义由 `src/features/map/runtime.ts` 生成到 `miniprogram/miniprogram/data/map-runtime.js`。房间、走廊、门洞、楼梯、导航节点和路线边都来自同一份主线拓扑，不再维护一套简化手写地图。
+当前版本只能视为“自包含小程序导航壳 + 语义地图预览”，不能视为和安卓/H5 移动端视觉一致的发布版。安卓/H5 的真实基准是 `src/features/map3d/Map3DApp.tsx` 的 Three.js + GLB 场景；当前小程序地图仍在 `pages/map/map.js` 内自绘 WebGL 多边形和 WXML overlay，因此视觉、模型细节、相机和交互都不等价。
+
+小程序端已经共用 `src/features/map/data/mapData.ts` 和 `src/features/map/runtime.ts` 生成出的房间、走廊、门洞、楼梯、导航节点、路线和逐段导引，但这只解决数据/拓扑一致，不解决 3D 视觉一致。正式发布前必须把 `pages/map/map` 迁移到真实 Three 小程序适配层，例如 `three-platformize` + 微信 `canvas type="webgl"`，并加载同一份模型/语义场景；不能再用截图、全图 PNG、WebView、本地 `5173` 或当前自绘多边形冒充移动端地图。
 
 ## 导入方式
 
@@ -18,7 +20,7 @@
 ## 页面
 
 - `pages/home/home`：待机首页，默认只展示金工小子表情、右下地图入口、左侧应用抽屉。
-- `pages/map/map`：包内原生小程序地图页，主视觉使用 WebGL canvas + 原生交互 overlay，不依赖 WebView、外部 H5 服务或全图 PNG 贴图 fallback。
+- `pages/map/map`：包内原生小程序地图页，当前是语义 WebGL 多边形预览，不依赖 WebView、外部 H5 服务或全图 PNG 贴图 fallback；发布级目标必须替换为真实 Three/GLB 场景。
 - `pages/chat/chat`：包内常态对话展示页，对齐移动端的“表情 + 大字回答 + 核心词 + 音频状态”。
 - `pages/expert/expert`：包内专家问答展示页，对齐移动端的专家回答与引用卡片。
 
@@ -61,7 +63,14 @@ npm run build
 正式发布前运行：
 
 ```bash
+npm run check:miniprogram:parity
 npm run check:miniprogram:release
 ```
 
-发布门禁目前要求 `miniprogram/project.config.json` 写入真实微信小程序 AppID。小程序端已经去掉外部 H5 服务依赖。
+发布门禁要求：
+
+- `miniprogram/project.config.json` 写入真实微信小程序 AppID。
+- 小程序地图不再使用 `nativeRooms/nativeSpaces/nativeDoors/nativeRouteSegments` 这套产品可见自绘 overlay。
+- 小程序地图存在真实 Three.js 小程序运行时适配，并加载模型资产，而不是仅渲染语义多边形。
+
+当前小程序端已经去掉外部 H5 服务依赖，但尚未达到视觉一致发布标准。

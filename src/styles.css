@@ -2122,6 +2122,44 @@ button {
   touch-action: none;
 }
 
+.map3d-loading-card {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 20;
+  display: grid;
+  gap: 6px;
+  min-width: min(360px, calc(100vw - 48px));
+  max-width: min(460px, calc(100vw - 48px));
+  padding: 18px 20px;
+  color: #17253a;
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(190, 207, 229, 0.88);
+  border-radius: 24px;
+  box-shadow: 0 18px 46px rgba(20, 53, 94, 0.16);
+  transform: translate(-50%, -50%);
+  backdrop-filter: blur(14px);
+  text-align: center;
+}
+
+.map3d-loading-card span {
+  color: #60748d;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.map3d-loading-card strong {
+  color: #17324f;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 1.35;
+}
+
+.map3d-loading-card.error {
+  border-color: rgba(239, 99, 99, 0.28);
+  background: rgba(255, 252, 250, 0.96);
+}
+
 .map3d-label-layer {
   position: absolute;
   inset: 0;
@@ -2490,21 +2528,21 @@ button {
 }
 
 .map3d-guidance-strip button {
-  min-width: 54px;
+  min-width: 48px;
   min-height: 34px;
-  padding: 0 12px;
+  padding: 0 10px;
   color: #ffffff;
-  background: #0b6cff;
+  background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.16);
   border-radius: 999px;
   font-size: 12px;
   font-weight: 950;
 }
 
-.map3d-guidance-strip button:first-of-type {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.14);
-  border-color: rgba(255, 255, 255, 0.2);
+.map3d-guidance-strip button:last-of-type {
+  color: #0d2a45;
+  background: #ffffff;
+  border-color: rgba(255, 255, 255, 0.3);
 }
 
 .map3d-rail {
@@ -4020,16 +4058,16 @@ button {
   }
 
   .map3d-guidance-strip .guidance-strip-actions {
-    grid-column: 4;
+    grid-column: 1 / -1;
     grid-row: 2;
     justify-self: end;
     gap: 5px;
   }
 
   .map3d-guidance-strip button {
-    min-width: 42px;
+    min-width: 40px;
     min-height: 28px;
-    padding: 0 8px;
+    padding: 0 7px;
     font-size: 10px;
   }
 

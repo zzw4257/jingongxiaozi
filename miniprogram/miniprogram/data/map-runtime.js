@@ -489,9 +489,16 @@ function checkpointVerb(kind) {
 function railTapAction(tap, canvasWidth, canvasHeight) {
     const width = Number(canvasWidth || 390);
     const height = Number(canvasHeight || 180);
-    const railLeft = width - 64;
-    const railTop = height / 2 - 94;
-    const railButtonTops = [4, 40, 76, 112, 148];
+    const compact = height < 260 || width < 520;
+    const buttonW = compact ? 44 : 56;
+    const buttonH = compact ? 32 : 56;
+    const gap = 5;
+    const step = buttonH + gap;
+    const total = buttonH * 5 + gap * 4;
+    const rightSafe = compact ? 6 : 8;
+    const railLeft = width - buttonW - rightSafe;
+    const railRight = width - rightSafe + 2;
+    const railTop = Math.min(Math.max(height / 2 - total / 2, compact ? 4 : 14), Math.max(compact ? 4 : 14, height - total - 8));
     const railTapActions = [
         { action: "back" },
         { panel: "route" },
@@ -499,11 +506,11 @@ function railTapAction(tap, canvasWidth, canvasHeight) {
         { panel: "view" },
         { view: "reset" },
     ];
-    if (!width || tap.x < railLeft)
+    if (!width || tap.x < railLeft || tap.x > railRight)
         return null;
-    for (let i = 0; i < railButtonTops.length; i += 1) {
-        const top = railTop + railButtonTops[i] - 4;
-        const bottom = top + 42;
+    for (let i = 0; i < railTapActions.length; i += 1) {
+        const top = railTop + i * step;
+        const bottom = top + buttonH;
         if (tap.y >= top && tap.y <= bottom)
             return railTapActions[i];
     }

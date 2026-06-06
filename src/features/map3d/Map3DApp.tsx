@@ -1979,7 +1979,18 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     scene.fog = new THREE.Fog(0xf7f9fc, 19, 48);
     sceneRef.current = scene;
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, powerPreference: "high-performance" });
+    } catch (error) {
+      setLoadState("error");
+      setStatusText("当前环境无法创建 WebGL 地图，请在支持 WebGL 的浏览器或设备上打开");
+      sceneRef.current = scene;
+      return () => {
+        disposeObject(scene);
+        sceneRef.current = null;
+      };
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(host.clientWidth, host.clientHeight);
     renderer.shadowMap.enabled = true;
@@ -3863,6 +3874,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             <strong>导览图层加载中</strong>
           </div>
         )}
+        {loadState === "error" && (
+          <div className="map3d-loading-card error" aria-live="polite">
+            <span>地图渲染不可用</span>
+            <strong>{statusText}</strong>
+          </div>
+        )}
         {headingBearing !== undefined && headingAnchor && headingLayout?.visible && (
           <div
             className={`map3d-heading-indicator ${headingState.calibrated ? "calibrated" : ""}`}
@@ -3912,6 +3929,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             </div>
             <small className="guidance-strip-distance">{activeLeg.distanceMeters}m</small>
             <div className="guidance-strip-actions">
+              <button type="button" onClick={() => openPanel("layers")}>
+                图层
+              </button>
+              <button type="button" onClick={() => openPanel("view")}>
+                视角
+              </button>
               <button type="button" onClick={focusActiveLeg}>
                 聚焦
               </button>

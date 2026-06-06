@@ -157,41 +157,74 @@ for (const token of ["mapImageSrc", "mapImageTransformStyle", "map-static-fallba
 if (webMap.includes("map-native-start-bar") || webMap.includes("native-start-button")) {
   throw new Error("map page must not render invisible bottom shortcut hit zones in the default browsing state");
 }
-if (!webMap.includes("<view class=\"map-rail native-shell-ui native-hot-rail\"")) {
-  throw new Error("map page must keep a native visible right rail");
+if (webMap.includes("mini-cover-rail") || webMap.includes("mini-cover-guidance") || webMap.includes("mini-cover-compass")) {
+  throw new Error("map page must not keep the old large native cover overlay route");
+}
+for (const token of ["native-cover-ui", "native-shell-ui", "map-rail native-hot-rail", "map3d-guidance-strip", "material-panel", "panel-shade native-panel-hit-shade"]) {
+  if (webMap.includes(token)) {
+    throw new Error(`map page must not render duplicate native shell UI; remove token: ${token}`);
+  }
+}
+for (const token of ["mp-map-rail", "mp-map-north", "handleRailOverlayTap", "data-panel=\"route\"", "data-panel=\"layers\"", "data-panel=\"view\"", "data-view=\"reset\""]) {
+  if (!webMap.includes(token)) {
+    throw new Error(`map page must keep the mobile-aligned mini program host controls: ${token}`);
+  }
 }
 for (const duplicatedLabel of [
   "<view>金工中心地图</view>",
   "<view>点终点，立即导引</view>",
-  "<cover-view>待机</cover-view>",
-  "<cover-view>路线</cover-view>",
-  "<cover-view>图层</cover-view>",
-  "<cover-view>视角</cover-view>",
-  "<cover-view>总览</cover-view>"
+  "<cover-view>待机</cover-view>"
 ]) {
   if (webMap.includes(duplicatedLabel)) {
     throw new Error(`map page must not duplicate runtime rail visible UI text: ${duplicatedLabel}`);
   }
 }
-for (const token of ["catchtap=\"openPanel\"", "catchtap=\"setViewPreset\"", "rail-visible-icon"]) {
-  if (!webMap.includes(token)) {
-    throw new Error(`right rail must use real catchtap nodes: ${token}`);
-  }
-}
 if (!webMap.includes("id=\"mapCanvas\"") || !webMap.includes("type=\"webgl\"") || !webMap.includes("class=\"map-canvas native-map-visual native-webgl-map\"")) {
   throw new Error("map page must keep a real native WebGL canvas for runtime map rendering");
 }
-for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "mapTransformStyle", "native-map-hit-layer", "nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors", "nativeStairs", "nativeRouteSegments", "nativeRoutePins", "native-shell-ui", "map3d-guidance-strip", "material-panel", "map-legend", "panel-close", "focusActiveStep", "advanceRouteCheckpoint", "view-control-row", "202 平台"]) {
+for (const token of ["native-map-page layer-{{layerMode}}", "catchtap=\"handlePageTap\"", "map-stage", "catchtouchmove=\"handleTouchMove\""]) {
   if (!webMap.includes(token)) {
-    throw new Error(`map page must keep native map token: ${token}`);
+    throw new Error(`map page must keep Three-host map token: ${token}`);
+  }
+}
+for (const token of ["nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors", "nativeStairs", "nativeRouteSegments", "nativeRoutePins"]) {
+  if (webMap.includes(token)) {
+    throw new Error(`map page must not expose native polygon overlay token: ${token}`);
   }
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
 const webMapRuntimeJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-runtime.js"), "utf8");
-for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "calculateRoute", "buildGraph", "drawFloor", "drawRoute", "drawDoors", "drawRooms", "buildNativeMapVisual", "selectNativeRoom", "handleCanvasTap", "handlePageTap", "handleTouchMove", "normalizeTransform", "userImageTransformStyle", "mapTransformStyle", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "raised202ContextBounds", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+const miniThreeScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/three-map-scene.js"), "utf8");
+const miniThreeVendor = fs.existsSync(path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js"))
+  ? fs.readFileSync(path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js"), "utf8")
+  : "";
+for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "createMiniProgramThreeMap", "calculateRoute", "handleCanvasTap", "handlePageTap", "handleTouchMove", "handleRailOverlayTap", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!(webMapJs + webMapRuntimeJs).includes(token)) {
     throw new Error(`native map runtime must keep synchronized token: ${token}`);
+  }
+}
+for (const token of ["three-platformize-runtime", "WechatPlatform", "GLTFLoader", "OrbitControls", "CanvasTexture", "jingong.glb", "map-models", "semantic-room", "semantic-space", "stair-tread", "pickRoom", "dispatchTouchEvent"]) {
+  if (!(webMapJs + miniThreeScene + miniThreeVendor).includes(token)) {
+    throw new Error(`mini program must use shared Three/GLB scene token: ${token}`);
+  }
+}
+for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill"]) {
+  if (!miniThreeScene.includes(token)) {
+    throw new Error(`mini program HUD must use bounded WebGL widgets, missing token: ${token}`);
+  }
+}
+for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStack", "drawNorthIndicator", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {
+  if (!miniThreeScene.includes(token)) {
+    throw new Error(`Three HUD must own mobile map controls, missing token: ${token}`);
+  }
+}
+if (!/const railTapActions = \[\s*\{ action: "back" \},\s*\{ panel: "route" \},\s*\{ panel: "layers" \},\s*\{ panel: "view" \},\s*\{ view: "reset" \}\s*\]/s.test(webMapJs)) {
+  throw new Error("mini program map rail must keep the same five-button order as mobile: back, route, layers, view, overview");
+}
+for (const token of ["hudPlane", "new THREE.PlaneGeometry(hudWidth, hudHeight)", "drawWebglBaselineTexture"]) {
+  if (miniThreeScene.includes(token)) {
+    throw new Error(`mini program HUD must not use a full-screen transparent texture path: ${token}`);
   }
 }
 if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJs.includes("localhost") || webMapJs.includes("canRenderWebView")) {
@@ -205,35 +238,22 @@ for (const token of ["mapImageSrc", "mapImageTransformStyle", "miniprogram-map-"
     throw new Error(`mini program map must not use packaged screenshot texture path: ${token}`);
   }
 }
-if (!webMapJs.includes("select(\"#mapCanvas\")") || !webMapJs.includes("getContext(\"webgl\")") || !webMapJs.includes("renderWebglBackdrop")) {
-  throw new Error("mini program map must use the native WebGL canvas as the primary runtime renderer");
+if (!webMapJs.includes("select(\"#mapCanvas\")") || !webMapJs.includes("createMiniProgramThreeMap")) {
+  throw new Error("mini program map must mount the native WebGL canvas into the shared Three scene");
 }
-for (const token of [
-  "createWebglProgram",
-  "compileWebglShader",
-  "buildWebglMapGeometry",
-  "drawWebglMap",
-  "pushWebglFloor",
-  "pushWebglSpaces",
-  "pushWebglRooms",
-  "pushWebglWalls",
-  "pushWebglDoors",
-  "pushWebglStairs",
-  "pushWebglRoute",
-  "pushWebglRouteNodes",
-  "gl.bufferData",
-  "gl.drawArrays",
+for (const file of [
+  "miniprogram/miniprogram/vendor/three-platformize-runtime.js",
+  "miniprogram/miniprogram/map-models/jingong.glb",
+  "miniprogram/miniprogram/map-models/jingong-fallback.glb",
+  "miniprogram/miniprogram/map-models/model-manifest.json",
 ]) {
-  if (!webMapJs.includes(token)) {
-    throw new Error(`mini program WebGL map renderer must draw runtime geometry, missing token: ${token}`);
+  if (!fs.existsSync(path.join(root, file))) {
+    throw new Error(`mini program must package runtime Three/model asset: ${file}`);
   }
-}
-if (/if\s*\(webglRef\s*&&\s*canvasRef\)\s*\{\s*renderWebglBackdrop\([^;]+;\s*return;\s*\}/s.test(webMapJs)) {
-  throw new Error("mini program WebGL map renderer must not stop after clearing the backdrop");
 }
 
 if (parityMode) {
-  const parityInputs = `${webMap}\n${webMapJs}\n${webMapRuntimeJs}`;
+  const parityInputs = `${webMap}\n${webMapJs}\n${webMapRuntimeJs}\n${miniThreeScene}\n${miniThreeVendor}`;
   const hasThreeRuntime =
     parityInputs.includes("three-platformize") ||
     parityInputs.includes("createScopedThreejs") ||
@@ -242,10 +262,15 @@ if (parityMode) {
   if (!hasThreeRuntime) {
     throw new Error("parity/release check requires a real mini program Three.js runtime adapter; current native polygon renderer is not visually equivalent to H5/Tauri Map3DApp");
   }
-  if (webMap.includes("nativeRooms") || webMap.includes("nativeSpaces") || webMap.includes("nativeDoors") || webMap.includes("nativeRouteSegments")) {
+if (webMap.includes("nativeRooms") || webMap.includes("nativeSpaces") || webMap.includes("nativeDoors") || webMap.includes("nativeRouteSegments")) {
     throw new Error("parity/release check forbids product-visible native polygon overlays; mini program must render the shared Three scene instead");
   }
-  if (!webMapJs.includes("jingong.glb") && !webMapJs.includes("map-models")) {
+  for (const token of ["CanvasTexture", "hudScene", "addHudWidget", "drawLabelPill"]) {
+    if (!miniThreeScene.includes(token)) {
+      throw new Error(`parity/release check requires WebGL-internal HUD token: ${token}`);
+    }
+  }
+  if (!miniThreeScene.includes("jingong.glb") && !miniThreeScene.includes("map-models")) {
     throw new Error("parity/release check requires packaged model loading, not only semantic map-data polygons");
   }
 }
@@ -254,12 +279,30 @@ function smokeLoadMapPage() {
   let pageDef;
   const mapPagePath = path.join(root, "miniprogram/miniprogram/pages/map/map.js");
   const wxMock = {
-    getWindowInfo: () => ({ windowWidth: 390, windowHeight: 180 }),
+    getWindowInfo: () => ({ windowWidth: 844, windowHeight: 390 }),
     getDeviceInfo: () => ({}),
     nextTick: (fn) => { if (typeof fn === "function") fn(); },
     reLaunch: () => {},
     navigateBack: () => {},
     showToast: () => {},
+    createSelectorQuery: () => ({
+      in() { return this; },
+      select() { return this; },
+      fields() { return this; },
+      exec(callback) {
+        callback([
+          {
+            node: {
+              width: 844,
+              height: 390,
+              getContext: () => ({}),
+            },
+            width: 844,
+            height: 390,
+          },
+        ]);
+      },
+    }),
   };
   const localRequire = (specifier) => {
     const resolved = path.resolve(path.dirname(mapPagePath), specifier);
@@ -280,6 +323,30 @@ function smokeLoadMapPage() {
         { filename: `${resolved}.js` },
       );
       return module.exports;
+    }
+    if (resolved.endsWith("lib/three-map-scene")) {
+      return {
+        createMiniProgramThreeMap: (_canvas, options = {}) => {
+          const updates = [];
+          options.onStatus?.({ ready: true, text: "" });
+          options.onLabels?.([{ id: "mock-room-101", text: "101", variant: "room", x: 120, y: 80, visible: true }]);
+          return {
+            updates,
+            update(next) {
+              updates.push(next);
+            },
+            setSize() {},
+            dispatchTouchEvent() {},
+            rotate(delta) {
+              updates.push({ rotate: delta });
+            },
+            pickRoom() {
+              return "101";
+            },
+            dispose() {},
+          };
+        },
+      };
     }
     throw new Error(`Unexpected map page require in smoke test: ${specifier}`);
   };
@@ -314,36 +381,12 @@ function smokeLoadMapPage() {
     ...pageDef,
   };
 
-  const assertRuntimeGeometry = (floorIds, minimumVertices, reason) => {
-    if (typeof instance.buildWebglMapGeometry !== "function") {
-      throw new Error(`${reason}: WebGL geometry builder is not exposed on the page instance`);
+  const assertThreeScene = (reason) => {
+    if (!instance.threeMap) {
+      throw new Error(`${reason}: Three scene was not mounted`);
     }
-    const vertices = instance.buildWebglMapGeometry.call(instance, floorIds);
-    if (!Array.isArray(vertices) || vertices.length < minimumVertices) {
-      throw new Error(`${reason}: WebGL geometry is too small (${vertices?.length || 0} floats)`);
-    }
-    if (vertices.some((value) => !Number.isFinite(value))) {
-      throw new Error(`${reason}: WebGL geometry contains NaN/Infinity`);
-    }
-    if (vertices.length % 6 !== 0) {
-      throw new Error(`${reason}: WebGL vertex stride must be position+color (6 floats)`);
-    }
-  };
-  const assertNativeSemanticLayers = (reason) => {
-    if (!instance.data.nativeFloors || instance.data.nativeFloors.length < 1) {
-      throw new Error(`${reason}: missing floor geometry`);
-    }
-    if (!instance.data.nativeRooms || instance.data.nativeRooms.length < 1) {
-      throw new Error(`${reason}: missing room hit geometry`);
-    }
-    if (!instance.data.nativeSpaces || instance.data.nativeSpaces.length < 1) {
-      throw new Error(`${reason}: missing corridor/service geometry`);
-    }
-    if (!instance.data.nativeDoors || instance.data.nativeDoors.length < 1) {
-      throw new Error(`${reason}: missing door geometry`);
-    }
-    if (!instance.data.nativeStairs || instance.data.nativeStairs.length < 1) {
-      throw new Error(`${reason}: missing stair geometry`);
+    if (!Array.isArray(instance.data.threeLabels) || instance.data.threeLabels.length < 1) {
+      throw new Error(`${reason}: Three scene did not publish projected labels`);
     }
   };
   const setLayerAndAssert = (layer) => {
@@ -351,7 +394,7 @@ function smokeLoadMapPage() {
     if (instance.data.layerMode !== layer) {
       throw new Error(`map layer switch did not select ${layer}`);
     }
-    assertNativeSemanticLayers(`map layer ${layer}`);
+    assertThreeScene(`map layer ${layer}`);
   };
   const assertRoute = (targetRoomId, requiredKind, reason) => {
     if (!instance.data.route || instance.data.route.targetRoomId !== targetRoomId) {
@@ -363,81 +406,53 @@ function smokeLoadMapPage() {
     if (!instance.data.route.nodeIds.includes(`center-${targetRoomId}`)) {
       throw new Error(`${reason}: route path did not reach the target room center`);
     }
-    if (!instance.data.nativeRouteSegments || instance.data.nativeRouteSegments.length < 1) {
-      throw new Error(`${reason}: route did not produce runtime route segments`);
-    }
-    if (!instance.data.nativeRoutePins || instance.data.nativeRoutePins.length < 2) {
-      throw new Error(`${reason}: route did not produce runtime start/target pins`);
-    }
   };
 
   instance.onLoad.call(instance, {});
-  assertNativeSemanticLayers("manual map open");
-  assertRuntimeGeometry(["1F", "2F", "25F"], 900, "manual all-floor fallback WebGL geometry");
+  assertThreeScene("manual map open");
   if (instance.data.hasRoute || instance.data.route) {
     throw new Error("manual map open must start without a route");
   }
   setLayerAndAssert("2F");
-  assertRuntimeGeometry(["2F"], 240, "2F fallback WebGL geometry");
   setLayerAndAssert("raised202");
-  assertRuntimeGeometry(["2F", "25F"], 300, "202 platform fallback WebGL geometry");
   setLayerAndAssert("exploded");
   setLayerAndAssert("allFloors");
 
   instance.onLoad.call(instance, { targetRoomId: "202-5", announce: "summary,distance,direction,floorChange" });
-  const styledItems = [
-    ...instance.data.nativeRooms,
-  ];
-  if (instance.data.nativeRooms.length < 40) {
-    throw new Error("map page smoke test did not generate enough room hit areas");
-  }
+  assertThreeScene("MapDirect 202-5");
   if (!instance.data.route || instance.data.route.targetRoomId !== "202-5") {
     throw new Error("map page smoke test did not generate a route for 202-5");
   }
-  assertRuntimeGeometry(["1F", "2F", "25F"], 1000, "MapDirect 202-5 fallback WebGL route geometry");
   assertRoute("202-5", "stair", "MapDirect 202-5");
   if (!instance.data.route.nodeIds.includes("stair-public-upper") && !instance.data.route.nodeIds.includes("door-202-5")) {
     throw new Error("MapDirect 202-5 route must pass the public stair / 202 platform connector");
   }
-  if (!instance.data.mapTransformStyle || !/scale\((?!1\.000)/.test(instance.data.mapTransformStyle)) {
-    throw new Error("map geometry must open with an active route-focused scale");
-  }
-  const beforeTransform = instance.data.mapTransformStyle;
-  instance.handleCanvasTap.call(instance, { detail: { x: 360, y: 89 } });
+  const railX = 844 - 12 - 28;
+  instance.handlePageTap.call(instance, { detail: { x: railX, y: 195 } });
   if (instance.data.panel !== "layers") {
     throw new Error("map page right rail tap zone must open layers panel");
   }
   instance.closePanel.call(instance);
-  instance.handlePageTap.call(instance, { detail: { x: 360, y: 125 } });
+  instance.handlePageTap.call(instance, { detail: { x: railX, y: 257 } });
   if (instance.data.panel !== "view") {
     throw new Error("map page right rail tap zone must open view panel");
   }
   instance.closePanel.call(instance);
+  instance.handlePageTap.call(instance, { detail: { x: 30, y: 342 } });
+  if (instance.data.panel !== "layers") {
+    throw new Error("map page guidance strip must open layers panel");
+  }
+  instance.closePanel.call(instance);
+  instance.handlePageTap.call(instance, { detail: { x: 72, y: 342 } });
+  if (instance.data.panel !== "view") {
+    throw new Error("map page guidance strip must open view panel");
+  }
+  instance.closePanel.call(instance);
   instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }] });
   instance.handleTouchMove.call(instance, { touches: [{ clientX: 128, clientY: 96 }] });
-  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === beforeTransform || !instance.data.mapTransformStyle.includes("translate(")) {
-    throw new Error("map page touch pan must update the runtime geometry transform");
-  }
-  if (instance.transform.panX === 0 || instance.transform.panY === 0) {
-    throw new Error("map page touch pan must update the geometric map transform");
-  }
-  const afterPanTransform = instance.data.mapTransformStyle;
   instance.handleTouchStart.call(instance, { touches: [{ clientX: 100, clientY: 80 }, { clientX: 160, clientY: 80 }] });
   instance.handleTouchMove.call(instance, { touches: [{ clientX: 92, clientY: 76 }, { clientX: 176, clientY: 92 }] });
-  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === afterPanTransform || !/scale\((?!1\.000)/.test(instance.data.mapTransformStyle)) {
-    throw new Error("map page pinch gesture must update the runtime geometry scale/rotation");
-  }
-  if (instance.transform.zoom <= 1 || Math.abs(instance.transform.rotation) <= 0.001) {
-    throw new Error("map page pinch gesture must update geometric zoom and rotation");
-  }
-  const beforeRotateTransform = instance.data.mapTransformStyle;
   instance.setViewPreset.call(instance, { currentTarget: { dataset: { view: "rotateRight" } } });
-  if (!instance.data.mapTransformStyle || instance.data.mapTransformStyle === beforeRotateTransform || !/rotate\((?!0\.00deg)/.test(instance.data.mapTransformStyle)) {
-    throw new Error("map page explicit rotate control must update the runtime geometry rotation");
-  }
-  if (Math.abs(instance.transform.rotation) <= 0.001) {
-    throw new Error("map page explicit rotate control must update geometric map rotation");
-  }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "104-2F01" } } });
   assertRoute("104-2F01", "internal-stair", "manual 104-2F01 target");
   if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("104") && nodeId.includes("stair"))) {
@@ -457,17 +472,36 @@ function smokeLoadMapPage() {
   if (instance.data.hasRoute || instance.data.route || instance.data.targetRoomId) {
     throw new Error("clearRoute must return the map to independent browsing state");
   }
-  if (styledItems.some((item) => /NaN|undefined/.test(item.style || ""))) {
-    throw new Error("map page smoke test generated invalid native map styles");
-  }
 }
 
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".native-map-hit-layer", ".native-shell-ui", ".native-room", ".map-canvas", ".native-floor", ".native-space-corridor", ".native-door", ".native-route-segment", ".native-stair", ".native-route-pin", ".material-panel", ".panel-close", ".map3d-guidance-strip", ".layer-status-pill", ".route-action-controls", ".view-control-row", ".rail-visible-icon"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".mp-map-rail", ".mp-map-north", ".mp-rail-button", ".three-map-label-layer", ".three-map-label", ".label-route", ".label-stair", ".label-compact-room", ".map-canvas"]) {
   if (!webMapWxss.includes(token)) {
-    throw new Error(`map.wxss must keep full-screen native map styling: ${token}`);
+    throw new Error(`map.wxss must keep full-screen Three map styling: ${token}`);
+  }
+}
+for (const token of [
+  ".mini-map-rail",
+  ".mini-rail-button",
+  ".mini-map-compass",
+  ".native-map-hit-layer",
+  ".native-floor",
+  ".native-space",
+  ".native-room",
+  ".native-stair",
+  ".native-door",
+  ".native-route-segment",
+  ".native-route-pin",
+  ".native-shell-ui",
+  ".native-cover-ui",
+  ".map-rail",
+  ".material-panel",
+  ".map3d-guidance-strip",
+]) {
+  if (webMapWxss.includes(token)) {
+    throw new Error(`map.wxss must not keep obsolete native overlay/control styling: ${token}`);
   }
 }
 for (const token of [".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-screenshot-owned-ui"]) {
@@ -481,43 +515,20 @@ for (const token of [".map-native-start-bar", ".native-start-button", ".native-s
   }
 }
 const canvasCssBlock = webMapWxss.match(/\.map-canvas\s*\{[^}]*\}/)?.[0] || "";
-if (!/display:\s*block/.test(canvasCssBlock) || !/width:\s*calc\(100% - 12px\)/.test(canvasCssBlock) || !/height:\s*calc\(100% - 12px\)/.test(canvasCssBlock) || !/opacity:\s*1\b/.test(canvasCssBlock) || !/pointer-events:\s*auto/.test(canvasCssBlock)) {
+const canvasOwnsRuntimeWidth = /width:\s*100%/.test(canvasCssBlock) || (/right:\s*72px/.test(canvasCssBlock) && /width:\s*auto/.test(canvasCssBlock));
+if (!/display:\s*block/.test(canvasCssBlock) || !canvasOwnsRuntimeWidth || !/height:\s*100%/.test(canvasCssBlock) || !/opacity:\s*1\b/.test(canvasCssBlock) || !/pointer-events:\s*auto/.test(canvasCssBlock)) {
   throw new Error("map WebGL canvas must be the visible primary runtime renderer, not a hidden compatibility node");
 }
 const mapStageCssBlock = webMapWxss.match(/\.map-stage\s*\{[^}]*\}/)?.[0] || "";
 if (!/right:\s*0/.test(mapStageCssBlock)) {
-  throw new Error("map stage must use the full viewport; do not reserve a dead right gutter");
+  throw new Error("map stage must keep the map surface pinned to the full viewport frame");
 }
-const nativeHitLayerCssBlock = webMapWxss.match(/\.native-map-hit-layer\s*\{[^}]*\}/)?.[0] || "";
-if (!nativeHitLayerCssBlock || !webMap.includes("bindtap=\"selectNativeRoom\"")) {
-  throw new Error("native WXML map hit layer must remain tappable");
+const labelLayerCssBlock = webMapWxss.match(/\.three-map-label-layer\s*\{[^}]*\}/)?.[0] || "";
+if (!labelLayerCssBlock || !/pointer-events:\s*none/.test(labelLayerCssBlock)) {
+  throw new Error("Three label overlay must not steal canvas touch gestures");
 }
-if (!/pointer-events:\s*auto/.test(nativeHitLayerCssBlock)) {
-  throw new Error("native map hit layer must receive touch gestures");
-}
-if (!/\.map3d-guidance-strip\.native-hot-guidance \.guidance-hot-action\s*\{[^}]*color:\s*transparent/s.test(webMapWxss)) {
-  throw new Error("guidance hot-zone children must stay invisible over the visible guidance strip");
-}
-if (!/\.rail-visible-icon\s*\{[^}]*font-size:\s*15px/s.test(webMapWxss)) {
-  throw new Error("right rail hit labels must render as compact icons only");
-}
-if (!/\.rail-visible-icon\s*\{[^}]*opacity:\s*1/s.test(webMapWxss)) {
-  throw new Error("right rail icons must be visible in the native mini program shell");
-}
-for (const nth of ["nth-child(1)", "nth-child(2)", "nth-child(3)", "nth-child(4)", "nth-child(5)"]) {
-  if (!webMapWxss.includes(`.map-rail.native-hot-rail .rail-hot-button:${nth}`)) {
-    throw new Error(`right rail button must be explicitly positioned: ${nth}`);
-  }
-}
-const railCssBlock = webMapWxss.match(/\.map-rail\s*\{[^}]*\}/)?.[0] || "";
-if (!/top:\s*50%/.test(railCssBlock) || !/transform:\s*translateY\(-50%\)/.test(railCssBlock)) {
-  throw new Error("right rail must be centered away from the WeChat capsule area");
-}
-if (webMapWxss.includes(".native-control-rail")) {
-  throw new Error("mini program must not draw a duplicate native right rail");
-}
-if (!/opacity:\s*1/.test(webMapWxss.match(/\.native-room\s*\{[^}]*\}/)?.[0] || "")) {
-  throw new Error("native room geometry overlay must stay visible above the WebGL map");
+if (webMap.includes("native-cover-ui") || webMap.includes("native-shell-ui") || webMap.includes("material-panel")) {
+  throw new Error("map.wxml must not render duplicate native shell controls; Three HUD owns visible controls");
 }
 
 const miniMapDataJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.js"), "utf8");

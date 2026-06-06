@@ -1,0 +1,139 @@
+{
+  "generatedAt": "2026-05-22T16:18:26.652Z",
+  "runtime": {
+    "primary": {
+      "path": "public/map-models/jingong.glb",
+      "present": true,
+      "bytes": 263036,
+      "source": "models/金工中心模型.3ds",
+      "format": "glb2",
+      "role": "visual-model",
+      "info": {
+        "nodes": 32,
+        "meshes": 47,
+        "materials": 24,
+        "vertices": 5000,
+        "faces": 4198,
+        "minPoint": [
+          -16630.345703,
+          -14097,
+          -790843.3125
+        ],
+        "maxPoint": [
+          777437.8125,
+          47373.054688,
+          17519.503906
+        ],
+        "centerPoint": [
+          380403.71875,
+          16638.027344,
+          -386661.90625
+        ]
+      },
+      "runtimeInfo": {
+        "nodes": 32,
+        "meshes": 47,
+        "materials": 24,
+        "vertices": 4879,
+        "faces": 4198,
+        "minPoint": [
+          -16630.345703,
+          -14097,
+          -790843.3125
+        ],
+        "maxPoint": [
+          777437.8125,
+          47373.054688,
+          17519.503906
+        ],
+        "centerPoint": [
+          380403.71875,
+          16638.027344,
+          -386661.90625
+        ],
+        "bboxSize": [
+          794068.158203,
+          61470.054688,
+          808362.816406
+        ],
+        "runtimeCenteredScale": 0.000010638787219624723
+      }
+    },
+    "fallback": {
+      "path": "public/map-models/jingong-fallback.glb",
+      "present": true,
+      "bytes": 137384,
+      "source": "models/金工中心精确模型.stl",
+      "format": "glb2",
+      "role": "low-fidelity-geometry",
+      "info": {
+        "nodes": 2,
+        "meshes": 1,
+        "materials": 1,
+        "vertices": 3591,
+        "faces": 4162,
+        "minPoint": [
+          -604.29126,
+          -775.455994,
+          0
+        ],
+        "maxPoint": [
+          28772.482422,
+          29528.287109,
+          1865.080933
+        ],
+        "centerPoint": [
+          14084.095703,
+          14376.416016,
+          932.540466
+        ]
+      },
+      "runtimeInfo": {
+        "nodes": 2,
+        "meshes": 1,
+        "materials": 1,
+        "vertices": 3591,
+        "faces": 4162,
+        "minPoint": [
+          -604.29126,
+          -775.455994,
+          0
+        ],
+        "maxPoint": [
+          28772.482422,
+          29528.287109,
+          1865.080933
+        ],
+        "centerPoint": [
+          14084.095703,
+          14376.416016,
+          932.540466
+        ],
+        "bboxSize": [
+          29376.773682,
+          30303.743103,
+          1865.080933
+        ],
+        "runtimeCenteredScale": 0.00028379332450018753
+      }
+    }
+  },
+  "calibrationSources": {
+    "dwg": {
+      "path": "models/金工.dwg",
+      "present": true,
+      "bytes": 444485
+    },
+    "sketchup": {
+      "path": "models/金工.skp",
+      "present": true,
+      "bytes": 22597109
+    }
+  },
+  "transforms": {
+    "note": "Map3D uses modelAlignment.ts for runtime centering, scaling, axis correction, and semantic overlay alignment.",
+    "unit": "source-model-units",
+    "upAxis": "auto-corrected-to-y-up-in-runtime",
+    "runtimeFit": "GLB bbox is centered at runtime and scaled by 8.6 / maxAxis; semantic overlay must match modelAlignment/modelCalibration."
+  }
+}

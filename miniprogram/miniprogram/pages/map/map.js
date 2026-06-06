@@ -5,7 +5,7 @@ const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 
 const defaultStartRoomId = mapData.defaultStartRoomId || "101";
 const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, overviewLabelRoomIds, palette } = mapRuntime;
-const railButtonTops = [4, 40, 76, 112, 148];
+const hostRailGutter = 0;
 const railTapActions = [
   { action: "back" },
   { panel: "route" },
@@ -13,24 +13,59 @@ const railTapActions = [
   { panel: "view" },
   { view: "reset" }
 ];
+const railButtonTops = railTapActions.map((_, index) => index);
 let canvasRef = null;
 let ctxRef = null;
 let dprRef = 1;
 let canvasBox = { width: 0, height: 0 };
+let viewportBox = { width: 0, height: 0 };
 let legacyCanvas = false;
 let webglRef = null;
 let webglProgramRef = null;
 let lastTapTargets = [];
+let createMiniProgramThreeMap = null;
+
+function threeLabelSignature(labels = []) {
+  return labels.map((label) => `${label.id || ""}:${label.text || ""}:${label.variant || ""}:${label.visible ? 1 : 0}`).join("|");
+}
+
+function loadThreeMapFactory() {
+  if (createMiniProgramThreeMap) return createMiniProgramThreeMap;
+  const sceneModule = require("../../lib/three-map-scene");
+  createMiniProgramThreeMap = sceneModule.createMiniProgramThreeMap;
+  if (!createMiniProgramThreeMap) throw new Error("three-map-scene 缺少 createMiniProgramThreeMap");
+  return createMiniProgramThreeMap;
+}
 
 function fallbackCanvasSize() {
   const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
   const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
   const width = Number(windowInfo.windowWidth || deviceInfo.windowWidth || 390);
   const height = Number(windowInfo.windowHeight || deviceInfo.windowHeight || 180);
-  const landscape = width > height;
   return {
-    width: Math.max(240, width - (landscape ? 66 : 0)),
+    width: Math.max(240, width),
     height: Math.max(132, height)
+  };
+}
+
+function currentSafeInsets() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+  const safeArea = windowInfo.safeArea || {};
+  const width = Number(windowInfo.windowWidth || 0);
+  const height = Number(windowInfo.windowHeight || 0);
+  return {
+    left: Math.max(0, Number(safeArea.left || 0)),
+    top: Math.max(0, Number(safeArea.top || 0)),
+    right: Math.max(0, width && Number.isFinite(safeArea.right) ? width - Number(safeArea.right) : 0),
+    bottom: Math.max(0, height && Number.isFinite(safeArea.bottom) ? height - Number(safeArea.bottom) : 0),
+  };
+}
+
+function pageBox() {
+  const fallback = fallbackCanvasSize();
+  return {
+    width: Number(viewportBox.width || fallback.width || canvasBox.width || 390),
+    height: Number(viewportBox.height || fallback.height || canvasBox.height || 180)
   };
 }
 
@@ -189,6 +224,29 @@ function panelButtonClass(panel, value) {
   return mapRuntime.panelButtonClass(panel, value);
 }
 
+function railStyle(active) {
+  return active
+    ? { bg: "#0b6cff", border: "#0b6cff", color: "#ffffff" }
+    : { bg: "rgba(255,255,255,0.97)", border: "rgba(194,211,232,0.94)", color: "#20344f" };
+}
+
+function hostRailStyles(panel = "none", hasRoute = false) {
+  const route = railStyle(panel === "route" || (hasRoute && panel === "none"));
+  const layers = railStyle(panel === "layers");
+  const view = railStyle(panel === "view");
+  return {
+    routeRailBg: route.bg,
+    routeRailBorder: route.border,
+    routeRailColor: route.color,
+    layersRailBg: layers.bg,
+    layersRailBorder: layers.border,
+    layersRailColor: layers.color,
+    viewRailBg: view.bg,
+    viewRailBorder: view.border,
+    viewRailColor: view.color,
+  };
+}
+
 function cloneTransform(transform) {
   return mapRuntime.cloneTransform(transform);
 }
@@ -213,8 +271,171 @@ function userImageTransformStyle(transform) {
   return mapRuntime.userImageTransformStyle(transform);
 }
 
-function railTapAction(tap) {
-  return mapRuntime.railTapAction(tap, canvasBox.width, canvasBox.height);
+function railTapAction(tap, box = pageBox()) {
+  const width = Number(box.width || 390);
+  const height = Number(box.height || 180);
+  const compact = height < 260 || width < 520;
+  const buttonW = compact ? 44 : 52;
+  const buttonH = compact ? 32 : 52;
+  const gap = compact ? 5 : 4;
+  const total = buttonH * railTapActions.length + gap * Math.max(0, railTapActions.length - 1);
+  const rightSafe = compact ? 10 : 10;
+  const x = width - buttonW - rightSafe;
+  const y = Math.min(Math.max(height / 2 - total / 2, compact ? 8 : 16), Math.max(compact ? 8 : 16, height - total - 8));
+  if (tap.x < x || tap.x > x + buttonW || tap.y < y || tap.y > y + total) return null;
+  const index = Math.floor((tap.y - y) / (buttonH + gap));
+  if (index < 0 || index >= railTapActions.length) return null;
+  const localY = tap.y - y - index * (buttonH + gap);
+  if (localY > buttonH) return null;
+  return railTapActions[index] || null;
+}
+
+function guidanceTapAction(tap, hasRoute, box = canvasBox) {
+  if (!hasRoute) return null;
+  const width = Number(box.width || canvasBox.width || 390);
+  const height = Number(box.height || canvasBox.height || 180);
+  const compact = height <= 430 && width >= height;
+  const guidanceWidth = compact ? Math.min(214, Math.max(198, width * 0.25)) : Math.min(720, Math.max(430, width - 126));
+  const x = compact ? 10 : 14;
+  const y = height - (compact ? 114 : 78);
+  const panelHeight = compact ? 102 : 64;
+  if (tap.y < y || tap.y > y + panelHeight || tap.x < x || tap.x > x + guidanceWidth) return null;
+  const chipW = compact ? 38 : 48;
+  const chipGap = compact ? 5 : 6;
+  const actionLeft = compact ? x + 10 : x + guidanceWidth - chipW * 4 - chipGap * 3 - 12;
+  const actions = ["open-layers", "open-view", "focus", "next"];
+  for (let index = 0; index < actions.length; index += 1) {
+    const chipX = actionLeft + index * (chipW + chipGap);
+    const chipY = compact ? y + 58 : y + 12;
+    const chipH = compact ? 22 : 38;
+    if (tap.x >= chipX && tap.x <= chipX + chipW && tap.y >= chipY && tap.y <= chipY + chipH) return actions[index];
+  }
+  if (tap.x >= x && tap.x <= x + guidanceWidth) return "focus";
+  return null;
+}
+
+function panelBounds(box = canvasBox, panelId = "route") {
+  const width = Number(box.width || canvasBox.width || 390);
+  const height = Number(box.height || canvasBox.height || 180);
+  const compact = height < 260 || width < 520;
+  const railReserve = compact ? 58 : 70;
+  const expandedWidth = panelId === "layers"
+    ? Math.min(500, Math.max(430, width - railReserve - 92))
+    : panelId === "view"
+      ? Math.min(252, Math.max(226, width * 0.28))
+      : Math.min(344, Math.max(292, width * 0.38));
+  const expandedHeight = panelId === "view"
+    ? Math.min(330, Math.max(276, height - 54))
+    : Math.min(360, Math.max(278, height - 24));
+  const panelWidth = compact ? Math.min(252, Math.max(218, width - railReserve - 20)) : Math.min(expandedWidth, Math.max(226, width - railReserve - 30));
+  const panelHeight = compact
+    ? panelId === "layers"
+      ? Math.min(150, Math.max(132, height - 78))
+      : Math.min(166, Math.max(148, height - 16))
+    : expandedHeight;
+  return {
+    x: compact
+      ? panelId === "layers"
+        ? Math.max(12, Math.min(28, (width - railReserve - panelWidth) / 2))
+        : 12
+      : Math.max(16, width - railReserve - panelWidth - 16),
+    y: compact ? 8 : panelId === "view" ? Math.max(18, Math.min(30, (height - panelHeight) / 2)) : 12,
+    width: panelWidth,
+    height: panelHeight
+  };
+}
+
+function panelTapAction(tap, panel, route, box = canvasBox) {
+  if (!panel || panel === "none") return null;
+  const bounds = panelBounds(box, panel);
+  if (tap.x < bounds.x || tap.x > bounds.x + bounds.width || tap.y < bounds.y || tap.y > bounds.y + bounds.height) {
+    return { type: "close" };
+  }
+  if (tap.x >= bounds.x + bounds.width - 46 && tap.y >= bounds.y + 8 && tap.y <= bounds.y + 44) {
+    return { type: "close" };
+  }
+  const contentY = bounds.y + 54;
+  if (panel === "layers") {
+    const items = ["allFloors", "exploded", "1F", "2F", "raised202", "section"];
+    const compact = bounds.height < 190 || bounds.width < 270;
+    const gap = compact ? 6 : 8;
+    const inset = compact ? 12 : 16;
+    const tileW = (bounds.width - inset * 2 - gap) / 2;
+    const tileH = compact ? 32 : 40;
+    const stepY = compact ? 36 : 48;
+    const y0 = bounds.y + (compact ? 42 : 54);
+    for (let index = 0; index < items.length; index += 1) {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = bounds.x + inset + col * (tileW + gap);
+      const y = y0 + row * stepY;
+      if (tap.x >= x && tap.x <= x + tileW && tap.y >= y && tap.y <= y + tileH) return { type: "layer", value: items[index] };
+    }
+  }
+  if (panel === "view") {
+    const items = ["overview", "near", "route", "rotateLeft", "rotateRight", "reset"];
+    const compact = bounds.height < 190 || bounds.width < 270;
+    const gap = compact ? 6 : 8;
+    const inset = compact ? 12 : 16;
+    const tileW = (bounds.width - inset * 2 - gap) / 2;
+    const tileH = compact ? 32 : 40;
+    const stepY = compact ? 36 : 48;
+    const y0 = bounds.y + (compact ? 42 : 54);
+    for (let index = 0; index < items.length; index += 1) {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = bounds.x + inset + col * (tileW + gap);
+      const y = y0 + row * stepY;
+      if (tap.x >= x && tap.x <= x + tileW && tap.y >= y && tap.y <= y + tileH) return { type: "view", value: items[index] };
+    }
+  }
+  if (panel === "room") {
+    if (tap.y >= bounds.y + bounds.height - 60 && tap.y <= bounds.y + bounds.height - 10) return { type: "room-route" };
+  }
+  if (panel === "route") {
+    if (route) {
+      const bw = (bounds.width - 48) / 3;
+      const buttonY = contentY + 108;
+      const actions = ["prev", "focus", "next"];
+      for (let index = 0; index < actions.length; index += 1) {
+        const x = bounds.x + 16 + index * (bw + 8);
+        if (tap.x >= x && tap.x <= x + bw && tap.y >= buttonY && tap.y <= buttonY + 38) return { type: actions[index] };
+      }
+    }
+    const targetIds = ["104-2F01", "202-5", "108-2F04", "208"];
+    const quickY = bounds.y + bounds.height - 54;
+    const tw = (bounds.width - 40 - 18) / 4;
+    for (let index = 0; index < targetIds.length; index += 1) {
+      const x = bounds.x + 16 + index * (tw + 6);
+      if (tap.x >= x && tap.x <= x + tw && tap.y >= quickY && tap.y <= quickY + 38) return { type: "target", value: targetIds[index] };
+    }
+  }
+  return null;
+}
+
+function normalizeTouchPoint(touch = {}, index = 0) {
+  const x = Number(touch.x ?? touch.clientX ?? touch.pageX ?? 0);
+  const y = Number(touch.y ?? touch.clientY ?? touch.pageY ?? 0);
+  return {
+    identifier: Number(touch.identifier ?? touch.id ?? index),
+    x,
+    y,
+    clientX: Number(touch.clientX ?? touch.x ?? touch.pageX ?? x),
+    clientY: Number(touch.clientY ?? touch.y ?? touch.pageY ?? y),
+    pageX: Number(touch.pageX ?? touch.x ?? touch.clientX ?? x),
+    pageY: Number(touch.pageY ?? touch.y ?? touch.clientY ?? y),
+  };
+}
+
+function normalizeThreeTouchEvent(event, type) {
+  const touches = Array.from(event.touches || []).map(normalizeTouchPoint);
+  const changed = Array.from(event.changedTouches || event.touches || []).map(normalizeTouchPoint);
+  return {
+    type,
+    touches,
+    changedTouches: changed.length ? changed : touches,
+    timeStamp: event.timeStamp || Date.now(),
+  };
 }
 
 function imagePresetTransform(transform, viewPreset) {
@@ -753,12 +974,19 @@ Page({
     nativeDoors: [],
     nativeStairs: [],
     nativeRouteSegments: [],
-    nativeRoutePins: []
+    nativeRoutePins: [],
+    threeLabels: [],
+    threeRendererStatus: "",
+    rendererIssueClass: "",
+    ...hostRailStyles("none", false)
   },
 
   onLoad(options) {
     this.transform = normalizeTransform({ panX: 0, panY: 0, zoom: 1, rotation: 0 });
     this.touchState = null;
+    this.threeMap = null;
+    this.lastThreeLabelsSignature = "";
+    this.pendingTouchEvents = [];
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
@@ -794,10 +1022,25 @@ Page({
     this.initCanvas();
   },
 
+  onUnload() {
+    if (this.threeInitTimer) {
+      clearTimeout(this.threeInitTimer);
+      this.threeInitTimer = null;
+    }
+    if (this.threeMap) {
+      this.threeMap.dispose();
+      this.threeMap = null;
+    }
+  },
+
   initCanvas() {
     const fallback = fallbackCanvasSize();
-    canvasBox = {
+    viewportBox = {
       width: Math.max(1, fallback.width),
+      height: Math.max(1, fallback.height)
+    };
+    canvasBox = {
+      width: Math.max(1, fallback.width - hostRailGutter),
       height: Math.max(1, fallback.height)
     };
     const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
@@ -816,6 +1059,66 @@ Page({
       mapTransformStyle: userImageTransformStyle(this.transform),
       rendererReadyClass: rendererReady ? "renderer-canvas-ready" : ""
     }, () => this.drawMap());
+
+    const publishRendererStatus = (ready, text) => this.setData({
+      threeRendererStatus: ready ? "" : text,
+      rendererIssueClass: ready ? "" : "visible",
+      rendererReadyClass: ready ? "renderer-canvas-ready" : this.data.rendererReadyClass
+    });
+
+    const initializeThreeScene = (canvasNode, width, height) => {
+      if (this.threeMap) {
+        this.threeMap.setSize(width, height, dprRef);
+        publishRendererStatus(true, "");
+        this.drawMap();
+        return;
+      }
+      try {
+        publishRendererStatus(false, "正在加载 3D 地图…");
+        const factory = loadThreeMapFactory();
+        this.threeMap = factory(canvasNode, {
+          width,
+          height,
+          pixelRatio: dprRef,
+          context: canvasNode.getContext ? canvasNode.getContext("webgl") || canvasNode.getContext("experimental-webgl") : null,
+          route: this.data.route,
+          layerMode: this.data.layerMode,
+          activeStepIndex: this.data.activeStepIndex || 0,
+          viewPreset: this.data.viewPreset === "reset" ? "overview" : this.data.viewPreset,
+          panel: this.data.panel,
+          preserveCamera: Boolean(this.preserveCameraOnce),
+          sensorHint: this.data.sensorHint,
+          activeStepLabel: this.data.activeStepLabel,
+          currentStepTitle: this.data.currentStepTitle,
+          nextStepVerb: this.data.nextStepVerb,
+          nextStepTitle: this.data.nextStepTitle,
+          activeStepDistanceLabel: this.data.activeStepDistanceLabel,
+          stepActionLabel: this.data.stepActionLabel,
+          routeDistanceLabel: this.data.routeDistanceLabel,
+          routeStartLabel: this.data.routeStartLabel,
+          routeTargetLabel: this.data.routeTargetLabel,
+          selectedRoomId: this.data.selectedRoom?.id || "",
+          selectedFloorLabel: this.data.selectedFloorLabel,
+          safeInsets: currentSafeInsets(),
+          onLabels: (threeLabels = []) => {
+            const signature = threeLabelSignature(threeLabels);
+            if (signature === this.lastThreeLabelsSignature) return;
+            this.lastThreeLabelsSignature = signature;
+            this.setData({ threeLabels });
+          },
+          onStatus: (status) => this.setData({
+            threeRendererStatus: status.ready ? "" : (status.text || "地图渲染异常"),
+            rendererIssueClass: status.ready ? "" : "visible",
+            rendererReadyClass: status.ready ? "renderer-canvas-ready" : this.data.rendererReadyClass
+          })
+        });
+        publishRendererStatus(true, "");
+        this.drawMap();
+      } catch (error) {
+        console.error("[mini-three] initialize failed", error);
+        publishRendererStatus(false, `地图初始化失败：${error && error.message ? error.message : "未知错误"}`);
+      }
+    };
 
     if (!wx.createSelectorQuery) {
       publishVisualState(false);
@@ -839,25 +1142,20 @@ Page({
       canvasRef = canvasNode;
       canvasRef.width = Math.floor(width * dprRef);
       canvasRef.height = Math.floor(height * dprRef);
-      webglRef = canvasRef.getContext("webgl") || canvasRef.getContext("experimental-webgl");
-      if (webglRef) {
-        try {
-          webglProgramRef = createWebglProgram(webglRef);
-          renderWebglBackdrop(webglRef, canvasRef.width, canvasRef.height, this.data.hasRoute);
-        } catch (error) {
-          console.warn("WebGL map renderer unavailable", error);
-          webglRef = null;
-          webglProgramRef = null;
-        }
+      const gl = canvasRef.getContext("webgl") || canvasRef.getContext("experimental-webgl");
+      if (gl && typeof gl.viewport === "function") renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+      if (this.threeInitTimer) {
+        clearTimeout(this.threeInitTimer);
+        this.threeInitTimer = null;
       }
       ctxRef = null;
       legacyCanvas = false;
       updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
-      if (webglRef) {
-        publishVisualState(true);
-      } else {
-        publishVisualState(false);
-      }
+      publishVisualState(Boolean(this.threeMap));
+      this.threeInitTimer = setTimeout(() => {
+        this.threeInitTimer = null;
+        initializeThreeScene(canvasRef, width, height);
+      }, 0);
     });
   },
 
@@ -891,7 +1189,8 @@ Page({
       canPrevStep: Boolean(route && activeStepIndex > 0),
       canNextStep: Boolean(route && activeStepIndex < steps.length - 1),
       prevStepDisabledClass: route && activeStepIndex > 0 ? "" : "disabled",
-      routeButtonClass: route ? "active" : this.data.routeButtonClass
+      routeButtonClass: route ? "active" : this.data.routeButtonClass,
+      ...hostRailStyles(next.panel || this.data.panel || "none", Boolean(route))
     }, () => {
       if (!options.skipDraw) this.drawMap();
     });
@@ -905,6 +1204,31 @@ Page({
 
   drawMap() {
     this.setData({ mapTransformStyle: userImageTransformStyle(this.transform) });
+    if (this.threeMap) {
+      this.threeMap.update({
+        layerMode: this.data.layerMode,
+        route: this.data.route,
+        activeStepIndex: this.data.activeStepIndex || 0,
+        targetRoomId: this.data.targetRoomId,
+        viewPreset: this.data.viewPreset === "reset" ? "overview" : this.data.viewPreset,
+        panel: this.data.panel,
+        sensorHint: this.data.sensorHint,
+        activeStepLabel: this.data.activeStepLabel,
+        currentStepTitle: this.data.currentStepTitle,
+        nextStepVerb: this.data.nextStepVerb,
+        nextStepTitle: this.data.nextStepTitle,
+        activeStepDistanceLabel: this.data.activeStepDistanceLabel,
+        stepActionLabel: this.data.stepActionLabel,
+        routeDistanceLabel: this.data.routeDistanceLabel,
+        routeStartLabel: this.data.routeStartLabel,
+        routeTargetLabel: this.data.routeTargetLabel,
+        selectedRoomId: this.data.selectedRoom?.id || "",
+        selectedFloorLabel: this.data.selectedFloorLabel,
+        safeInsets: currentSafeInsets()
+      });
+      this.preserveCameraOnce = false;
+      return;
+    }
     if (webglRef && canvasRef) {
       this.drawWebglMap();
       return;
@@ -1781,7 +2105,17 @@ Page({
       x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
       y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
     };
-    const railAction = railTapAction(tap);
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, canvasBox);
+    if (panelAction) {
+      this.applyCanvasAction(panelAction);
+      return;
+    }
+    const guidanceAction = guidanceTapAction(tap, this.data.hasRoute, canvasBox);
+    if (guidanceAction) {
+      this.applyCanvasAction({ type: guidanceAction });
+      return;
+    }
+    const railAction = railTapAction(tap, canvasBox);
     if (railAction) {
       if (railAction.action === "back") {
         this.goBack();
@@ -1795,6 +2129,11 @@ Page({
         this.setViewPreset({ currentTarget: { dataset: { view: railAction.view } } });
         return;
       }
+    }
+    if (this.threeMap) {
+      const roomId = this.threeMap.pickRoom(tap.x, tap.y);
+      if (roomId) this.selectRoomById(roomId);
+      return;
     }
     const ids = this.visibleFloorIds();
     for (let f = ids.length - 1; f >= 0; f -= 1) {
@@ -1817,7 +2156,18 @@ Page({
       x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
       y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
     };
-    const railAction = railTapAction(tap);
+    const hostBox = pageBox();
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, hostBox);
+    if (panelAction) {
+      this.applyCanvasAction(panelAction);
+      return;
+    }
+    const guidanceAction = guidanceTapAction(tap, this.data.hasRoute, hostBox);
+    if (guidanceAction) {
+      this.applyCanvasAction({ type: guidanceAction });
+      return;
+    }
+    const railAction = railTapAction(tap, hostBox);
     if (!railAction) return;
     if (railAction.action === "back") {
       this.goBack();
@@ -1832,7 +2182,69 @@ Page({
     }
   },
 
+  handleRailOverlayTap(event) {
+    const dataset = event?.currentTarget?.dataset || {};
+    if (dataset.action === "back") {
+      this.goBack();
+      return;
+    }
+    if (dataset.panel) {
+      this.openPanel({ currentTarget: { dataset: { panel: dataset.panel } } });
+      return;
+    }
+    if (dataset.view) {
+      this.setViewPreset({ currentTarget: { dataset: { view: dataset.view } } });
+    }
+  },
+
+  applyCanvasAction(action) {
+    if (!action) return;
+    if (action.type === "close") {
+      this.closePanel();
+      return;
+    }
+    if (action.type === "layer") {
+      this.setLayer({ currentTarget: { dataset: { layer: action.value } } });
+      return;
+    }
+    if (action.type === "view") {
+      this.setViewPreset({ currentTarget: { dataset: { view: action.value } } });
+      return;
+    }
+    if (action.type === "open-layers") {
+      this.openPanel({ currentTarget: { dataset: { panel: "layers" } } });
+      return;
+    }
+    if (action.type === "open-view") {
+      this.openPanel({ currentTarget: { dataset: { panel: "view" } } });
+      return;
+    }
+    if (action.type === "prev") {
+      this.stepRouteProgress(-1);
+      return;
+    }
+    if (action.type === "focus") {
+      this.focusActiveStep();
+      return;
+    }
+    if (action.type === "next") {
+      this.advanceRouteCheckpoint();
+      return;
+    }
+    if (action.type === "target") {
+      this.selectQuickTarget({ currentTarget: { dataset: { id: action.value } } });
+      return;
+    }
+    if (action.type === "room-route" && this.data.selectedRoom?.id) {
+      this.selectQuickTarget({ currentTarget: { dataset: { id: this.data.selectedRoom.id } } });
+    }
+  },
+
   handleTouchStart(event) {
+    if (this.threeMap) {
+      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchstart"));
+      return;
+    }
     const touches = event.touches || [];
     if (touches.length === 1) {
       this.touchState = {
@@ -1854,6 +2266,10 @@ Page({
   },
 
   handleTouchMove(event) {
+    if (this.threeMap) {
+      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchmove"));
+      return;
+    }
     if (!this.touchState) return;
     const touches = event.touches || [];
     if (this.touchState.mode === "pan" && touches.length === 1) {
@@ -1875,7 +2291,10 @@ Page({
     }
   },
 
-  handleTouchEnd() {
+  handleTouchEnd(event) {
+    if (this.threeMap) {
+      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event || {}, "touchend"));
+    }
     this.touchState = null;
   },
 
@@ -1923,6 +2342,12 @@ Page({
     const viewPreset = event.currentTarget.dataset.view;
     if (viewPreset === "rotateLeft" || viewPreset === "rotateRight") {
       const delta = viewPreset === "rotateLeft" ? -0.09 : 0.09;
+      if (this.threeMap) {
+        this.threeMap.rotate(delta);
+        this.preserveCameraOnce = true;
+        this.setData({ viewPreset: "near" }, () => this.drawMap());
+        return;
+      }
       this.transform = normalizeTransform(this.transform || {});
       this.transform.rotation = Math.min(0.36, Math.max(-0.36, (this.transform.rotation || 0) + delta));
       this.transform.imageRotation = Math.min(0.28, Math.max(-0.28, (this.transform.imageRotation || 0) + delta));
@@ -2001,8 +2426,9 @@ Page({
       routeButtonClass: panelButtonClass(panel, "route"),
       layersButtonClass: panelButtonClass(panel, "layers"),
       viewButtonClass: panelButtonClass(panel, "view"),
-      roomButtonClass: panelButtonClass(panel, "room")
-    });
+      roomButtonClass: panelButtonClass(panel, "room"),
+      ...hostRailStyles(panel, this.data.hasRoute)
+    }, () => this.drawMap());
   },
 
   closePanel() {
@@ -2011,8 +2437,9 @@ Page({
       routeButtonClass: "",
       layersButtonClass: "",
       viewButtonClass: "",
-      roomButtonClass: ""
-    });
+      roomButtonClass: "",
+      ...hostRailStyles("none", this.data.hasRoute)
+    }, () => this.drawMap());
   },
 
   selectRoomById(id) {
@@ -2024,7 +2451,8 @@ Page({
       routeButtonClass: "",
       layersButtonClass: "",
       viewButtonClass: "",
-      roomButtonClass: "active"
+      roomButtonClass: "active",
+      ...hostRailStyles("room", this.data.hasRoute)
     }, () => this.drawMap());
   },
 

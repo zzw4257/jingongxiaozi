@@ -1411,6 +1411,143 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   let lastPublishedLabelAt = 0;
   let semanticBounds = null;
   let lastAppliedPreset = "";
+  let touchGesture = null;
+  const lastSafeCamera = {
+    position: camera.position.clone(),
+    target: controls.target.clone(),
+    fov: camera.fov,
+  };
+
+  function vectorIsFinite(vector) {
+    return Boolean(vector) && Number.isFinite(vector.x) && Number.isFinite(vector.y) && Number.isFinite(vector.z);
+  }
+
+  function rememberSafeCamera() {
+    if (!vectorIsFinite(camera.position) || !vectorIsFinite(controls.target) || !Number.isFinite(camera.fov)) return false;
+    lastSafeCamera.position.copy(camera.position);
+    lastSafeCamera.target.copy(controls.target);
+    lastSafeCamera.fov = camera.fov;
+    return true;
+  }
+
+  function restoreSafeCamera(reason = "camera") {
+    camera.position.copy(lastSafeCamera.position);
+    controls.target.copy(lastSafeCamera.target);
+    camera.fov = lastSafeCamera.fov;
+    camera.up.set(0, 1, 0);
+    camera.lookAt(controls.target);
+    camera.updateProjectionMatrix();
+    controls.update();
+    console.warn("[mini-three] restored safe camera", reason);
+    return false;
+  }
+
+  function ensureFiniteCamera(reason = "camera") {
+    if (vectorIsFinite(camera.position) && vectorIsFinite(controls.target) && Number.isFinite(camera.fov)) {
+      rememberSafeCamera();
+      return true;
+    }
+    return restoreSafeCamera(reason);
+  }
+
+  function touchPoints(event = {}) {
+    return Array.from(event.touches || [])
+      .map((touch, index) => ({
+        id: Number(touch.identifier ?? touch.id ?? index),
+        x: Number(touch.clientX ?? touch.x ?? touch.pageX),
+        y: Number(touch.clientY ?? touch.y ?? touch.pageY),
+      }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  }
+
+  function midpoint(points) {
+    return {
+      x: points.reduce((sum, point) => sum + point.x, 0) / Math.max(1, points.length),
+      y: points.reduce((sum, point) => sum + point.y, 0) / Math.max(1, points.length),
+    };
+  }
+
+  function pointDistance(a, b) {
+    if (!a || !b) return 1;
+    return Math.max(1, Math.hypot(a.x - b.x, a.y - b.y));
+  }
+
+  function beginTouchGesture(event) {
+    const points = touchPoints(event);
+    if (!points.length) {
+      touchGesture = null;
+      return false;
+    }
+    ensureFiniteCamera("touchstart");
+    camera.updateMatrixWorld(true);
+    const offset = camera.position.clone().sub(controls.target);
+    const startSpherical = new THREE.Spherical().setFromVector3(offset);
+    const startRight = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0).normalize();
+    const startUp = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1).normalize();
+    touchGesture = {
+      mode: points.length >= 2 ? "pinch" : "rotate",
+      points,
+      center: midpoint(points),
+      distance: points.length >= 2 ? pointDistance(points[0], points[1]) : 1,
+      startPosition: camera.position.clone(),
+      startTarget: controls.target.clone(),
+      startSpherical,
+      startRight,
+      startUp,
+    };
+    lastInteractionAt = Date.now();
+    return true;
+  }
+
+  function applyCameraFromSpherical(target, spherical) {
+    spherical.phi = clamp(spherical.phi, controls.minPolarAngle || 0.12, controls.maxPolarAngle || Math.PI * 0.62);
+    spherical.radius = clamp(spherical.radius, controls.minDistance || 1.35, controls.maxDistance || 42);
+    spherical.makeSafe();
+    const nextPosition = new THREE.Vector3().setFromSpherical(spherical).add(target);
+    if (!vectorIsFinite(nextPosition) || !vectorIsFinite(target)) return restoreSafeCamera("gesture-nan");
+    controls.target.copy(target);
+    camera.position.copy(nextPosition);
+    camera.lookAt(controls.target);
+    camera.updateProjectionMatrix();
+    controls.update();
+    rememberSafeCamera();
+    lastAppliedPreset = "";
+    lastHudSignature = "";
+    return true;
+  }
+
+  function applyTouchGesture(event) {
+    const points = touchPoints(event);
+    if (!points.length) {
+      touchGesture = null;
+      return false;
+    }
+    if (!touchGesture || (points.length >= 2 ? "pinch" : "rotate") !== touchGesture.mode) {
+      return beginTouchGesture(event);
+    }
+    lastInteractionAt = Date.now();
+    const height = Math.max(160, renderHeight || canvas.clientHeight || canvas.height || 390);
+    if (touchGesture.mode === "rotate") {
+      const dx = points[0].x - touchGesture.points[0].x;
+      const dy = points[0].y - touchGesture.points[0].y;
+      const spherical = touchGesture.startSpherical.clone();
+      spherical.theta -= (2 * Math.PI * dx / height) * controls.rotateSpeed;
+      spherical.phi -= (2 * Math.PI * dy / height) * controls.rotateSpeed * 0.58;
+      return applyCameraFromSpherical(touchGesture.startTarget.clone(), spherical);
+    }
+    const center = midpoint(points);
+    const dx = center.x - touchGesture.center.x;
+    const dy = center.y - touchGesture.center.y;
+    const pinchScale = clamp(pointDistance(points[0], points[1]) / touchGesture.distance, 0.35, 3.2);
+    const spherical = touchGesture.startSpherical.clone();
+    spherical.radius = touchGesture.startSpherical.radius / pinchScale;
+    const targetDistance = Math.max(1, touchGesture.startPosition.distanceTo(touchGesture.startTarget));
+    const panScale = 2 * targetDistance * Math.tan(camera.fov * Math.PI / 360) / height;
+    const target = touchGesture.startTarget.clone()
+      .add(touchGesture.startRight.clone().multiplyScalar(-dx * panScale))
+      .add(touchGesture.startUp.clone().multiplyScalar(dy * panScale));
+    return applyCameraFromSpherical(target, spherical);
+  }
 
   function clearHudWidgets() {
     if (hudSurface) {
@@ -1430,21 +1567,18 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     const width = Math.max(1, Math.round(hudWidth * hudCanvasScale));
     const height = Math.max(1, Math.round(hudHeight * hudCanvasScale));
     if (!hudCanvas || !hudCtx || width !== hudCanvasSize.width || height !== hudCanvasSize.height) {
+      const nextCanvas = createHudCanvas(width, height);
+      const nextCtx = nextCanvas && nextCanvas.getContext ? nextCanvas.getContext("2d") : null;
+      if (!nextCanvas || !nextCtx) {
+        return Boolean(hudSurface && hudTexture && hudCtx);
+      }
       if (hudSurface) {
         hudScene.remove(hudSurface);
         disposeObject(hudSurface);
       }
       if (hudTexture && hudTexture.dispose) hudTexture.dispose();
-      hudCanvas = createHudCanvas(width, height);
-      hudCtx = hudCanvas && hudCanvas.getContext ? hudCanvas.getContext("2d") : null;
-      if (!hudCanvas || !hudCtx) {
-        hudCanvas = null;
-        hudCtx = null;
-        hudTexture = null;
-        hudSurface = null;
-        hudWidgets = [];
-        return false;
-      }
+      hudCanvas = nextCanvas;
+      hudCtx = nextCtx;
       hudCanvasSize = { width, height };
       hudTexture = new THREE.CanvasTexture(hudCanvas);
       hudTexture.minFilter = THREE.LinearFilter;
@@ -1573,54 +1707,59 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       if (hudWidgets.length) clearHudWidgets();
       return;
     }
-    const hud = hudState();
-    const now = Date.now();
-    const cameraSignature = [
-      Math.round(camera.position.x * 18),
-      Math.round(camera.position.y * 18),
-      Math.round(camera.position.z * 18),
-      Math.round(controls.target.x * 18),
-      Math.round(controls.target.y * 18),
-      Math.round(controls.target.z * 18),
-    ].join(",");
-    const cameraChanged = cameraSignature !== lastHudCameraSignature;
-    if (!force && cameraChanged && now - lastHudRebuildAt < 520) return;
-    lastHudCameraSignature = cameraSignature;
-    const labelSnapshot = projectedHudLabels();
-    const signature = JSON.stringify({
-      revision: hudLayoutRevision,
-      width: hudWidth,
-      height: hudHeight,
-      hud,
-      labels: labelSnapshot.map((label) => [label.id, label.text, label.variant, Math.round(label.x), Math.round(label.y)]),
-    });
-    if (!force && signature === lastHudSignature) return;
-    lastHudSignature = signature;
-    lastHudRebuildAt = now;
-    if (!beginHudFrame()) return;
-    labelSnapshot.forEach((label, index) => {
-      addHudWidget(
-        labelMetrics(label),
-        (ctx) => drawLabelPill(ctx, label),
-        `hud-label-${label.id || index}`,
-        90 + index * 0.001,
+    try {
+      if (!ensureFiniteCamera("hud")) return;
+      const hud = hudState();
+      const now = Date.now();
+      const cameraSignature = [
+        Math.round(camera.position.x * 18),
+        Math.round(camera.position.y * 18),
+        Math.round(camera.position.z * 18),
+        Math.round(controls.target.x * 18),
+        Math.round(controls.target.y * 18),
+        Math.round(controls.target.z * 18),
+      ].join(",");
+      const cameraChanged = cameraSignature !== lastHudCameraSignature;
+      if (!force && cameraChanged && now - lastHudRebuildAt < 520) return;
+      const labelSnapshot = projectedHudLabels();
+      const signature = JSON.stringify({
+        revision: hudLayoutRevision,
+        width: hudWidth,
+        height: hudHeight,
+        hud,
+        labels: labelSnapshot.map((label) => [label.id, label.text, label.variant, Math.round(label.x), Math.round(label.y)]),
+      });
+      if (!force && signature === lastHudSignature) return;
+      if (!beginHudFrame()) return;
+      labelSnapshot.forEach((label, index) => {
+        addHudWidget(
+          labelMetrics(label),
+          (ctx) => drawLabelPill(ctx, label),
+          `hud-label-${label.id || index}`,
+          90 + index * 0.001,
+        );
+      });
+      addLocalHudWidget(
+        { x: 0, y: 0, width: hudWidth, height: hudHeight },
+        (ctx, width, height) => drawFixedHudLocal(ctx, hud, width, height),
+        "hud-fixed-controls",
+        117,
       );
-    });
-    addLocalHudWidget(
-      { x: 0, y: 0, width: hudWidth, height: hudHeight },
-      (ctx, width, height) => drawFixedHudLocal(ctx, hud, width, height),
-      "hud-fixed-controls",
-      117,
-    );
-    if (hud.panel && hud.panel !== "none") {
-      addHudWidget(
-        panelMetrics(hudWidth, hudHeight, hud.panel),
-        (ctx) => drawPanel(ctx, hud, hudWidth, hudHeight),
-        `hud-panel-${hud.panel}`,
-        118,
-      );
+      if (hud.panel && hud.panel !== "none") {
+        addHudWidget(
+          panelMetrics(hudWidth, hudHeight, hud.panel),
+          (ctx) => drawPanel(ctx, hud, hudWidth, hudHeight),
+          `hud-panel-${hud.panel}`,
+          118,
+        );
+      }
+      finishHudFrame();
+      lastHudCameraSignature = cameraSignature;
+      lastHudSignature = signature;
+      lastHudRebuildAt = now;
+    } catch (error) {
+      console.error("[mini-three] HUD rebuild failed", error);
     }
-    finishHudFrame();
   }
 
   function applyCameraPreset(preset = "overview") {
@@ -1639,6 +1778,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     camera.updateProjectionMatrix();
     controls.target.copy(target);
     controls.update();
+    rememberSafeCamera();
   }
 
   function fitCameraToSemanticBounds(reason = "semantic") {
@@ -1665,6 +1805,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     camera.updateProjectionMatrix();
     controls.target.set(center.x, center.y + Math.min(0.68, size.y * 0.18), center.z);
     controls.update();
+    rememberSafeCamera();
     options.onStatus && options.onStatus({
       ready: true,
       text: "",
@@ -2154,7 +2295,9 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         return;
       }
       lastRenderedAt = now;
+      ensureFiniteCamera("before-controls");
       controls.update();
+      ensureFiniteCamera("after-controls");
       rebuildHudTexture(false);
       renderer.clear(true, true, true);
       renderer.render(scene, camera);
@@ -2241,13 +2384,24 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       rebuildHudTexture(true);
     },
     dispatchTouchEvent(event) {
-      if (event && (event.type === "touchstart" || event.type === "touchmove")) lastInteractionAt = Date.now();
-      if (platform.dispatchTouchEvent) platform.dispatchTouchEvent(event);
+      if (!event) return false;
+      if (event.type === "touchstart") return beginTouchGesture(event);
+      if (event.type === "touchmove") return applyTouchGesture(event);
+      if (event.type === "touchend" || event.type === "touchcancel") {
+        const points = touchPoints(event);
+        if (points.length) return beginTouchGesture({ ...event, touches: points });
+        touchGesture = null;
+        return true;
+      }
+      return false;
     },
     rotate(delta) {
       lastInteractionAt = Date.now();
-      controls.rotateLeft(delta);
-      controls.update();
+      ensureFiniteCamera("rotate-button");
+      const spherical = new THREE.Spherical().setFromVector3(camera.position.clone().sub(controls.target));
+      spherical.theta -= delta;
+      applyCameraFromSpherical(controls.target.clone(), spherical);
+      rebuildHudTexture(true);
     },
     pickRoom(x, y) {
       pointer.set((x / Math.max(1, renderWidth)) * 2 - 1, -(y / Math.max(1, renderHeight)) * 2 + 1);

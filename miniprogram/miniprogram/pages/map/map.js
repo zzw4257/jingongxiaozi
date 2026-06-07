@@ -2242,7 +2242,11 @@ Page({
 
   handleTouchStart(event) {
     if (this.threeMap) {
-      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchstart"));
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchstart"));
+      } catch (error) {
+        console.error("[mini-three] touchstart failed", error);
+      }
       return;
     }
     const touches = event.touches || [];
@@ -2267,7 +2271,11 @@ Page({
 
   handleTouchMove(event) {
     if (this.threeMap) {
-      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchmove"));
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchmove"));
+      } catch (error) {
+        console.error("[mini-three] touchmove failed", error);
+      }
       return;
     }
     if (!this.touchState) return;
@@ -2293,7 +2301,11 @@ Page({
 
   handleTouchEnd(event) {
     if (this.threeMap) {
-      this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event || {}, "touchend"));
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event || {}, "touchend"));
+      } catch (error) {
+        console.error("[mini-three] touchend failed", error);
+      }
     }
     this.touchState = null;
   },

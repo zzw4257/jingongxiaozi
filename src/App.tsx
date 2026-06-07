@@ -27,16 +27,22 @@ export function App() {
     const mode = params.get("mode");
     const startRoomId = params.get("startRoomId") || undefined;
     const targetRoomId = params.get("targetRoomId") || undefined;
+    const requestedLayerMode = params.get("layerMode") as MapDirectRequest["layerMode"] | null;
+    const requestedActiveFloor = params.get("activeFloor") as MapDirectRequest["activeFloor"] | null;
     const announce = params.get("announce")?.split(",").filter(Boolean) as MapDirectRequest["announce"] | undefined;
     if (mode !== "map") return;
+    const layerMode = requestedLayerMode && ["single", "twoFloor", "allFloors", "exploded", "section", "raised202"].includes(requestedLayerMode) ? requestedLayerMode : undefined;
+    const activeFloor = requestedActiveFloor === "1F" || requestedActiveFloor === "2F" ? requestedActiveFloor : undefined;
     const request: MapDirectRequest = {
       ...(startRoomId ? { startRoomId } : {}),
       ...(targetRoomId ? { targetRoomId } : {}),
+      ...(layerMode ? { layerMode } : {}),
+      ...(activeFloor ? { activeFloor } : {}),
       ...(announce?.length ? { announce } : {}),
     };
     setAppState({
       mode: "map",
-      request: targetRoomId || startRoomId ? request : undefined,
+      request: targetRoomId || startRoomId || layerMode || activeFloor ? request : undefined,
       audio: { ...DEFAULT_AUDIO_STATE, source: "backend", message: "小程序入口打开地图" },
     });
     postMiniProgramMessage({ type: "map-direct", request });

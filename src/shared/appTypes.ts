@@ -28,6 +28,8 @@ export type BackendDirective =
 export type MapDirectRequest = {
   startRoomId?: string;
   targetRoomId?: string;
+  layerMode?: "single" | "twoFloor" | "allFloors" | "exploded" | "section" | "raised202";
+  activeFloor?: "1F" | "2F";
   announce?: Array<"summary" | "distance" | "direction" | "floorChange">;
 };
 

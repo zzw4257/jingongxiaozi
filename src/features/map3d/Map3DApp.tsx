@@ -60,13 +60,6 @@ type LabelDensity = "far" | "mid" | "near";
 type RoutePage = "setup" | "details" | "startPicker" | "targetPicker";
 type RoomPickerGroup = "common" | "1F" | "2F" | "raised202";
 type RuntimeModelRole = "structure" | "detail";
-type SupportDeck = {
-  id: string;
-  floor: FloorId;
-  polygon: Point[];
-  label: string;
-  semanticId: string;
-};
 type DeviceHeadingState = {
   heading?: number;
   supported: boolean;
@@ -230,9 +223,9 @@ const SEMANTIC_RENDER_POLICY = {
   },
   routeKeyPinLift: {
     disc: 0.018,
-    ring: 0.045,
-    marker: 0.095,
-    label: 0.28,
+    ring: 0.032,
+    marker: 0.055,
+    label: 0.16,
   },
   minimumPassiveRoomOpacity: 0.72,
   minimumServiceOpacity: 0.82,
@@ -246,102 +239,8 @@ const roomCssClass: Record<AreaType, string> = {
   other: "other",
 };
 
-const secondFloorSupportDecks: SupportDeck[] = [
-  {
-    id: "2f-west-support",
-    floor: "2F",
-    label: "108/208 承托区",
-    semanticId: "2f-west-support",
-    polygon: [
-      [90, 70],
-      [635, 70],
-      [635, 345],
-      [90, 345],
-    ],
-  },
-  {
-    id: "2f-public-corridor-support",
-    floor: "2F",
-    label: "公共二层过道承托",
-    semanticId: "2f-public-corridor-support",
-    polygon: [
-      [500, 190],
-      [620, 190],
-      [620, 272],
-      [500, 272],
-    ],
-  },
-  {
-    id: "2f-106-support",
-    floor: "2F",
-    label: "106 二层承托",
-    semanticId: "2f-106-support",
-    polygon: [
-      [760, 15],
-      [930, 15],
-      [930, 95],
-      [760, 95],
-    ],
-  },
-  {
-    id: "2f-104-support",
-    floor: "2F",
-    label: "104 二层承托",
-    semanticId: "2f-104-support",
-    polygon: [
-      [1050, 160],
-      [1180, 160],
-      [1180, 280],
-      [1050, 280],
-    ],
-  },
-  {
-    id: "2f-east-service-support",
-    floor: "2F",
-    label: "东侧服务承托",
-    semanticId: "2f-east-service-support",
-    polygon: [
-      [920, 205],
-      [1050, 205],
-      [1050, 280],
-      [920, 280],
-    ],
-  },
-  {
-    id: "2f-east-connector-support",
-    floor: "2F",
-    label: "东侧过道承托",
-    semanticId: "2f-east-connector-support",
-    polygon: [
-      [920, 160],
-      [1050, 160],
-      [1050, 245],
-      [920, 245],
-    ],
-  },
-  {
-    id: "2f-office-support",
-    floor: "2F",
-    label: "办公区承托",
-    semanticId: "2f-office-support",
-    polygon: [
-      [235, 625],
-      [520, 625],
-      [520, 705],
-      [235, 705],
-    ],
-  },
-];
-
 function isSingleSecondFloor(session: Pick<MapSessionState, "activeFloor" | "layerMode">) {
   return session.layerMode === "single" && session.activeFloor === "2F";
-}
-
-function visibleSupportDecksForSession(session: MapSessionState) {
-  if (!floorVisibility("2F", session)) return [];
-  if (session.layerMode === "raised202" || session.layerMode === "section") return [];
-  if (session.layerMode === "allFloors") return [];
-  return secondFloorSupportDecks;
 }
 
 const defaultSession = (entrySource: "manual" | "backend", request?: MapDirectRequest): MapSessionState => ({
@@ -350,8 +249,8 @@ const defaultSession = (entrySource: "manual" | "backend", request?: MapDirectRe
   startRoomId: request?.startRoomId,
   targetRoomId: request?.targetRoomId,
   viewMode: "2_5d",
-  layerMode: DEFAULT_LAYER,
-  activeFloor: undefined,
+  layerMode: request?.layerMode ?? DEFAULT_LAYER,
+  activeFloor: request?.activeFloor,
   announce: request?.announce ?? [],
 });
 
@@ -478,18 +377,6 @@ function shouldDrawWholeFloorSlab(floor: FloorGeometry, session: Pick<MapSession
   return session.layerMode === "exploded" || session.layerMode === "section";
 }
 
-function shouldDrawOuterShellWall(_wallId: string, _session: Pick<MapSessionState, "activeFloor" | "layerMode">): boolean {
-  return true;
-}
-
-function shouldDrawWall(
-  _wall: (typeof jingongMapData.walls)[number],
-  _wallRoom: MapRoom | undefined,
-  _session: MapSessionState,
-): boolean {
-  return false;
-}
-
 function shouldShowFloorBadge(session: Pick<MapSessionState, "layerMode">): boolean {
   return session.layerMode === "allFloors" || session.layerMode === "single" || session.layerMode === "raised202" || session.layerMode === "exploded" || session.layerMode === "section";
 }
@@ -595,7 +482,7 @@ function layerChipHint(session: MapSessionState) {
 
 function shouldDrawStairBody(session: MapSessionState, onRoute: boolean): boolean {
   if (onRoute) return true;
-  return session.layerMode === "raised202";
+  return session.layerMode === "single" || session.layerMode === "raised202";
 }
 
 function routeLabelNudge(roomId: string): { x: number; y: number } {
@@ -702,10 +589,6 @@ function closedSpaceHeight(space: ClosedSpace, session: MapSessionState, active 
   if (space.kind === "stair") return active ? 0.08 : 0.05;
   if (space.kind === "room") return active ? 0.038 : session.layerMode === "single" ? 0.026 : 0.018;
   return 0.024;
-}
-
-function roomIdForClosedSpace(space: ClosedSpace): string | undefined {
-  return space.id.startsWith("space-") ? space.id.slice("space-".length) : undefined;
 }
 
 function closedSpaceLabelText(space: ClosedSpace): { text: string; compactText: string; variant: LabelAnchor["variant"] } {
@@ -1376,32 +1259,6 @@ function raisedPlatformLowerContext(session: MapSessionState, material: THREE.Ma
   return root;
 }
 
-function supportDeckGeometry(session: MapSessionState, deck: SupportDeck, material: THREE.Material, edgeMaterial: THREE.Material) {
-  const root = new THREE.Group();
-  const isFocused = session.layerMode === "single" && session.activeFloor === "2F";
-  const mesh = extrudedPolygonMesh(deck.polygon, deck.floor, session, isFocused ? 0.045 : 0.028, material, 0, deck.semanticId);
-  mesh.position.y += modelAlignment.slabThickness + 0.006;
-  mesh.name = deck.id;
-  mesh.receiveShadow = true;
-  root.add(mesh);
-
-  const outline = [...deck.polygon, deck.polygon[0]].map((point) => {
-    const [x, y, z] = mapPointToModel(point, deck.floor, {
-      layerMode: session.layerMode,
-      activeFloor: session.activeFloor,
-      semanticId: deck.semanticId,
-      lift: modelAlignment.slabThickness + (isFocused ? 0.075 : 0.052),
-    });
-    return new THREE.Vector3(x, y, z);
-  });
-  outline.slice(0, -1).forEach((point, index) => {
-    const edge = tubeBetween(point, outline[index + 1], isFocused ? 0.012 : 0.008, edgeMaterial.clone());
-    edge.name = `${deck.id}-edge-${index}`;
-    root.add(edge);
-  });
-  return root;
-}
-
 function wallSegmentsFromPolygon(space: ClosedSpace): Array<{ from: Point; to: Point; floor: FloorId; kind: "outer" | "inner" | "low"; semanticId: string }> {
   const kind = space.boundaryRole === "transport" || space.boundaryRole === "support" ? "low" : space.boundaryRole === "room" ? "inner" : "outer";
   return space.polygon.map((point, index) => ({
@@ -1413,16 +1270,6 @@ function wallSegmentsFromPolygon(space: ClosedSpace): Array<{ from: Point; to: P
   }));
 }
 
-function secondFloorShellWallSegments(session: MapSessionState): Array<{ from: Point; to: Point; floor: FloorId; kind: "outer" | "inner" | "low"; semanticId: string }> {
-  if (!floorVisibility("2F", session)) return [];
-  if (session.layerMode === "allFloors") return [];
-  const supportSpaces = jingongMapData.closedSpaces.filter((space) => space.floor === "2F" && space.kind === "support" && closedSpaceVisibleForSession(space, session));
-  const shellKind: "outer" | "low" = session.layerMode === "single" && session.activeFloor === "2F" ? "outer" : "low";
-  return supportSpaces
-    .flatMap(wallSegmentsFromPolygon)
-    .map((segment) => ({ ...segment, kind: shellKind }));
-}
-
 function floorWallSegments(floor: FloorGeometry): Array<{ from: Point; to: Point; floor: FloorId; kind: "outer" | "inner" | "low"; semanticId: string }> {
   return floor.outline.map((point, index) => ({
     from: point,
@@ -1431,6 +1278,97 @@ function floorWallSegments(floor: FloorGeometry): Array<{ from: Point; to: Point
     kind: "outer",
     semanticId: `floor-shell-${floor.id}`,
   }));
+}
+
+type ClosedBoundarySegment = { from: Point; to: Point; floor: FloorId; kind: "outer" | "inner" | "low"; semanticId: string };
+
+const pointKey2d = (point: Point) => `${Math.round(point[0] * 10) / 10}:${Math.round(point[1] * 10) / 10}`;
+
+function boundaryKey(from: Point, to: Point) {
+  const a = pointKey2d(from);
+  const b = pointKey2d(to);
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function pointOnSegment2d(point: Point, from: Point, to: Point, tolerance = 0.35) {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq < 0.0001) return Math.hypot(point[0] - from[0], point[1] - from[1]) <= tolerance;
+  const t = ((point[0] - from[0]) * dx + (point[1] - from[1]) * dy) / lengthSq;
+  if (t < -0.01 || t > 1.01) return false;
+  const projected: Point = [from[0] + dx * t, from[1] + dy * t];
+  return Math.hypot(projected[0] - point[0], projected[1] - point[1]) <= tolerance;
+}
+
+function edgeOnPolygonBoundary(from: Point, to: Point, polygon: Point[]) {
+  return polygon.some((point, index) => {
+    const next = polygon[(index + 1) % polygon.length];
+    return pointOnSegment2d(from, point, next) && pointOnSegment2d(to, point, next);
+  });
+}
+
+function floorShellWallSegmentsForSession(session: MapSessionState): ClosedBoundarySegment[] {
+  if (session.layerMode === "raised202") return [];
+  return jingongMapData.floors.flatMap((floor) => {
+    if (!floorVisibility(floor.id, session)) return [];
+    if (floor.id === "1F") return floorWallSegments(floor);
+    return secondFloorIslandShellWallSegments(session);
+  });
+}
+
+function secondFloorIslandShellWallSegments(session: MapSessionState): ClosedBoundarySegment[] {
+  if (!floorVisibility("2F", session)) return [];
+  if (session.layerMode === "allFloors" || session.layerMode === "raised202") return [];
+  if (session.layerMode === "single" && session.activeFloor === "2F") return [];
+  const redundantSupportIds = new Set(["support-202-east-service", "support-202-east-connector"]);
+  const shellKind: ClosedBoundarySegment["kind"] =
+    "low";
+  return jingongMapData.closedSpaces
+    .filter((space) => space.floor === "2F" && space.kind === "support")
+    .filter((space) => !redundantSupportIds.has(space.id))
+    .filter((space) => closedSpaceVisibleForSession(space, session))
+    .flatMap((space) =>
+      space.polygon.map((point, index) => ({
+        from: point,
+        to: space.polygon[(index + 1) % space.polygon.length],
+        floor: "2F" as const,
+        kind: shellKind,
+        semanticId: space.semanticId,
+      })),
+    );
+}
+
+function closedInteriorWallSegmentsForSession(session: MapSessionState): ClosedBoundarySegment[] {
+  if ((session.layerMode === "single" && session.activeFloor === "2F") || session.layerMode === "raised202") return [];
+  const byKey = new Map<string, ClosedBoundarySegment>();
+  const visibleFloors = new Map(jingongMapData.floors.filter((floor) => floorVisibility(floor.id, session)).map((floor) => [floor.id, floor]));
+  const wallSourceSpaces = jingongMapData.closedSpaces
+    .filter((space) => closedSpaceVisibleForSession(space, session))
+    .filter((space) => space.kind !== "corridor" && space.kind !== "support" && space.kind !== "void");
+
+  for (const space of wallSourceSpaces) {
+    const floor = visibleFloors.get(space.floor);
+    if (!floor) continue;
+    for (const segment of wallSegmentsFromPolygon(space)) {
+      if (edgeOnPolygonBoundary(segment.from, segment.to, floor.outline)) continue;
+      const key = `${segment.floor}:${boundaryKey(segment.from, segment.to)}`;
+      const existing = byKey.get(key);
+      if (!existing) {
+        byKey.set(key, {
+          ...segment,
+          kind: segment.kind === "outer" ? "inner" : segment.kind,
+          semanticId: segment.semanticId,
+        });
+        continue;
+      }
+      if (existing.kind !== "low" && segment.kind === "low") {
+        byKey.set(key, { ...existing, kind: "low" });
+      }
+    }
+  }
+
+  return [...byKey.values()];
 }
 
 function splitBoundaryForDoors(
@@ -2476,13 +2414,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         }),
       ]),
     ) as Record<keyof typeof spaceColor, THREE.MeshStandardMaterial>;
-    const supportDeckMaterial = new THREE.MeshStandardMaterial({
-      color: session.layerMode === "single" && session.activeFloor === "2F" ? 0xd0e2ef : 0xd5e4ef,
-      roughness: 0.86,
-      metalness: 0.01,
-      transparent: true,
-      opacity: session.layerMode === "allFloors" ? 0.72 : session.layerMode === "exploded" ? 0.62 : 0.94,
-    });
     const supportDeckEdgeMaterial = new THREE.MeshStandardMaterial({
       color: 0x60788d,
       roughness: 0.62,
@@ -2711,25 +2642,12 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
 
     const closedBoundarySegments = [
-      ...jingongMapData.floors.flatMap((floor) =>
-        floorVisibility(floor.id, session) && floor.id === "1F" ? floorWallSegments(floor) : [],
-      ),
-      ...secondFloorShellWallSegments(session),
-      ...jingongMapData.closedSpaces
-        .filter((space) => space.kind === "room" || space.kind === "stair")
-        .filter((space) => closedSpaceVisibleForSession(space, session))
-        .filter((space) => {
-          if (session.layerMode !== "allFloors") return true;
-          if (space.floor !== "2F") return true;
-          const roomId = roomIdForClosedSpace(space);
-          if (roomId) return routeActiveRoomIds.has(roomId) || roomId === activeRoomId;
-          if (space.kind === "stair") {
-            const stairId = space.id.replace(/-(lower|upper)-space$/, "");
-            return Boolean(route && jingongMapData.stairs.some((stair) => stair.id === stairId && stairIsOnRoute(stair, route)));
-          }
-          return false;
-        })
-        .flatMap(wallSegmentsFromPolygon),
+      ...floorShellWallSegmentsForSession(session),
+      ...closedInteriorWallSegmentsForSession(session).filter((segment) => {
+        if (session.layerMode !== "allFloors") return true;
+        if (segment.floor !== "2F") return true;
+        return route || activeRoomId ? segment.kind === "low" : false;
+      }),
     ];
     for (const boundary of closedBoundarySegments) {
       if (!semanticVisibleForSession(boundary.floor, session, { point: stairCenter([boundary.from, boundary.to]), semanticId: boundary.semanticId })) continue;
@@ -2749,14 +2667,16 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                 : 0.44
             : 1;
       const height =
-          boundary.kind === "outer"
-          ? modelAlignment.outerWallHeight * (singleFocus ? 0.64 : wallScale)
+        boundary.kind === "outer"
+          ? modelAlignment.outerWallHeight * (singleFocus ? 0.42 : session.layerMode === "exploded" ? 0.46 : wallScale)
           : boundary.kind === "low"
-            ? modelAlignment.wallHeight * 0.38 * (singleFocus ? 0.72 : Math.max(0.72, wallScale))
-            : modelAlignment.wallHeight * (singleFocus ? 0.46 : wallScale);
+            ? modelAlignment.wallHeight * (singleFocus ? 0.11 : session.layerMode === "exploded" ? 0.1 : 0.08)
+            : modelAlignment.wallHeight * (singleFocus ? 0.05 : session.layerMode === "raised202" ? 0.04 : session.layerMode === "exploded" ? 0.12 : wallScale * 0.62);
       const material = boundary.kind === "outer" ? outerWallMaterial.clone() : boundary.kind === "low" ? lowWallMaterial.clone() : innerWallMaterial.clone();
       if (boundary.floor === "2F" && boundary.kind === "outer") {
-        withOpacity(material, session.layerMode === "allFloors" ? 0.72 : session.layerMode === "exploded" ? 0.66 : singleFocus ? 0.98 : 0.9);
+        withOpacity(material, session.layerMode === "allFloors" ? 0.68 : session.layerMode === "exploded" ? 0.58 : singleFocus ? 0.94 : 0.82);
+      } else if (boundary.kind !== "outer") {
+        withOpacity(material, singleFocus ? 0.88 : session.layerMode === "exploded" ? 0.56 : 0.48);
       }
       const boundarySegments = boundary.kind === "outer" ? [{ from: boundary.from, to: boundary.to }] : splitBoundaryForDoors(boundary, jingongMapData.doors);
       for (const segment of boundarySegments) {
@@ -2764,7 +2684,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         const end = new THREE.Vector3(...mapPointToModel(segment.to, boundary.floor, { ...modelOptions, semanticId: boundary.semanticId, lift: modelAlignment.slabThickness + height / 2 + boundaryLift }));
         const length = start.distanceTo(end);
         if (length < 0.001) continue;
-        const thickness = singleFocus ? (boundary.kind === "outer" ? 0.052 : boundary.kind === "low" ? 0.026 : 0.032) : boundary.kind === "outer" ? 0.04 : boundary.kind === "low" ? 0.018 : 0.02;
+        const thickness = singleFocus ? (boundary.kind === "outer" ? 0.038 : boundary.kind === "low" ? 0.008 : 0.008) : boundary.kind === "outer" ? 0.032 : boundary.kind === "low" ? 0.008 : 0.01;
         const mesh = new THREE.Mesh(new THREE.BoxGeometry(length, height, thickness), material.clone());
         mesh.position.copy(start.clone().add(end).multiplyScalar(0.5));
         mesh.rotation.y = -Math.atan2(end.z - start.z, end.x - start.x);
@@ -2994,13 +2914,27 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         roomIsRouteContext ||
         (!route && session.layerMode === "allFloors" && overviewLabelRoomIds.has(room.id));
       if (showRoomOutline) {
-        const outline = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), floorEdgeMaterial.clone());
+        const outlineMaterial = floorEdgeMaterial.clone();
+        if (!(active || target || start || roomIsRouteContext) && room.floor === "2F" && (singleFocus || session.layerMode === "raised202")) {
+          withOpacity(outlineMaterial, isRaised202Room(room) ? 0.22 : 0.34);
+        }
+        const outline = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), outlineMaterial);
         outline.name = `room-${room.id}-outline`;
         building.add(outline);
       }
-      if (active || target || start || roomIsRouteContext || (!modelAuthorityView && raisedLift > 0 && !subduedSemanticFill)) {
+      if (active || target || start || roomIsRouteContext) {
         linePoints.slice(0, -1).forEach((point, index) => {
-          const edgeTube = tubeBetween(point, linePoints[index + 1], active || target || start ? 0.015 : session.layerMode === "exploded" && room.floor === "2F" ? 0.012 : 0.01, (raisedLift > 0 ? raisedEdgeMaterial : corridorEdgeMaterial).clone());
+          if (session.layerMode === "allFloors" && room.floor === "2F" && !(active || target || start || roomIsRouteContext)) return;
+          const edgeMaterial = raisedLift > 0 ? raisedEdgeMaterial.clone() : corridorEdgeMaterial.clone();
+          if (!(active || target || start || roomIsRouteContext) && room.floor === "2F" && (singleFocus || session.layerMode === "raised202")) {
+            withOpacity(edgeMaterial, 0.28);
+          }
+          const edgeTube = tubeBetween(
+            point,
+            linePoints[index + 1],
+            active || target || start ? 0.015 : room.floor === "2F" && (singleFocus || session.layerMode === "raised202") ? 0.004 : session.layerMode === "exploded" && room.floor === "2F" ? 0.006 : 0.01,
+            edgeMaterial,
+          );
           edgeTube.name = `room-${room.id}-edge-${index}`;
           building.add(edgeTube);
         });
@@ -3046,69 +2980,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           variant: "room",
           position: new THREE.Vector3(x, y + (active || target || start ? 0.24 : 0.16), z),
         });
-      }
-    }
-
-    for (const wall of jingongMapData.walls) {
-      if (modelAuthorityView && session.layerMode !== "section" && session.layerMode !== "exploded") continue;
-      const roomWallMatch = wall.id.match(/^wall-(.+)-\d+$/);
-      const wallRoom = roomWallMatch ? getRoomById(jingongMapData, roomWallMatch[1]) : undefined;
-      if (!shouldDrawWall(wall, wallRoom, session)) continue;
-      if (!shouldDrawOuterShellWall(wall.id, session)) continue;
-      if (session.layerMode === "raised202" && !wallRoom) continue;
-      if (session.layerMode === "raised202" && wallRoom && !isRaised202Room(wallRoom)) continue;
-      if (!semanticVisibleForSession(wall.floor, session, { point: stairCenter([wall.from, wall.to]), semanticId: wall.id })) continue;
-      const raisedLift = raised202LiftForPoint(wall.from, wall.floor) || raised202LiftForPoint(wall.to, wall.floor);
-      const explodedSecondFloorBoost = session.layerMode === "exploded" && wall.floor === "2F" ? 1.08 : 1;
-        const overviewWallScale =
-          session.layerMode === "allFloors"
-            ? wall.kind === "outer"
-              ? SEMANTIC_RENDER_POLICY.wallOverviewScale.outer
-              : wall.kind === "low"
-                ? SEMANTIC_RENDER_POLICY.wallOverviewScale.low
-                : SEMANTIC_RENDER_POLICY.wallOverviewScale.inner
-            : session.layerMode === "exploded"
-              ? wall.kind === "outer"
-                ? 0.7
-                : wall.kind === "low"
-                  ? 0.28
-                  : 0.46
-              : 1;
-      const height = wall.kind === "outer"
-        ? modelAlignment.outerWallHeight * (singleFocus ? 0.72 : overviewWallScale) * explodedSecondFloorBoost
-        : modelAlignment.wallHeight * (singleFocus ? 0.56 : overviewWallScale) * explodedSecondFloorBoost;
-      for (const segment of splitWallSegments(wall, jingongMapData.doors)) {
-        const start = new THREE.Vector3(...mapPointToModel(segment.from, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
-        const end = new THREE.Vector3(...mapPointToModel(segment.to, wall.floor, { ...modelOptions, semanticId: wall.id, lift: modelAlignment.slabThickness + height / 2 + raisedLift }));
-        const length = start.distanceTo(end);
-        if (length < 0.001) continue;
-        const geometry = new THREE.BoxGeometry(
-          length,
-          height,
-          singleFocus
-            ? wall.kind === "outer"
-              ? 0.055
-              : 0.036
-            : session.layerMode === "allFloors"
-              ? wall.kind === "outer"
-                ? 0.045
-                : wall.kind === "low"
-                  ? 0.024
-                  : 0.019
-              : wall.kind === "outer"
-                ? 0.04
-                : wall.kind === "low"
-                  ? 0.024
-                  : 0.02,
-        );
-        const wallMaterial = wall.kind === "outer" ? outerWallMaterial.clone() : wall.kind === "low" ? lowWallMaterial.clone() : innerWallMaterial.clone();
-        const mesh = new THREE.Mesh(geometry, wallMaterial);
-        const midpoint = start.clone().add(end).multiplyScalar(0.5);
-        mesh.position.copy(midpoint);
-        mesh.rotation.y = -Math.atan2(end.z - start.z, end.x - start.x);
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
-        building.add(mesh);
       }
     }
 
@@ -3166,7 +3037,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const doorIsActiveCheckpoint = Boolean(activeLeg && (activeLeg.fromNodeId === door.nodeId || activeLeg.toNodeId === door.nodeId));
       if (session.layerMode === "raised202" && !doorBelongsToRaised202(door) && !doorIsOnRoute && !doorIsActiveCheckpoint) continue;
       if (modelFirstOverview && !doorIsOnRoute && !routeActiveRoomIds.has(door.connects[0]) && door.connects[0] !== activeRoomId) continue;
-      const showPassiveDoor = singleFocus && !route;
+      const showPassiveDoor = mapDebugEnabled && singleFocus && !route;
       if (!doorIsOnRoute && !doorIsActiveCheckpoint && !showPassiveDoor) continue;
       const from = doorSegmentToVector(door, "from", session);
       const to = doorSegmentToVector(door, "to", session);
@@ -3263,13 +3134,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         upper.name = `${stair.id}-upper`;
         if (!modelFirstOverview || onRoute) building.add(upper);
       }
-      if (
+      const shouldShowStairConnection =
         lowerVisible &&
         upperVisible &&
         lowerSemanticVisible &&
         upperSemanticVisible &&
-        onRoute
-      ) {
+        (onRoute || shouldDrawStairBody(session, false));
+      if (shouldShowStairConnection) {
         const lowerPoint = stairCenter(stair.lowerLanding);
         const upperPoint = stairCenter(stair.upperLanding);
       const stairLift = session.layerMode === "exploded" ? 0.16 : 0.1;
@@ -3791,8 +3662,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const applyMapDirect = (request: MapDirectRequest) => {
     setSession({
       ...defaultSession("backend", request),
-      layerMode: request.targetRoomId ? "allFloors" : DEFAULT_LAYER,
-      activeFloor: undefined,
+      layerMode: request.layerMode ?? (request.targetRoomId ? "allFloors" : DEFAULT_LAYER),
+      activeFloor: request.activeFloor,
     });
     setRouteProgress(undefined);
     setPanel("none");

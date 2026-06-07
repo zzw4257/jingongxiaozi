@@ -1,5 +1,6 @@
 import type {
   CenterlineSegment,
+  ClosedSpace,
   DoorSegment,
   FloorGeometry,
   FloorId,
@@ -12,7 +13,9 @@ import type {
   NavNode,
   Point,
   RoomRect,
+  SpaceAdjacency,
   StairGeometry,
+  StairPortal,
   WallSegment,
 } from "../types";
 
@@ -102,6 +105,35 @@ const space = (
   labelPriority,
 });
 
+const closedSpaceBoundaryRole = (target: MapSpace): ClosedSpace["boundaryRole"] => {
+  if (target.kind === "room") return "room";
+  if (target.kind === "corridor" || target.kind === "stair") return "transport";
+  if (target.kind === "support") return "support";
+  if (target.kind === "void") return "void";
+  return "service";
+};
+
+const closedSpaceElevationKind = (target: MapSpace): ClosedSpace["elevationKind"] => {
+  if (target.kind === "support") return "support";
+  if (target.floor === "2F" && target.id.includes("202")) return "raised-platform";
+  return "floor";
+};
+
+const closedSpaceSemanticId = (target: MapSpace): string => {
+  if (target.id === "2f-corridor-0") return "c2-west-corridor";
+  if (target.id === "2f-corridor-1") return "c2-202-corridor";
+  if (target.id === "2f-corridor-2") return "c2-office-corridor";
+  if (target.id.startsWith("space-")) return target.id.slice("space-".length);
+  return target.id;
+};
+
+const closedSpaceFromSpace = (target: MapSpace): ClosedSpace => ({
+  ...target,
+  semanticId: closedSpaceSemanticId(target),
+  boundaryRole: closedSpaceBoundaryRole(target),
+  elevationKind: closedSpaceElevationKind(target),
+});
+
 const wallFromPolygon = (floor: FloorId, prefix: string, polygon: Point[], kind: WallSegment["kind"]): WallSegment[] =>
   polygon.map((point, index) => ({
     id: `${prefix}-${index}`,
@@ -122,53 +154,46 @@ export const areaLabels: Record<MapRoom["area"], string> = {
 };
 
 const floor1Outline: Point[] = [
-  [70, 535],
-  [160, 535],
+  [70, 690],
+  [70, 405],
   [160, 405],
-  [235, 405],
+  [160, 340],
+  [235, 340],
   [235, 210],
   [455, 210],
   [455, 300],
-  [610, 300],
-  [610, 250],
-  [690, 250],
+  [690, 300],
   [690, 190],
   [1090, 190],
   [1090, 315],
   [1135, 315],
   [1135, 450],
-  [1035, 450],
-  [1035, 585],
-  [960, 585],
+  [1115, 450],
+  [1115, 585],
+  [1010, 585],
+  [1010, 615],
+  [960, 615],
   [960, 690],
-  [650, 690],
-  [650, 615],
-  [350, 615],
-  [350, 690],
-  [70, 690],
 ];
 
 const floor2Outline: Point[] = [
+  [90, 625],
   [90, 70],
   [230, 70],
   [230, 15],
-  [470, 15],
-  [470, 120],
-  [635, 120],
-  [635, 95],
-  [930, 95],
+  [930, 15],
+  [930, 88],
+  [1058, 88],
+  [1058, 150],
   [930, 160],
   [1180, 160],
   [1180, 280],
-  [1050, 280],
-  [1050, 245],
-  [920, 245],
-  [920, 345],
-  [520, 345],
+  [1058, 280],
+  [1058, 350],
+  [520, 350],
   [520, 705],
   [235, 705],
   [235, 625],
-  [90, 625],
 ];
 
 const floors: FloorGeometry[] = [
@@ -297,7 +322,7 @@ const rooms: MapRoom[] = [
   room("202-5", "202-5", "3D 打印", "2F", "lab", [[635, 255], [800, 255], [800, 345], [635, 345]], "door-202-5", "3D 打印与逆向实训室。", ["3D打印", "逆向扫描"]),
   room("202-6", "202-6", "实验室", "2F", "lab", [[800, 255], [860, 255], [860, 345], [800, 345]], "door-202-6", "202 实验空间。", ["实验"]),
   room("202-7", "202-7", "实验室", "2F", "lab", [[860, 255], [920, 255], [920, 345], [860, 345]], "door-202-7", "202 实验空间。", ["实验"]),
-  room("201", "201", "教室", "2F", "teaching", [[920, 205], [1050, 205], [1050, 255], [920, 255]], "door-201", "二层教室。", ["教学"]),
+  room("201", "201", "教室", "2F", "teaching", [[920, 205], [970, 205], [970, 255], [920, 255]], "door-201", "二层教室。", ["教学"]),
 
   room("204", "204", "办公室", "2F", "office", [[235, 625], [290, 625], [290, 705], [235, 705]], "door-204", "二层办公室。", ["办公"]),
   room("205", "205", "办公室", "2F", "office", [[290, 625], [345, 625], [345, 705], [290, 705]], "door-205", "二层办公室。", ["办公"]),
@@ -367,11 +392,11 @@ const stairs: StairGeometry[] = [
 
 const nodes: NavNode[] = [
   node("c1-main-west", "1F", [115, 615], "corridor", "一层西侧走廊转折点"),
-  node("c1-108", "1F", [470, 595], "corridor", "108 门厅外走廊"),
+  node("c1-108", "1F", [445, 595], "corridor", "108 门厅外走廊"),
   node("c1-107", "1F", [650, 595], "corridor", "107 前走廊转折点"),
   node("c1-104", "1F", [740, 450], "corridor", "104 前走廊转折点"),
   node("c1-east", "1F", [1015, 500], "corridor", "东侧走廊转折点"),
-  node("c1-101", "1F", [835, 615], "corridor", "101 门外走廊"),
+  node("c1-101", "1F", [835, 570], "corridor", "101 门外走廊"),
   node("stair-public-1f", "1F", [710, 520], "stair", "公共楼梯一层"),
   node("stair-104-1f", "1F", [750, 342], "stair", "104 内部楼梯一层"),
   node("stair-106-1f", "1F", [1040, 282], "stair", "106 内部楼梯一层"),
@@ -379,8 +404,8 @@ const nodes: NavNode[] = [
   node("c2-108", "2F", [350, 235], "corridor", "108 二层走廊转折点"),
   node("c2-main", "2F", [575, 230], "corridor", "二层公共走廊转折点"),
   node("c2-202", "2F", [780, 230], "corridor", "202 二层半过道"),
-  node("c2-west", "2F", [160, 235], "corridor", "二层西侧走廊转折点"),
-  node("c2-office", "2F", [380, 665], "corridor", "二层办公走廊"),
+  node("c2-west", "2F", [160, 285], "corridor", "二层西侧走廊转折点"),
+  node("c2-office", "2F", [380, 610], "corridor", "二层办公走廊"),
   node("stair-public-2f", "2F", [548, 232], "stair", "公共楼梯二层"),
   node("stair-104-2f", "2F", [1070, 250], "stair", "104 内部楼梯二层"),
   node("stair-106-2f", "2F", [902, 72], "stair", "106 内部楼梯二层"),
@@ -503,6 +528,137 @@ const serviceSpaces: MapSpace[] = [
   ),
 ];
 
+const supportSpaces: MapSpace[] = [
+  space(
+    "support-108-2F-west",
+    "108/208 二层承托",
+    "2F",
+    "support",
+    [
+      [90, 70],
+      [635, 70],
+      [635, 345],
+      [90, 345],
+    ],
+    "108 独立二层、208/209 区域下方的楼板承托实体；用于避免二层显示成空框架。",
+    "reference",
+    false,
+    18,
+  ),
+  space(
+    "support-c2-main",
+    "公共二层过道承托",
+    "2F",
+    "support",
+    [
+      [500, 190],
+      [620, 190],
+      [620, 272],
+      [500, 272],
+    ],
+    "公共楼梯上口与二层主走廊下方的承托实体。",
+    "reference",
+    false,
+    18,
+  ),
+  space(
+    "support-106-2F",
+    "106 二层承托",
+    "2F",
+    "support",
+    [
+      [760, 15],
+      [930, 15],
+      [930, 95],
+      [760, 95],
+    ],
+    "106 独立二层平台下方承托实体。",
+    "reference",
+    false,
+    16,
+  ),
+  space(
+    "support-104-2F",
+    "104 二层承托",
+    "2F",
+    "support",
+    [
+      [1050, 160],
+      [1180, 160],
+      [1180, 280],
+      [1050, 280],
+    ],
+    "104 独立二层平台下方承托实体。",
+    "reference",
+    false,
+    16,
+  ),
+  space(
+    "support-202-east-service",
+    "二层东侧服务承托",
+    "2F",
+    "support",
+    [
+      [920, 205],
+      [1050, 205],
+      [1050, 280],
+      [920, 280],
+    ],
+    "201、卫生间和东侧服务空间下方承托实体。",
+    "reference",
+    false,
+    14,
+  ),
+  space(
+    "support-202-east-connector",
+    "二层东侧过道承托",
+    "2F",
+    "support",
+    [
+      [920, 160],
+      [1050, 160],
+      [1050, 245],
+      [920, 245],
+    ],
+    "202 东侧连接过道的楼板承托实体。",
+    "reference",
+    false,
+    14,
+  ),
+  space(
+    "support-office-2f",
+    "办公区二层承托",
+    "2F",
+    "support",
+    [
+      [235, 625],
+      [520, 625],
+      [520, 705],
+      [235, 705],
+    ],
+    "204-210 办公区下方楼板承托实体。",
+    "reference",
+    false,
+    14,
+  ),
+  space(
+    "support-202-lower",
+    "202 二层半下方承托",
+    "2F",
+    "support",
+    [
+      [620, 88],
+      [1058, 88],
+      [1058, 350],
+      [620, 350],
+    ],
+    "202 二层半平台投影下方仍为实体楼板和承托空间。",
+    "reference",
+    false,
+    26,
+  ),
+];
+
 const spaces: MapSpace[] = [
   ...floors.flatMap((floor) =>
     floor.corridorPolygons.map((polygon, index) => {
@@ -530,6 +686,7 @@ const spaces: MapSpace[] = [
     space(`space-${target.id}`, `${target.roomNo} ${target.name}`, target.floor, "room", target.polygon, target.description, "reference", true, 30),
   ),
   ...serviceSpaces,
+  ...supportSpaces,
 ];
 
 const nearestConnectorForRoom = (target: MapRoom): string => {
@@ -550,6 +707,8 @@ const nearestConnectorForRoom = (target: MapRoom): string => {
 };
 
 const roomDoorPoint = (target: MapRoom): Point => {
+  if (target.id === "104-2F01") return [1050, 250];
+  if (target.id === "106-2F") return [902, 95];
   const connector = nodes.find((candidate) => candidate.id === nearestConnectorForRoom(target));
   if (!connector) return target.center;
   const bounds = target.rect;
@@ -561,6 +720,14 @@ const roomDoorPoint = (target: MapRoom): Point => {
 const doorLineForRoom = (target: MapRoom, point: Point): { from: Point; to: Point; normal: Point; width: number } => {
   const bounds = target.rect;
   const width = Math.min(26, Math.max(14, Math.min(bounds.width, bounds.height) * 0.34));
+  if (target.id === "104-2F01") {
+    const half = width / 2;
+    return { from: [bounds.x, point[1] - half], to: [bounds.x, point[1] + half], normal: [1, 0], width };
+  }
+  if (target.id === "106-2F") {
+    const half = width / 2;
+    return { from: [point[0] - half, bounds.y + bounds.height], to: [point[0] + half, bounds.y + bounds.height], normal: [0, -1], width };
+  }
   const edgeDistances = [
     { side: "left", distance: Math.abs(point[0] - bounds.x) },
     { side: "right", distance: Math.abs(point[0] - (bounds.x + bounds.width)) },
@@ -642,6 +809,40 @@ const serviceSpaceEdges = serviceSpaces
   .filter((target) => target.navigable)
   .map((target) => edge(`center-${target.id}`, target.floor === "2F" ? "c2-202" : "c1-101", "door", `进入 ${target.label}`));
 
+const closedSpaces: ClosedSpace[] = spaces.map(closedSpaceFromSpace);
+
+const spaceAdjacency: SpaceAdjacency[] = [
+  ...doors.map((door) => ({
+    id: `adj-${door.id}`,
+    floor: door.floor,
+    fromSpaceId: `space-${door.connects[0]}`,
+    toNodeId: door.connects[1],
+    via: "door" as const,
+    viaDoorId: door.id,
+    source: door.source,
+  })),
+  ...stairs.map((stair) => ({
+    id: `adj-${stair.id}`,
+    floor: stair.lowerFloor,
+    fromSpaceId: `${stair.id}-lower-space`,
+    toSpaceId: `${stair.id}-upper-space`,
+    via: "stair" as const,
+    viaStairId: stair.id,
+    source: "reference" as const,
+  })),
+];
+
+const stairPortals: StairPortal[] = stairs.map((stair) => ({
+  id: `portal-${stair.id}`,
+  stairId: stair.id,
+  access: stair.access,
+  ownerRoomId: stair.ownerRoomId,
+  lowerSpaceId: `${stair.id}-lower-space`,
+  upperSpaceId: `${stair.id}-upper-space`,
+  lowerNodeId: stair.lowerNodeId,
+  upperNodeId: stair.upperNodeId,
+}));
+
 const centerlines: CenterlineSegment[] = edges
   .filter((target) => target.kind === "corridor" || target.kind === "door")
   .map((target, index) => ({
@@ -718,9 +919,12 @@ const mapData: MapData = {
   floors,
   rooms,
   spaces,
+  closedSpaces,
+  spaceAdjacency,
   walls,
   doors,
   stairs,
+  stairPortals,
   centerlines,
   calibration,
   nodes: [...nodes, ...roomDoorNodes, ...roomCenterNodes, ...spaceCenterNodes],

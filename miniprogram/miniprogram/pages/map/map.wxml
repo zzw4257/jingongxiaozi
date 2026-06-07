@@ -1,0 +1,18 @@
+<view class="native-map-page layer-{{layerMode}} panel-{{panel}} {{rendererReadyClass}}" catchtap="handlePageTap">
+  <view class="map-backplate"></view>
+  <view class="map-stage">
+    <view class="map-ambient map-ambient-a"></view>
+    <view class="map-ambient map-ambient-b"></view>
+    <canvas
+      id="mapCanvas"
+      type="webgl"
+      class="map-canvas native-map-visual native-webgl-map"
+      catchtap="handleCanvasTap"
+      catchtouchstart="handleTouchStart"
+      catchtouchmove="handleTouchMove"
+      catchtouchend="handleTouchEnd"
+      catchtouchcancel="handleTouchEnd"
+    >
+    </canvas>
+  </view>
+</view>

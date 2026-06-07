@@ -1,0 +1,2522 @@
+const mapDataModule = require("../../data/map-data");
+const mapRuntimeModule = require("../../data/map-runtime");
+const mapData = mapDataModule.default || mapDataModule;
+const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
+
+const defaultStartRoomId = mapData.defaultStartRoomId || "101";
+const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, overviewLabelRoomIds, palette } = mapRuntime;
+const hostRailGutter = 0;
+const railTapActions = [
+  { action: "back" },
+  { panel: "route" },
+  { panel: "layers" },
+  { panel: "view" },
+  { view: "reset" }
+];
+const railButtonTops = railTapActions.map((_, index) => index);
+let canvasRef = null;
+let ctxRef = null;
+let dprRef = 1;
+let canvasBox = { width: 0, height: 0 };
+let viewportBox = { width: 0, height: 0 };
+let legacyCanvas = false;
+let webglRef = null;
+let webglProgramRef = null;
+let lastTapTargets = [];
+let createMiniProgramThreeMap = null;
+
+function threeLabelSignature(labels = []) {
+  return labels.map((label) => `${label.id || ""}:${label.text || ""}:${label.variant || ""}:${label.visible ? 1 : 0}`).join("|");
+}
+
+function loadThreeMapFactory() {
+  if (createMiniProgramThreeMap) return createMiniProgramThreeMap;
+  const sceneModule = require("../../lib/three-map-scene");
+  createMiniProgramThreeMap = sceneModule.createMiniProgramThreeMap;
+  if (!createMiniProgramThreeMap) throw new Error("three-map-scene 缺少 createMiniProgramThreeMap");
+  return createMiniProgramThreeMap;
+}
+
+function fallbackCanvasSize() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+  const deviceInfo = wx.getDeviceInfo ? wx.getDeviceInfo() : {};
+  const width = Number(windowInfo.windowWidth || deviceInfo.windowWidth || 390);
+  const height = Number(windowInfo.windowHeight || deviceInfo.windowHeight || 180);
+  return {
+    width: Math.max(240, width),
+    height: Math.max(132, height)
+  };
+}
+
+function currentSafeInsets() {
+  const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+  const safeArea = windowInfo.safeArea || {};
+  const width = Number(windowInfo.windowWidth || 0);
+  const height = Number(windowInfo.windowHeight || 0);
+  return {
+    left: Math.max(0, Number(safeArea.left || 0)),
+    top: Math.max(0, Number(safeArea.top || 0)),
+    right: Math.max(0, width && Number.isFinite(safeArea.right) ? width - Number(safeArea.right) : 0),
+    bottom: Math.max(0, height && Number.isFinite(safeArea.bottom) ? height - Number(safeArea.bottom) : 0),
+  };
+}
+
+function pageBox() {
+  const fallback = fallbackCanvasSize();
+  return {
+    width: Number(viewportBox.width || fallback.width || canvasBox.width || 390),
+    height: Number(viewportBox.height || fallback.height || canvasBox.height || 180)
+  };
+}
+
+function boundsForPolygon(polygon) {
+  const xs = polygon.map((point) => point[0]);
+  const ys = polygon.map((point) => point[1]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys)
+  };
+}
+
+function expandBounds(box, padRatio = 0.06) {
+  const width = Math.max(1, box.maxX - box.minX);
+  const height = Math.max(1, box.maxY - box.minY);
+  const padX = Math.max(26, width * padRatio);
+  const padY = Math.max(26, height * padRatio);
+  return {
+    minX: box.minX - padX,
+    maxX: box.maxX + padX,
+    minY: box.minY - padY,
+    maxY: box.maxY + padY,
+    width: width + padX * 2,
+    height: height + padY * 2
+  };
+}
+
+function raised202ContextBounds() {
+  const room = mapData.rooms.find((candidate) => candidate.id === "202-5");
+  const space = mapData.spaces.find((candidate) => candidate.id === "space-202-5");
+  const stair = mapData.stairs.find((candidate) => candidate.id === "stair-public");
+  const points = [
+    ...(room ? room.polygon : []),
+    ...(space ? space.polygon : []),
+    ...(stair ? stair.upperLanding : []),
+    ...(stair ? stair.lowerLanding : []),
+    ...mapData.doors.filter((door) => door.nodeId === "door-202-5").flatMap((door) => [door.from, door.to, door.point]),
+    ...mapData.nodes.filter((node) => node.id.includes("202") || node.id.includes("public")).map((node) => node.point)
+  ];
+  return expandBounds(boundsForPolygon(points), 0.42);
+}
+
+function pointInBounds(point, box, pad = 0) {
+  return point[0] >= box.minX - pad && point[0] <= box.maxX + pad && point[1] >= box.minY - pad && point[1] <= box.maxY + pad;
+}
+
+function floorViewport(floorId, layerMode = "allFloors") {
+  if (layerMode === "raised202" && floorId === "2F") return raised202ContextBounds();
+  if (floorId === "25F") {
+    const room = mapData.rooms.find((candidate) => candidate.id === "202-5");
+    const space = mapData.spaces.find((candidate) => candidate.id === "space-202-5");
+    const stair = mapData.stairs.find((candidate) => candidate.id === "stair-public");
+    const points = [
+      ...(room ? room.polygon : []),
+      ...(space ? space.polygon : []),
+      ...(stair ? stair.upperLanding : []),
+      ...mapData.doors.filter((door) => door.nodeId === "door-202-5").flatMap((door) => [door.from, door.to, door.point])
+    ];
+    return layerMode === "raised202" ? raised202ContextBounds() : expandBounds(boundsForPolygon(points), 0.18);
+  }
+  const floor = mapData.floors.find((candidate) => candidate.id === floorId);
+  const points = [
+    ...(floor ? floor.outline : []),
+    ...mapData.rooms.filter((room) => room.floor === floorId && room.id !== "202-5").flatMap((room) => room.polygon),
+    ...mapData.spaces.filter((space) => space.floor === floorId && space.id !== "space-202-5").flatMap((space) => space.polygon),
+    ...mapData.doors.filter((door) => door.floor === floorId && door.nodeId !== "door-202-5").flatMap((door) => [door.from, door.to]),
+    ...mapData.nodes.filter((node) => node.floor === floorId).map((node) => node.point)
+  ];
+  return expandBounds(boundsForPolygon(points));
+}
+
+function displayFloorForRoom(room) {
+  return mapRuntime.displayFloorForRoom(room);
+}
+
+function displayFloorForDoor(door) {
+  return mapRuntime.displayFloorForDoor(door);
+}
+
+function displayFloorForRoutePoint(point) {
+  return mapRuntime.displayFloorForRoutePoint(point);
+}
+
+function roomColor(room) {
+  const colors = {
+    teaching: palette.teaching,
+    processing: palette.processing,
+    lab: palette.lab,
+    office: palette.office,
+    service: palette.service,
+    other: palette.other
+  };
+  return colors[room.area] || palette.other;
+}
+
+function spaceColor(space) {
+  if (space.kind === "corridor") return palette.corridor;
+  if (space.kind === "restroom") return palette.restroom;
+  if (space.kind === "service") return palette.service;
+  if (space.kind === "storage") return palette.storage;
+  if (space.kind === "reserved") return palette.reserved;
+  if (space.kind === "stair") return "#ffe7b7";
+  return palette.other;
+}
+
+function labelForRoom(room, density, onRoute) {
+  const keyRoom = overviewLabelRoomIds.has(room.id);
+  if (density === "sparse") return onRoute || keyRoom ? room.roomNo : "";
+  if (density === "medium") return onRoute || keyRoom ? room.roomNo : "";
+  const name = room.name.length > 5 ? `${room.name.slice(0, 5)}…` : room.name;
+  return `${room.roomNo}\n${name}`;
+}
+
+function nodeTitle(node, nodeId) {
+  return mapRuntime.nodeTitle(mapData, node, nodeId);
+}
+
+function stepInstruction(edge, from, to, meters) {
+  return mapRuntime.stepInstruction(edge, from, to, meters);
+}
+
+function checkpointVerb(kind) {
+  return mapRuntime.checkpointVerb(kind);
+}
+
+function buildGraph() {
+  return mapRuntime.buildGraph(mapData);
+}
+
+function calculateRoute(startRoomId, targetRoomId) {
+  if (!targetRoomId) return null;
+  return mapRuntime.calculateRoute(mapData, startRoomId || defaultStartRoomId, targetRoomId) || null;
+}
+
+function pointInPolygon(point, polygon) {
+  const [x, y] = point;
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i, i += 1) {
+    const xi = polygon[i][0];
+    const yi = polygon[i][1];
+    const xj = polygon[j][0];
+    const yj = polygon[j][1];
+    const intersect = yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function layerButtonClass(layerMode, value) {
+  return mapRuntime.layerButtonClass(layerMode, value);
+}
+
+function panelButtonClass(panel, value) {
+  return mapRuntime.panelButtonClass(panel, value);
+}
+
+function railStyle(active) {
+  return active
+    ? { bg: "#0b6cff", border: "#0b6cff", color: "#ffffff" }
+    : { bg: "rgba(255,255,255,0.97)", border: "rgba(194,211,232,0.94)", color: "#20344f" };
+}
+
+function hostRailStyles(panel = "none", hasRoute = false) {
+  const route = railStyle(panel === "route" || (hasRoute && panel === "none"));
+  const layers = railStyle(panel === "layers");
+  const view = railStyle(panel === "view");
+  return {
+    routeRailBg: route.bg,
+    routeRailBorder: route.border,
+    routeRailColor: route.color,
+    layersRailBg: layers.bg,
+    layersRailBorder: layers.border,
+    layersRailColor: layers.color,
+    viewRailBg: view.bg,
+    viewRailBorder: view.border,
+    viewRailColor: view.color,
+  };
+}
+
+function cloneTransform(transform) {
+  return mapRuntime.cloneTransform(transform);
+}
+
+function normalizeTransform(transform) {
+  return mapRuntime.normalizeTransform(transform);
+}
+
+function activeLayerClass(layerMode, id) {
+  return mapRuntime.activeLayerClass(layerMode, id);
+}
+
+function roomLabel(roomId) {
+  return mapRuntime.roomLabel(mapData, roomId);
+}
+
+function imageTransformStyle(transform) {
+  return mapRuntime.imageTransformStyle(transform);
+}
+
+function userImageTransformStyle(transform) {
+  return mapRuntime.userImageTransformStyle(transform);
+}
+
+function railTapAction(tap, box = pageBox()) {
+  const width = Number(box.width || 390);
+  const height = Number(box.height || 180);
+  const compact = height < 260 || width < 520;
+  const buttonW = compact ? 44 : 52;
+  const buttonH = compact ? 32 : 52;
+  const gap = compact ? 5 : 4;
+  const total = buttonH * railTapActions.length + gap * Math.max(0, railTapActions.length - 1);
+  const rightSafe = compact ? 10 : 10;
+  const x = width - buttonW - rightSafe;
+  const y = Math.min(Math.max(height / 2 - total / 2, compact ? 8 : 16), Math.max(compact ? 8 : 16, height - total - 8));
+  if (tap.x < x || tap.x > x + buttonW || tap.y < y || tap.y > y + total) return null;
+  const index = Math.floor((tap.y - y) / (buttonH + gap));
+  if (index < 0 || index >= railTapActions.length) return null;
+  const localY = tap.y - y - index * (buttonH + gap);
+  if (localY > buttonH) return null;
+  return railTapActions[index] || null;
+}
+
+function guidanceTapAction(tap, hasRoute, box = canvasBox) {
+  if (!hasRoute) return null;
+  const width = Number(box.width || canvasBox.width || 390);
+  const height = Number(box.height || canvasBox.height || 180);
+  const compact = height <= 430 && width >= height;
+  const guidanceWidth = compact ? Math.min(214, Math.max(198, width * 0.25)) : Math.min(720, Math.max(430, width - 126));
+  const x = compact ? 10 : 14;
+  const y = height - (compact ? 114 : 78);
+  const panelHeight = compact ? 102 : 64;
+  if (tap.y < y || tap.y > y + panelHeight || tap.x < x || tap.x > x + guidanceWidth) return null;
+  const chipW = compact ? 38 : 48;
+  const chipGap = compact ? 5 : 6;
+  const actionLeft = compact ? x + 10 : x + guidanceWidth - chipW * 4 - chipGap * 3 - 12;
+  const actions = ["open-layers", "open-view", "focus", "next"];
+  for (let index = 0; index < actions.length; index += 1) {
+    const chipX = actionLeft + index * (chipW + chipGap);
+    const chipY = compact ? y + 58 : y + 12;
+    const chipH = compact ? 22 : 38;
+    if (tap.x >= chipX && tap.x <= chipX + chipW && tap.y >= chipY && tap.y <= chipY + chipH) return actions[index];
+  }
+  if (tap.x >= x && tap.x <= x + guidanceWidth) return "focus";
+  return null;
+}
+
+function panelBounds(box = canvasBox, panelId = "route") {
+  const width = Number(box.width || canvasBox.width || 390);
+  const height = Number(box.height || canvasBox.height || 180);
+  const compact = height < 260 || width < 520;
+  const railReserve = compact ? 58 : 70;
+  const expandedWidth = panelId === "layers"
+    ? Math.min(500, Math.max(430, width - railReserve - 92))
+    : panelId === "view"
+      ? Math.min(252, Math.max(226, width * 0.28))
+      : Math.min(344, Math.max(292, width * 0.38));
+  const expandedHeight = panelId === "view"
+    ? Math.min(330, Math.max(276, height - 54))
+    : Math.min(360, Math.max(278, height - 24));
+  const panelWidth = compact ? Math.min(252, Math.max(218, width - railReserve - 20)) : Math.min(expandedWidth, Math.max(226, width - railReserve - 30));
+  const panelHeight = compact
+    ? panelId === "layers"
+      ? Math.min(150, Math.max(132, height - 78))
+      : Math.min(166, Math.max(148, height - 16))
+    : expandedHeight;
+  return {
+    x: compact
+      ? panelId === "layers"
+        ? Math.max(12, Math.min(28, (width - railReserve - panelWidth) / 2))
+        : 12
+      : Math.max(16, width - railReserve - panelWidth - 16),
+    y: compact ? 8 : panelId === "view" ? Math.max(18, Math.min(30, (height - panelHeight) / 2)) : 12,
+    width: panelWidth,
+    height: panelHeight
+  };
+}
+
+function panelTapAction(tap, panel, route, box = canvasBox) {
+  if (!panel || panel === "none") return null;
+  const bounds = panelBounds(box, panel);
+  if (tap.x < bounds.x || tap.x > bounds.x + bounds.width || tap.y < bounds.y || tap.y > bounds.y + bounds.height) {
+    return { type: "close" };
+  }
+  if (tap.x >= bounds.x + bounds.width - 46 && tap.y >= bounds.y + 8 && tap.y <= bounds.y + 44) {
+    return { type: "close" };
+  }
+  const contentY = bounds.y + 54;
+  if (panel === "layers") {
+    const items = ["allFloors", "exploded", "1F", "2F", "raised202", "section"];
+    const compact = bounds.height < 190 || bounds.width < 270;
+    const gap = compact ? 6 : 8;
+    const inset = compact ? 12 : 16;
+    const tileW = (bounds.width - inset * 2 - gap) / 2;
+    const tileH = compact ? 32 : 40;
+    const stepY = compact ? 36 : 48;
+    const y0 = bounds.y + (compact ? 42 : 54);
+    for (let index = 0; index < items.length; index += 1) {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = bounds.x + inset + col * (tileW + gap);
+      const y = y0 + row * stepY;
+      if (tap.x >= x && tap.x <= x + tileW && tap.y >= y && tap.y <= y + tileH) return { type: "layer", value: items[index] };
+    }
+  }
+  if (panel === "view") {
+    const items = ["overview", "near", "route", "rotateLeft", "rotateRight", "reset"];
+    const compact = bounds.height < 190 || bounds.width < 270;
+    const gap = compact ? 6 : 8;
+    const inset = compact ? 12 : 16;
+    const tileW = (bounds.width - inset * 2 - gap) / 2;
+    const tileH = compact ? 32 : 40;
+    const stepY = compact ? 36 : 48;
+    const y0 = bounds.y + (compact ? 42 : 54);
+    for (let index = 0; index < items.length; index += 1) {
+      const col = index % 2;
+      const row = Math.floor(index / 2);
+      const x = bounds.x + inset + col * (tileW + gap);
+      const y = y0 + row * stepY;
+      if (tap.x >= x && tap.x <= x + tileW && tap.y >= y && tap.y <= y + tileH) return { type: "view", value: items[index] };
+    }
+  }
+  if (panel === "room") {
+    if (tap.y >= bounds.y + bounds.height - 60 && tap.y <= bounds.y + bounds.height - 10) return { type: "room-route" };
+  }
+  if (panel === "route") {
+    if (route) {
+      const bw = (bounds.width - 48) / 3;
+      const buttonY = contentY + 108;
+      const actions = ["prev", "focus", "next"];
+      for (let index = 0; index < actions.length; index += 1) {
+        const x = bounds.x + 16 + index * (bw + 8);
+        if (tap.x >= x && tap.x <= x + bw && tap.y >= buttonY && tap.y <= buttonY + 38) return { type: actions[index] };
+      }
+    }
+    const targetIds = ["104-2F01", "202-5", "108-2F04", "208"];
+    const quickY = bounds.y + bounds.height - 54;
+    const tw = (bounds.width - 40 - 18) / 4;
+    for (let index = 0; index < targetIds.length; index += 1) {
+      const x = bounds.x + 16 + index * (tw + 6);
+      if (tap.x >= x && tap.x <= x + tw && tap.y >= quickY && tap.y <= quickY + 38) return { type: "target", value: targetIds[index] };
+    }
+  }
+  return null;
+}
+
+function normalizeTouchPoint(touch = {}, index = 0) {
+  const x = Number(touch.x ?? touch.clientX ?? touch.pageX ?? 0);
+  const y = Number(touch.y ?? touch.clientY ?? touch.pageY ?? 0);
+  return {
+    identifier: Number(touch.identifier ?? touch.id ?? index),
+    x,
+    y,
+    clientX: Number(touch.clientX ?? touch.x ?? touch.pageX ?? x),
+    clientY: Number(touch.clientY ?? touch.y ?? touch.pageY ?? y),
+    pageX: Number(touch.pageX ?? touch.x ?? touch.clientX ?? x),
+    pageY: Number(touch.pageY ?? touch.y ?? touch.clientY ?? y),
+  };
+}
+
+function normalizeThreeTouchEvent(event, type) {
+  const touches = Array.from(event.touches || []).map(normalizeTouchPoint);
+  const changed = Array.from(event.changedTouches || event.touches || []).map(normalizeTouchPoint);
+  return {
+    type,
+    touches,
+    changedTouches: changed.length ? changed : touches,
+    timeStamp: event.timeStamp || Date.now(),
+  };
+}
+
+function imagePresetTransform(transform, viewPreset) {
+  return mapRuntime.imagePresetTransform(transform, viewPreset);
+}
+
+function setFillStyle(ctx, value) {
+  if (legacyCanvas && ctx.setFillStyle) ctx.setFillStyle(value);
+  else ctx.fillStyle = value;
+}
+
+function setStrokeStyle(ctx, value) {
+  if (legacyCanvas && ctx.setStrokeStyle) ctx.setStrokeStyle(value);
+  else ctx.strokeStyle = value;
+}
+
+function setLineWidth(ctx, value) {
+  if (legacyCanvas && ctx.setLineWidth) ctx.setLineWidth(value);
+  else ctx.lineWidth = value;
+}
+
+function setLineCap(ctx, value) {
+  if (legacyCanvas && ctx.setLineCap) ctx.setLineCap(value);
+  else ctx.lineCap = value;
+}
+
+function setLineJoin(ctx, value) {
+  if (legacyCanvas && ctx.setLineJoin) ctx.setLineJoin(value);
+  else ctx.lineJoin = value;
+}
+
+function setFont(ctx, size, weight = "700") {
+  if (legacyCanvas && ctx.setFontSize) {
+    ctx.setFontSize(size);
+  } else {
+    ctx.font = `${weight} ${size}px sans-serif`;
+  }
+}
+
+function setTextAlign(ctx, value) {
+  if (legacyCanvas && ctx.setTextAlign) ctx.setTextAlign(value);
+  else ctx.textAlign = value;
+}
+
+function setTextBaseline(ctx, value) {
+  if (legacyCanvas && ctx.setTextBaseline) ctx.setTextBaseline(value);
+  else ctx.textBaseline = value;
+}
+
+function setShadow(ctx, color, blur = 0, offsetX = 0, offsetY = 0) {
+  if (legacyCanvas && ctx.setShadow) {
+    ctx.setShadow(offsetX, offsetY, blur, color);
+  } else {
+    ctx.shadowColor = color;
+    ctx.shadowBlur = blur;
+    ctx.shadowOffsetX = offsetX;
+    ctx.shadowOffsetY = offsetY;
+  }
+}
+
+function setGlobalAlpha(ctx, value) {
+  if (legacyCanvas && ctx.setGlobalAlpha) ctx.setGlobalAlpha(value);
+  else ctx.globalAlpha = value;
+}
+
+function setLineDashCompat(ctx, segments) {
+  if (ctx.setLineDash) ctx.setLineDash(segments);
+}
+
+function renderWebglBackdrop(gl, width, height, hasRoute = false) {
+  if (!gl) return false;
+  gl.viewport(0, 0, Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)));
+  const tint = hasRoute ? [0.9, 0.96, 1, 1] : [0.965, 0.985, 1, 1];
+  gl.clearColor(tint[0], tint[1], tint[2], tint[3]);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  return true;
+}
+
+function colorToRgba(value, fallback = [1, 1, 1, 1]) {
+  if (!value || typeof value !== "string") return fallback;
+  const hex = value.trim();
+  if (hex[0] === "#") {
+    const raw = hex.slice(1);
+    const full = raw.length === 3 ? raw.split("").map((part) => `${part}${part}`).join("") : raw;
+    if (full.length >= 6) {
+      return [
+        parseInt(full.slice(0, 2), 16) / 255,
+        parseInt(full.slice(2, 4), 16) / 255,
+        parseInt(full.slice(4, 6), 16) / 255,
+        full.length >= 8 ? parseInt(full.slice(6, 8), 16) / 255 : 1
+      ];
+    }
+  }
+  const rgba = hex.match(/^rgba?\(([^)]+)\)$/i);
+  if (rgba) {
+    const parts = rgba[1].split(",").map((part) => Number(part.trim()));
+    if (parts.length >= 3) {
+      return [
+        Math.max(0, Math.min(1, parts[0] / 255)),
+        Math.max(0, Math.min(1, parts[1] / 255)),
+        Math.max(0, Math.min(1, parts[2] / 255)),
+        Number.isFinite(parts[3]) ? Math.max(0, Math.min(1, parts[3])) : 1
+      ];
+    }
+  }
+  return fallback;
+}
+
+function compileWebglShader(gl, type, source) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const message = gl.getShaderInfoLog(shader);
+    gl.deleteShader(shader);
+    throw new Error(`WebGL shader compile failed: ${message}`);
+  }
+  return shader;
+}
+
+function createWebglProgram(gl) {
+  const vertexShader = compileWebglShader(gl, gl.VERTEX_SHADER, `
+    attribute vec2 a_position;
+    attribute vec4 a_color;
+    varying vec4 v_color;
+    void main() {
+      gl_Position = vec4(a_position, 0.0, 1.0);
+      v_color = a_color;
+    }
+  `);
+  const fragmentShader = compileWebglShader(gl, gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec4 v_color;
+    void main() {
+      gl_FragColor = v_color;
+    }
+  `);
+  const program = gl.createProgram();
+  gl.attachShader(program, vertexShader);
+  gl.attachShader(program, fragmentShader);
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const message = gl.getProgramInfoLog(program);
+    gl.deleteProgram(program);
+    throw new Error(`WebGL program link failed: ${message}`);
+  }
+  return {
+    program,
+    buffer: gl.createBuffer(),
+    position: gl.getAttribLocation(program, "a_position"),
+    color: gl.getAttribLocation(program, "a_color")
+  };
+}
+
+function pushWebglVertex(vertices, point, rgba) {
+  const x = (point.x / Math.max(1, canvasBox.width)) * 2 - 1;
+  const y = 1 - (point.y / Math.max(1, canvasBox.height)) * 2;
+  vertices.push(x, y, rgba[0], rgba[1], rgba[2], rgba[3]);
+}
+
+function pushWebglTriangle(vertices, a, b, c, rgba) {
+  pushWebglVertex(vertices, a, rgba);
+  pushWebglVertex(vertices, b, rgba);
+  pushWebglVertex(vertices, c, rgba);
+}
+
+function pushWebglPolygon(vertices, points, color, alpha = 1) {
+  if (!points || points.length < 3) return;
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  for (let index = 1; index < points.length - 1; index += 1) {
+    pushWebglTriangle(vertices, points[0], points[index], points[index + 1], rgba);
+  }
+}
+
+function pushWebglLine(vertices, from, to, color, width = 4, alpha = 1) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const nx = (-dy / length) * width / 2;
+  const ny = (dx / length) * width / 2;
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  const a = { x: from.x + nx, y: from.y + ny };
+  const b = { x: to.x + nx, y: to.y + ny };
+  const c = { x: to.x - nx, y: to.y - ny };
+  const d = { x: from.x - nx, y: from.y - ny };
+  pushWebglTriangle(vertices, a, b, c, rgba);
+  pushWebglTriangle(vertices, a, c, d, rgba);
+}
+
+function pushWebglCircle(vertices, center, radius, color, alpha = 1, segments = 24) {
+  const rgba = colorToRgba(color);
+  rgba[3] *= alpha;
+  for (let index = 0; index < segments; index += 1) {
+    const start = (Math.PI * 2 * index) / segments;
+    const end = (Math.PI * 2 * (index + 1)) / segments;
+    pushWebglTriangle(
+      vertices,
+      center,
+      { x: center.x + Math.cos(start) * radius, y: center.y + Math.sin(start) * radius },
+      { x: center.x + Math.cos(end) * radius, y: center.y + Math.sin(end) * radius },
+      rgba
+    );
+  }
+}
+
+function measureTextWidth(ctx, text, fontSize) {
+  if (ctx.measureText) {
+    const metrics = ctx.measureText(text);
+    if (metrics && Number.isFinite(metrics.width)) return metrics.width;
+  }
+  return String(text).length * fontSize * 0.62;
+}
+
+function routeStepCardForLeg(leg) {
+  return {
+    id: leg.id,
+    no: leg.index + 1,
+    title: leg.checkpointLabel || leg.toLabel,
+    desc: leg.instruction,
+    className: [
+      "step-card",
+      leg.checkpointKind === "stair" ? "stair" : "",
+      leg.checkpointKind === "destination" ? "target" : ""
+    ].filter(Boolean).join(" ")
+  };
+}
+
+const nativeVisual = {
+  stageWidth: 330,
+  stageHeight: 176,
+  minX: mapData.viewport?.minX ?? 70,
+  minY: mapData.viewport?.minY ?? 15,
+  width: mapData.viewport?.width ?? 1110,
+  height: mapData.viewport?.height ?? 690,
+  layerMode: "allFloors"
+};
+
+function updateNativeVisualMetrics(layerMode = "allFloors", hasRoute = false) {
+  const fallback = fallbackCanvasSize();
+  const width = Number(canvasBox.width || fallback.width);
+  const height = Number(canvasBox.height || fallback.height);
+  nativeVisual.stageWidth = Math.max(320, width);
+  nativeVisual.stageHeight = Math.max(176, height);
+  nativeVisual.layerMode = layerMode;
+}
+
+function nativeVisibleFloorIds(layerMode = "allFloors") {
+  if (layerMode === "allFloors" || layerMode === "exploded" || layerMode === "section") return floorOrder;
+  if (layerMode === "raised202") return ["2F", "25F"];
+  return [layerMode];
+}
+
+function nativeFloorLayout(floorId, layerMode = nativeVisual.layerMode) {
+  const sw = nativeVisual.stageWidth;
+  const sh = nativeVisual.stageHeight;
+  const compact = sh < 260 || sw < 560;
+  const single = layerMode === "1F" || layerMode === "2F";
+  if (single) {
+    return {
+      x: Math.round(sw * (compact ? 0.015 : 0.035)),
+      y: Math.round(sh * (compact ? 0.025 : 0.055)),
+      w: Math.round(sw * (compact ? 0.965 : 0.92)),
+      h: Math.round(sh * (compact ? 0.9 : 0.82)),
+      viewport: floorViewport(floorId, layerMode)
+    };
+  }
+  if (layerMode === "raised202") {
+    if (floorId === "25F") {
+      return {
+        x: Math.round(sw * (compact ? 0.52 : 0.45)),
+        y: Math.round(sh * (compact ? 0.025 : 0.04)),
+        w: Math.round(sw * (compact ? 0.42 : 0.38)),
+        h: Math.round(sh * (compact ? 0.4 : 0.34)),
+        viewport: floorViewport("25F", "raised202")
+      };
+    }
+    return {
+      x: Math.round(sw * (compact ? 0.035 : 0.08)),
+      y: Math.round(sh * (compact ? 0.30 : 0.24)),
+      w: Math.round(sw * (compact ? 0.9 : 0.78)),
+      h: Math.round(sh * (compact ? 0.64 : 0.62)),
+      viewport: floorViewport("2F", "raised202")
+    };
+  }
+  if (layerMode === "exploded") {
+    const layouts = compact
+      ? {
+          "1F": { x: 0.02, y: 0.61, w: 0.88, h: 0.34 },
+          "2F": { x: 0.08, y: 0.30, w: 0.88, h: 0.34 },
+          "25F": { x: 0.54, y: 0.04, w: 0.38, h: 0.28 }
+        }
+      : {
+          "1F": { x: 0.04, y: 0.62, w: 0.84, h: 0.31 },
+          "2F": { x: 0.10, y: 0.30, w: 0.84, h: 0.31 },
+          "25F": { x: 0.50, y: 0.05, w: 0.38, h: 0.24 }
+        };
+    const cfg = layouts[floorId] || layouts["1F"];
+    return {
+      x: Math.round(sw * cfg.x),
+      y: Math.round(sh * cfg.y),
+      w: Math.round(sw * cfg.w),
+      h: Math.round(sh * cfg.h),
+      viewport: floorViewport(floorId, "exploded")
+    };
+  }
+  if (layerMode === "section") {
+    const layouts = compact
+      ? {
+          "1F": { x: 0.02, y: 0.58, w: 0.88, h: 0.36 },
+          "2F": { x: 0.07, y: 0.28, w: 0.88, h: 0.36 },
+          "25F": { x: 0.53, y: 0.045, w: 0.38, h: 0.28 }
+        }
+      : {
+          "1F": { x: 0.04, y: 0.57, w: 0.84, h: 0.33 },
+          "2F": { x: 0.09, y: 0.27, w: 0.84, h: 0.33 },
+          "25F": { x: 0.49, y: 0.06, w: 0.38, h: 0.24 }
+        };
+    const cfg = layouts[floorId] || layouts["1F"];
+    return {
+      x: Math.round(sw * cfg.x),
+      y: Math.round(sh * cfg.y),
+      w: Math.round(sw * cfg.w),
+      h: Math.round(sh * cfg.h),
+      viewport: floorViewport(floorId, "section")
+    };
+  }
+  const layouts = compact
+    ? {
+        "1F": { x: 0.02, y: 0.53, w: 0.88, h: 0.43 },
+        "2F": { x: 0.08, y: 0.21, w: 0.88, h: 0.43 },
+        "25F": { x: 0.54, y: 0.035, w: 0.39, h: 0.3 }
+      }
+    : {
+        "1F": { x: 0.03, y: 0.54, w: 0.86, h: 0.36 },
+        "2F": { x: 0.09, y: 0.23, w: 0.86, h: 0.36 },
+        "25F": { x: 0.49, y: 0.05, w: 0.40, h: 0.26 }
+      };
+  const cfg = layouts[floorId] || layouts["1F"];
+  return {
+    x: Math.round(sw * cfg.x),
+    y: Math.round(sh * cfg.y),
+    w: Math.round(sw * cfg.w),
+    h: Math.round(sh * cfg.h),
+    viewport: floorViewport(floorId, layerMode)
+  };
+}
+
+function nativeRectForPolygon(polygon, floorId, inflate = 0, layerMode = nativeVisual.layerMode) {
+  const box = boundsForPolygon(polygon);
+  const layout = nativeFloorLayout(floorId, layerMode);
+  const viewport = layout.viewport;
+  const scale = Math.min(layout.w / viewport.width, layout.h / viewport.height);
+  const offsetX = (layout.w - viewport.width * scale) / 2;
+  const offsetY = (layout.h - viewport.height * scale) / 2;
+  const x = layout.x + offsetX + (box.minX - viewport.minX) * scale - inflate;
+  const y = layout.y + offsetY + (box.minY - viewport.minY) * scale - inflate;
+  const boxWidth = Math.max(1, box.maxX - box.minX);
+  const boxHeight = Math.max(1, box.maxY - box.minY);
+  const w = Math.max(5, boxWidth * scale + inflate * 2);
+  const h = Math.max(5, boxHeight * scale + inflate * 2);
+  return { x, y, w, h };
+}
+
+function nativePoint(point, floorId, layerMode = nativeVisual.layerMode) {
+  const rect = nativeRectForPolygon([point, point], floorId, 0, layerMode);
+  return { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+}
+
+function styleRect(rect) {
+  return `left:${Math.round(rect.x)}px;top:${Math.round(rect.y)}px;width:${Math.round(rect.w)}px;height:${Math.round(rect.h)}px;`;
+}
+
+function styleLine(from, to, width = 5) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.max(1, Math.hypot(dx, dy));
+  const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+  return `left:${Math.round(from.x)}px;top:${Math.round(from.y - width / 2)}px;width:${Math.round(length)}px;height:${Math.round(width)}px;transform:rotate(${angle.toFixed(1)}deg);`;
+}
+
+function displayFloorForSpace(space) {
+  return space.id === "space-202-5" ? "25F" : space.floor;
+}
+
+function buildNativeMapVisual(route, activeStepIndex = 0, layerMode = "allFloors") {
+  const visibleFloors = new Set(nativeVisibleFloorIds(layerMode));
+  const routeNodeIds = new Set(route?.nodeIds || []);
+  const nativeFloors = nativeVisibleFloorIds(layerMode).map((floorId) => {
+    const layout = nativeFloorLayout(floorId, layerMode);
+    return {
+      id: `floor-${floorId}`,
+      floorId,
+      title: floorTitles[floorId],
+      style: styleRect({ x: layout.x, y: layout.y, w: layout.w, h: layout.h })
+    };
+  });
+  const nativeSpaces = mapData.spaces
+    .filter((space) => space.kind !== "room")
+    .filter((space) => visibleFloors.has(displayFloorForSpace(space)))
+    .map((space) => {
+      const floorId = displayFloorForSpace(space);
+      return {
+        id: space.id,
+        kind: space.kind || "corridor",
+        label: space.kind === "corridor" ? "走廊" : space.label,
+        style: styleRect(nativeRectForPolygon(space.polygon, floorId, space.kind === "corridor" ? 1 : 0, layerMode))
+      };
+    });
+  const denseLabels = layerMode === "1F" || layerMode === "2F" || layerMode === "raised202";
+  const nativeRooms = mapData.rooms.filter((room) => visibleFloors.has(displayFloorForRoom(room))).map((room) => {
+    const floorId = displayFloorForRoom(room);
+    const onRoute = route && (route.targetRoomId === room.id || routeNodeIds.has(`center-${room.id}`) || routeNodeIds.has(room.doorNodeId));
+    const keyRoom = overviewLabelRoomIds.has(room.id);
+    return {
+      id: room.id,
+      area: room.area || "other",
+      label: denseLabels || onRoute || keyRoom ? room.roomNo : "",
+      activeClass: onRoute ? "native-room-on-route" : "",
+      style: styleRect(nativeRectForPolygon(room.polygon, floorId, 0, layerMode))
+    };
+  });
+  const nativeDoors = mapData.doors.filter((door) => visibleFloors.has(displayFloorForDoor(door))).map((door) => {
+    const floorId = displayFloorForDoor(door);
+    const active = routeNodeIds.has(door.nodeId);
+    const rect = nativeRectForPolygon([door.from, door.to, door.point], floorId, 2, layerMode);
+    return {
+      id: door.id || door.nodeId,
+      activeClass: active ? "native-door-on-route" : "",
+      style: styleRect({ ...rect, w: Math.max(rect.w, 7), h: Math.max(rect.h, 5) })
+    };
+  });
+  const nativeStairs = [];
+  mapData.stairs.forEach((stair) => {
+    const entries = [
+      { id: `${stair.id}-lower`, floorId: stair.lowerFloor, polygon: stair.lowerLanding, nodeId: stair.lowerNodeId },
+      { id: `${stair.id}-upper`, floorId: stair.upperFloor === "2F" && stair.id === "stair-public" ? "25F" : stair.upperFloor, polygon: stair.upperLanding, nodeId: stair.upperNodeId }
+    ];
+    entries.forEach((entry) => {
+      if (!entry.polygon || entry.nodeId === "stair-202-virtual") return;
+      if (!visibleFloors.has(entry.floorId)) return;
+      nativeStairs.push({
+        id: entry.id,
+        activeClass: routeNodeIds.has(entry.nodeId) ? "native-stair-on-route" : "",
+        style: styleRect(nativeRectForPolygon(entry.polygon, entry.floorId, 2, layerMode))
+      });
+    });
+  });
+  const nativeRouteSegments = [];
+  const nativeRoutePins = [];
+  if (route) {
+    for (let index = 1; index < route.points.length; index += 1) {
+      const from = route.points[index - 1];
+      const to = route.points[index];
+      const fromFloor = displayFloorForRoutePoint(from);
+      const toFloor = displayFloorForRoutePoint(to);
+      if (fromFloor !== toFloor) continue;
+      if (!visibleFloors.has(fromFloor) || !visibleFloors.has(toFloor)) continue;
+      const a = nativePoint(from.point, fromFloor, layerMode);
+      const b = nativePoint(to.point, toFloor, layerMode);
+      const stair = to.kind.includes("stair") || to.kind === "stair";
+      const active = index - 1 === activeStepIndex;
+      nativeRouteSegments.push({
+        id: `route-${index}`,
+        kindClass: stair ? "native-route-segment-stair" : "",
+        activeClass: active ? "native-route-segment-active" : "",
+        style: styleLine(a, b, active ? 7 : 5)
+      });
+    }
+    route.points.forEach((point, index) => {
+      const floorId = displayFloorForRoutePoint(point);
+      if (!visibleFloors.has(floorId)) return;
+      const p = nativePoint(point.point, floorId, layerMode);
+      const kind = index === 0 ? "start" : index === route.points.length - 1 ? "target" : index === activeStepIndex + 1 ? "next" : "mid";
+      if (kind === "mid") return;
+      nativeRoutePins.push({
+        id: `pin-${index}`,
+        kind,
+        label: kind === "start" ? "起" : kind === "target" ? "终" : "下",
+        style: `left:${Math.round(p.x)}px;top:${Math.round(p.y)}px;`
+      });
+    });
+  }
+  return { nativeFloors, nativeSpaces, nativeRooms, nativeDoors, nativeStairs, nativeRouteSegments, nativeRoutePins };
+}
+
+Page({
+  data: {
+    layerMode: "allFloors",
+    viewPreset: "overview",
+    targetRoomId: "",
+    startRoomId: defaultStartRoomId,
+    route: null,
+    hasRoute: false,
+    routeSteps: [],
+    visibleRouteSteps: [],
+    routeStartLabel: "101",
+    routeTargetLabel: "未选择",
+    routeDistanceLabel: "未选择终点",
+    activeStepIndex: 0,
+    activeStepLabel: "1/1",
+    currentStepTitle: "当前位置",
+    nextStepTitle: "选择终点",
+    nextStepVerb: "下一处",
+    activeStepDistanceLabel: "--",
+    stepActionLabel: "到达",
+    canPrevStep: false,
+    canNextStep: false,
+    prevStepDisabledClass: "disabled",
+    selectedRoom: null,
+    selectedFloorLabel: "点击地图房间",
+    layerHint: layerHints.allFloors,
+    panel: "none",
+    routeButtonClass: "",
+    layersButtonClass: "",
+    viewButtonClass: "",
+    roomButtonClass: "",
+    allLayerClass: "active",
+    layer1FClass: "",
+    layer2FClass: "",
+    layer25FClass: "",
+    raised202LayerClass: "",
+    explodedLayerClass: "",
+    sectionLayerClass: "",
+    sensorHint: "模拟器无传感器",
+    quickTargets,
+    primaryQuickTargets: quickTargets.slice(0, 3),
+    layerOptions,
+    viewOptions,
+    mapTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
+    rendererReadyClass: "",
+    nativeFloors: [],
+    nativeSpaces: [],
+    nativeRooms: [],
+    nativeDoors: [],
+    nativeStairs: [],
+    nativeRouteSegments: [],
+    nativeRoutePins: [],
+    threeLabels: [],
+    threeRendererStatus: "",
+    rendererIssueClass: "",
+    ...hostRailStyles("none", false)
+  },
+
+  onLoad(options) {
+    this.transform = normalizeTransform({ panX: 0, panY: 0, zoom: 1, rotation: 0 });
+    this.touchState = null;
+    this.threeMap = null;
+    this.lastThreeLabelsSignature = "";
+    this.pendingTouchEvents = [];
+    const targetRoomId = options.targetRoomId || "";
+    const startRoomId = options.startRoomId || defaultStartRoomId;
+    const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
+    if (route) this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
+    this.setRouteState({
+      layerMode: "allFloors",
+      layerHint: layerHints.allFloors,
+      targetRoomId,
+      startRoomId,
+      route,
+      viewPreset: route ? "route" : "overview",
+      panel: "none",
+      routeButtonClass: route ? "active" : "",
+      allLayerClass: "active",
+      layer1FClass: "",
+      layer2FClass: "",
+      layer25FClass: "",
+      raised202LayerClass: "",
+      explodedLayerClass: "",
+      sectionLayerClass: "",
+      layersButtonClass: "",
+      roomButtonClass: ""
+    }, { skipDraw: true });
+    this.initCanvas();
+  },
+
+  onReady() {
+    this.initCanvas();
+    setTimeout(() => this.initCanvas(), 180);
+  },
+
+  onResize() {
+    this.initCanvas();
+  },
+
+  onUnload() {
+    if (this.threeInitTimer) {
+      clearTimeout(this.threeInitTimer);
+      this.threeInitTimer = null;
+    }
+    if (this.threeMap) {
+      this.threeMap.dispose();
+      this.threeMap = null;
+    }
+  },
+
+  initCanvas() {
+    const fallback = fallbackCanvasSize();
+    viewportBox = {
+      width: Math.max(1, fallback.width),
+      height: Math.max(1, fallback.height)
+    };
+    canvasBox = {
+      width: Math.max(1, fallback.width - hostRailGutter),
+      height: Math.max(1, fallback.height)
+    };
+    const windowInfo = wx.getWindowInfo ? wx.getWindowInfo() : {};
+    dprRef = Math.max(1, Number(windowInfo.pixelRatio || 1));
+    canvasRef = null;
+    ctxRef = null;
+    webglRef = null;
+    webglProgramRef = null;
+    legacyCanvas = false;
+    if (this.data.viewPreset === "overview" && this.transform.zoom === 1) {
+      this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, this.data.viewPreset));
+    }
+    updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
+    const publishVisualState = (rendererReady) => this.setData({
+      ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
+      mapTransformStyle: userImageTransformStyle(this.transform),
+      rendererReadyClass: rendererReady ? "renderer-canvas-ready" : ""
+    }, () => this.drawMap());
+
+    const publishRendererStatus = (ready, text) => this.setData({
+      threeRendererStatus: ready ? "" : text,
+      rendererIssueClass: ready ? "" : "visible",
+      rendererReadyClass: ready ? "renderer-canvas-ready" : this.data.rendererReadyClass
+    });
+
+    const initializeThreeScene = (canvasNode, width, height) => {
+      if (this.threeMap) {
+        this.threeMap.setSize(width, height, dprRef);
+        publishRendererStatus(true, "");
+        this.drawMap();
+        return;
+      }
+      try {
+        publishRendererStatus(false, "正在加载 3D 地图…");
+        const factory = loadThreeMapFactory();
+        this.threeMap = factory(canvasNode, {
+          width,
+          height,
+          pixelRatio: dprRef,
+          context: canvasNode.getContext ? canvasNode.getContext("webgl") || canvasNode.getContext("experimental-webgl") : null,
+          route: this.data.route,
+          layerMode: this.data.layerMode,
+          activeStepIndex: this.data.activeStepIndex || 0,
+          viewPreset: this.data.viewPreset === "reset" ? "overview" : this.data.viewPreset,
+          panel: this.data.panel,
+          preserveCamera: Boolean(this.preserveCameraOnce),
+          sensorHint: this.data.sensorHint,
+          activeStepLabel: this.data.activeStepLabel,
+          currentStepTitle: this.data.currentStepTitle,
+          nextStepVerb: this.data.nextStepVerb,
+          nextStepTitle: this.data.nextStepTitle,
+          activeStepDistanceLabel: this.data.activeStepDistanceLabel,
+          stepActionLabel: this.data.stepActionLabel,
+          routeDistanceLabel: this.data.routeDistanceLabel,
+          routeStartLabel: this.data.routeStartLabel,
+          routeTargetLabel: this.data.routeTargetLabel,
+          selectedRoomId: this.data.selectedRoom?.id || "",
+          selectedFloorLabel: this.data.selectedFloorLabel,
+          safeInsets: currentSafeInsets(),
+          onLabels: (threeLabels = []) => {
+            const signature = threeLabelSignature(threeLabels);
+            if (signature === this.lastThreeLabelsSignature) return;
+            this.lastThreeLabelsSignature = signature;
+            this.setData({ threeLabels });
+          },
+          onStatus: (status) => this.setData({
+            threeRendererStatus: status.ready ? "" : (status.text || "地图渲染异常"),
+            rendererIssueClass: status.ready ? "" : "visible",
+            rendererReadyClass: status.ready ? "renderer-canvas-ready" : this.data.rendererReadyClass
+          })
+        });
+        publishRendererStatus(true, "");
+        this.drawMap();
+      } catch (error) {
+        console.error("[mini-three] initialize failed", error);
+        publishRendererStatus(false, `地图初始化失败：${error && error.message ? error.message : "未知错误"}`);
+      }
+    };
+
+    if (!wx.createSelectorQuery) {
+      publishVisualState(false);
+      return;
+    }
+    const query = wx.createSelectorQuery().in ? wx.createSelectorQuery().in(this) : wx.createSelectorQuery();
+    query.select("#mapCanvas").fields({ node: true, size: true }).exec((result) => {
+      const canvasNode = result && result[0] && result[0].node;
+      if (!canvasNode || !canvasNode.getContext) {
+        publishVisualState(false);
+        return;
+      }
+      const width = Math.max(1, Math.floor(result[0].width || fallback.width));
+      const height = Math.max(1, Math.floor(result[0].height || fallback.height));
+      canvasBox = { width, height };
+      if (this.data.viewPreset === "route") {
+        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, "route"));
+      } else if (this.data.viewPreset === "overview") {
+        this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, "overview"));
+      }
+      canvasRef = canvasNode;
+      canvasRef.width = Math.floor(width * dprRef);
+      canvasRef.height = Math.floor(height * dprRef);
+      const gl = canvasRef.getContext("webgl") || canvasRef.getContext("experimental-webgl");
+      if (gl && typeof gl.viewport === "function") renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+      if (this.threeInitTimer) {
+        clearTimeout(this.threeInitTimer);
+        this.threeInitTimer = null;
+      }
+      ctxRef = null;
+      legacyCanvas = false;
+      updateNativeVisualMetrics(this.data.layerMode, this.data.hasRoute);
+      publishVisualState(Boolean(this.threeMap));
+      this.threeInitTimer = setTimeout(() => {
+        this.threeInitTimer = null;
+        initializeThreeScene(canvasRef, width, height);
+      }, 0);
+    });
+  },
+
+  setRouteState(next, options = {}) {
+    const route = next.route || null;
+    const layerMode = next.layerMode || this.data.layerMode || "allFloors";
+    const steps = route ? route.guidanceLegs || [] : [];
+    const requestedIndex = Number.isFinite(next.activeStepIndex) ? next.activeStepIndex : this.data.activeStepIndex || 0;
+    const activeStepIndex = route ? Math.min(Math.max(0, requestedIndex), Math.max(0, steps.length - 1)) : 0;
+    const currentStep = steps[activeStepIndex];
+    const visibleRouteSteps = route ? steps.slice(Math.max(0, activeStepIndex - 1), Math.max(0, activeStepIndex - 1) + 3).map(routeStepCardForLeg) : [];
+    updateNativeVisualMetrics(layerMode, Boolean(route));
+    this.setData({
+      ...next,
+      ...buildNativeMapVisual(route, activeStepIndex, layerMode),
+      route,
+      mapTransformStyle: userImageTransformStyle(this.transform),
+      hasRoute: Boolean(route),
+      routeSteps: steps,
+      visibleRouteSteps,
+      activeStepIndex,
+      routeDistanceLabel: route ? route.distance : "未选择终点",
+      routeStartLabel: route ? roomLabel(route.startRoomId) : roomLabel(this.data.startRoomId || defaultStartRoomId),
+      routeTargetLabel: route ? roomLabel(route.targetRoomId) : "未选择",
+      activeStepLabel: route ? `${activeStepIndex + 1}/${Math.max(1, steps.length)}` : "1/1",
+      currentStepTitle: currentStep ? currentStep.fromLabel : "当前位置",
+      nextStepTitle: currentStep ? currentStep.checkpointLabel || currentStep.toLabel : "选择终点",
+      nextStepVerb: currentStep ? checkpointVerb(currentStep.checkpointKind) : "下一处",
+      activeStepDistanceLabel: currentStep ? `${Math.max(1, Math.round(currentStep.distanceMeters || 0))}m` : "--",
+      stepActionLabel: currentStep ? currentStep.actionLabel : route && activeStepIndex < steps.length - 1 ? "到达" : "完成",
+      canPrevStep: Boolean(route && activeStepIndex > 0),
+      canNextStep: Boolean(route && activeStepIndex < steps.length - 1),
+      prevStepDisabledClass: route && activeStepIndex > 0 ? "" : "disabled",
+      routeButtonClass: route ? "active" : this.data.routeButtonClass,
+      ...hostRailStyles(next.panel || this.data.panel || "none", Boolean(route))
+    }, () => {
+      if (!options.skipDraw) this.drawMap();
+    });
+  },
+
+  visibleFloorIds(layerMode = this.data.layerMode) {
+    if (layerMode === "allFloors" || layerMode === "exploded" || layerMode === "section") return floorOrder;
+    if (layerMode === "raised202") return ["2F", "25F"];
+    return [layerMode];
+  },
+
+  drawMap() {
+    this.setData({ mapTransformStyle: userImageTransformStyle(this.transform) });
+    if (this.threeMap) {
+      this.threeMap.update({
+        layerMode: this.data.layerMode,
+        route: this.data.route,
+        activeStepIndex: this.data.activeStepIndex || 0,
+        targetRoomId: this.data.targetRoomId,
+        viewPreset: this.data.viewPreset === "reset" ? "overview" : this.data.viewPreset,
+        panel: this.data.panel,
+        sensorHint: this.data.sensorHint,
+        activeStepLabel: this.data.activeStepLabel,
+        currentStepTitle: this.data.currentStepTitle,
+        nextStepVerb: this.data.nextStepVerb,
+        nextStepTitle: this.data.nextStepTitle,
+        activeStepDistanceLabel: this.data.activeStepDistanceLabel,
+        stepActionLabel: this.data.stepActionLabel,
+        routeDistanceLabel: this.data.routeDistanceLabel,
+        routeStartLabel: this.data.routeStartLabel,
+        routeTargetLabel: this.data.routeTargetLabel,
+        selectedRoomId: this.data.selectedRoom?.id || "",
+        selectedFloorLabel: this.data.selectedFloorLabel,
+        safeInsets: currentSafeInsets()
+      });
+      this.preserveCameraOnce = false;
+      return;
+    }
+    if (webglRef && canvasRef) {
+      this.drawWebglMap();
+      return;
+    }
+    if (!ctxRef || !canvasBox.width || !canvasBox.height) return;
+    const ctx = ctxRef;
+    if (ctx.setTransform) ctx.setTransform(dprRef, 0, 0, dprRef, 0, 0);
+    else if (legacyCanvas && ctx.setTransform) ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvasBox.width, canvasBox.height);
+    lastTapTargets = [];
+    const ids = this.visibleFloorIds();
+    ids.forEach((floorId, index) => {
+      const state = this.floorDrawState(floorId, index, ids.length);
+      this.drawFloor(ctx, floorId, state);
+    });
+    if (legacyCanvas && ctx.draw) ctx.draw();
+  },
+
+  drawWebglMap() {
+    const gl = webglRef;
+    if (!gl || !webglProgramRef || !canvasRef) return;
+    renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+    const ids = this.visibleFloorIds();
+    const vertices = this.buildWebglMapGeometry(ids);
+    if (!vertices.length) return;
+    gl.useProgram(webglProgramRef.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, webglProgramRef.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.STATIC_DRAW);
+    const stride = 6 * 4;
+    gl.enableVertexAttribArray(webglProgramRef.position);
+    gl.vertexAttribPointer(webglProgramRef.position, 2, gl.FLOAT, false, stride, 0);
+    gl.enableVertexAttribArray(webglProgramRef.color);
+    gl.vertexAttribPointer(webglProgramRef.color, 4, gl.FLOAT, false, stride, 2 * 4);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
+  },
+
+  buildWebglMapGeometry(ids) {
+    const vertices = [];
+    ids.forEach((floorId, index) => {
+      const state = this.floorDrawState(floorId, index, ids.length);
+      this.pushWebglFloor(vertices, floorId, state);
+      this.pushWebglSpaces(vertices, floorId, state);
+      this.pushWebglRooms(vertices, floorId, state);
+      this.pushWebglWalls(vertices, floorId, state);
+      this.pushWebglDoors(vertices, floorId, state);
+      this.pushWebglStairs(vertices, floorId, state);
+      this.pushWebglCenterlines(vertices, floorId, state);
+      this.pushWebglRoute(vertices, floorId, state);
+      this.pushWebglRouteNodes(vertices, floorId, state);
+    });
+    return vertices;
+  },
+
+  projectWebglPoint(point, state) {
+    const layout = nativeFloorLayout(state.floorId, state.layerMode);
+    const viewport = layout.viewport;
+    const scale = Math.min(layout.w / viewport.width, layout.h / viewport.height);
+    const offsetX = (layout.w - viewport.width * scale) / 2;
+    const offsetY = (layout.h - viewport.height * scale) / 2;
+    const rawX = layout.x + offsetX + (point[0] - viewport.minX) * scale;
+    const rawY = layout.y + offsetY + (point[1] - viewport.minY) * scale;
+    const cx = canvasBox.width / 2;
+    const cy = canvasBox.height / 2;
+    const dx = rawX - cx;
+    const dy = rawY - cy;
+    const rotation = this.transform.imageRotation || 0;
+    const zoom = Math.min(2.4, Math.max(1, Number(this.transform.imageZoom || 1)));
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    return {
+      x: cx + (dx * cos - dy * sin) * zoom + Number(this.transform.imagePanX || 0),
+      y: cy + (dx * sin + dy * cos) * zoom + Number(this.transform.imagePanY || 0)
+    };
+  },
+
+  pushWebglProjectedPolygon(vertices, polygon, state, fill, alpha = 1) {
+    pushWebglPolygon(vertices, polygon.map((point) => this.projectWebglPoint(point, state)), fill, alpha);
+  },
+
+  pushWebglProjectedLine(vertices, from, to, state, color, width = 4, alpha = 1) {
+    pushWebglLine(vertices, this.projectWebglPoint(from, state), this.projectWebglPoint(to, state), color, width, alpha);
+  },
+
+  pushWebglExtrudedPolygon(vertices, polygon, state, options = {}) {
+    if (!polygon.length) return;
+    const depthPx = options.depthPx || (state.all ? 28 : 22);
+    const offset = [options.offsetX || 12 / state.scale, depthPx / state.scale];
+    const top = polygon.map((point) => this.projectWebglPoint(point, state));
+    const bottom = polygon.map((point) => this.projectWebglPoint([point[0] + offset[0], point[1] + offset[1]], state));
+    const shadow = top.map((point) => ({ x: point.x + 12, y: point.y + depthPx + 10 }));
+    pushWebglPolygon(vertices, shadow, options.shadowFill || "rgba(18, 45, 78, 0.12)", 0.85);
+    for (let i = 0; i < top.length; i += 1) {
+      const j = (i + 1) % top.length;
+      const avgY = (top[i].y + top[j].y) / 2;
+      const visibleFace = avgY >= state.baseY - canvasBox.height * 0.42 || i % 2 === 0;
+      if (!visibleFace) continue;
+      pushWebglPolygon(vertices, [top[i], top[j], bottom[j], bottom[i]], options.sideFill || palette.floorSide, 0.96);
+    }
+    pushWebglPolygon(vertices, top, options.topFill || palette.floor, 1);
+  },
+
+  pushWebglFloor(vertices, floorId, state) {
+    const sourceFloorId = floorId === "25F" ? "2F" : floorId;
+    const floor = mapData.floors.find((candidate) => candidate.id === sourceFloorId);
+    if (floor && floorId !== "25F") {
+      this.pushWebglExtrudedPolygon(vertices, floor.outline, state, {
+        depthPx: state.exploded ? 64 : state.section ? 42 : 52,
+        offsetX: state.exploded ? 20 / state.scale : 14 / state.scale,
+        topFill: floorId === "2F" ? "#eef7ff" : palette.floor,
+        sideFill: floorId === "2F" ? "#a9bfd4" : "#9fb6cc",
+        shadowFill: "rgba(18,45,78,0.11)"
+      });
+      return;
+    }
+    const space = mapData.spaces.find((candidate) => candidate.id === "space-202-5");
+    const room = mapData.rooms.find((candidate) => candidate.id === "202-5");
+    const outline = space ? space.polygon : room?.polygon;
+    if (outline) {
+      this.pushWebglExtrudedPolygon(vertices, outline, state, {
+        depthPx: 34,
+        offsetX: 9 / state.scale,
+        topFill: "#ffe7b8",
+        sideFill: "#d89b43",
+        shadowFill: "rgba(154,86,0,0.14)"
+      });
+    }
+  },
+
+  pushWebglSpaces(vertices, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.spaces.filter((space) => {
+      if (floorId === "25F") return space.id === "space-202-5";
+      if (space.id === "space-202-5" || space.kind === "room") return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(space.center, raisedBounds, 24);
+      return space.floor === floorId;
+    }).forEach((space) => {
+      this.pushWebglProjectedPolygon(vertices, space.polygon, state, spaceColor(space), space.kind === "corridor" ? 0.98 : 0.94);
+      if (space.kind === "corridor") {
+        const box = boundsForPolygon(space.polygon);
+        this.pushWebglProjectedLine(vertices, [(box.minX + box.maxX) / 2, box.minY + 8], [(box.minX + box.maxX) / 2, box.maxY - 8], state, "rgba(31,118,174,0.24)", 3.2, 1);
+      }
+    });
+  },
+
+  pushWebglRooms(vertices, floorId, state) {
+    const route = this.data.route;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.rooms.filter((room) => {
+      if (displayFloorForRoom(room) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(room.center, raisedBounds, 18) || room.id === "202-5";
+      return true;
+    }).forEach((room) => {
+      const onRoute = Boolean(route && (route.targetRoomId === room.id || route.nodeIds.includes(`center-${room.id}`) || route.nodeIds.includes(room.doorNodeId)));
+      this.pushWebglProjectedPolygon(vertices, room.polygon, state, onRoute ? "#dbeafe" : roomColor(room), onRoute ? 1 : 0.96);
+      const projected = room.polygon.map((point) => this.projectWebglPoint(point, state));
+      for (let index = 0; index < projected.length; index += 1) {
+        this.pushWebglProjectedScreenLine(vertices, projected[index], projected[(index + 1) % projected.length], onRoute ? "#0b6cff" : palette.wall, onRoute ? 2.8 : 1.6, onRoute ? 0.95 : 0.72);
+      }
+    });
+  },
+
+  pushWebglProjectedScreenLine(vertices, from, to, color, width = 4, alpha = 1) {
+    pushWebglLine(vertices, from, to, color, width, alpha);
+  },
+
+  pushWebglWalls(vertices, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const sourceFloor = floorId === "25F" ? "2F" : floorId;
+    (mapData.walls || []).filter((wall) => {
+      if (wall.floor !== sourceFloor) return false;
+      if (floorId === "25F") return wall.roomId === "202-5" || wall.id.includes("202-5");
+      if (raisedBounds && floorId === "2F") return pointInBounds(wall.from, raisedBounds, 18) || pointInBounds(wall.to, raisedBounds, 18);
+      return true;
+    }).forEach((wall) => {
+      const outer = wall.kind === "outer";
+      const low = wall.kind === "low";
+      this.pushWebglProjectedLine(vertices, wall.from, wall.to, state, low ? "rgba(73,92,112,0.58)" : outer ? "#324b66" : "rgba(47,68,90,0.88)", outer ? 5.2 : low ? 2.2 : 3.2, outer ? 0.92 : 0.76);
+    });
+  },
+
+  pushWebglDoors(vertices, floorId, state) {
+    const route = this.data.route;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    mapData.doors.filter((door) => {
+      if (displayFloorForDoor(door) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(door.point, raisedBounds, 24);
+      return true;
+    }).forEach((door) => {
+      const active = Boolean(route && route.nodeIds.includes(door.nodeId));
+      this.pushWebglProjectedLine(vertices, door.from, door.to, state, active ? palette.route : door.source === "inferred" ? palette.inferredDoor : palette.door, active ? 7.5 : 5.2, active ? 1 : 0.98);
+      if (active) {
+        pushWebglCircle(vertices, this.projectWebglPoint(door.point, state), 5.5, palette.route, 1, 18);
+      }
+    });
+  },
+
+  pushWebglStairs(vertices, floorId, state) {
+    mapData.stairs.forEach((stair) => {
+      const entries = [];
+      if (floorId === stair.lowerFloor) entries.push({ polygon: stair.lowerLanding, nodeId: stair.lowerNodeId });
+      if (floorId === stair.upperFloor && stair.upperNodeId !== "stair-202-virtual") entries.push({ polygon: stair.upperLanding, nodeId: stair.upperNodeId });
+      if (floorId === "25F" && stair.id === "stair-public") entries.push({ polygon: [[780, 255], [820, 255], [820, 315], [780, 315]], nodeId: "door-202-5" });
+      entries.forEach((entry) => {
+        const active = Boolean(this.data.route && this.data.route.nodeIds.includes(entry.nodeId));
+        this.pushWebglExtrudedPolygon(vertices, entry.polygon, state, {
+          depthPx: active ? 30 : 24,
+          offsetX: 7 / state.scale,
+          topFill: active ? "#ffb12b" : palette.stair,
+          sideFill: active ? "#d77900" : "#d49639",
+          shadowFill: "rgba(130,73,0,0.14)"
+        });
+        const box = boundsForPolygon(entry.polygon);
+        for (let i = 1; i < 7; i += 1) {
+          const y = box.minY + ((box.maxY - box.minY) * i) / 7;
+          const inset = 5 + (i % 2) * 3;
+          this.pushWebglProjectedLine(vertices, [box.minX + inset, y], [box.maxX - inset, y], state, active ? "rgba(255,255,255,0.86)" : "rgba(111,62,0,0.82)", active ? 2.4 : 1.7, 1);
+        }
+      });
+    });
+  },
+
+  pushWebglCenterlines(vertices, floorId, state) {
+    const route = this.data.route;
+    const routeNodePairSet = new Set();
+    if (route) {
+      for (let i = 1; i < route.nodeIds.length; i += 1) {
+        routeNodePairSet.add(`${route.nodeIds[i - 1]}->${route.nodeIds[i]}`);
+        routeNodePairSet.add(`${route.nodeIds[i]}->${route.nodeIds[i - 1]}`);
+      }
+    }
+    (mapData.centerlines || []).forEach((line) => {
+      if (line.floor !== (floorId === "25F" ? "2F" : floorId)) return;
+      const onRoute = routeNodePairSet.has(`${line.from}->${line.to}`);
+      if (!onRoute && this.data.layerMode === "allFloors" && this.transform.zoom < 1.2) return;
+      if (floorId === "25F" && !line.id.includes("202")) return;
+      const from = mapData.nodes.find((node) => node.id === line.from);
+      const to = mapData.nodes.find((node) => node.id === line.to);
+      if (!from || !to) return;
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, onRoute ? "rgba(11,108,255,0.32)" : "rgba(42,116,160,0.16)", onRoute ? 4 : 2, 1);
+    });
+  },
+
+  pushWebglRoute(vertices, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    for (let index = 1; index < route.points.length; index += 1) {
+      const from = route.points[index - 1];
+      const to = route.points[index];
+      const fromFloor = displayFloorForRoutePoint(from);
+      const toFloor = displayFloorForRoutePoint(to);
+      if (fromFloor !== floorId || toFloor !== floorId) continue;
+      const active = index - 1 === this.data.activeStepIndex;
+      const stair = to.kind.includes("stair") || to.kind === "stair";
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, "#ffffff", active ? 15 : 12, 0.38);
+      this.pushWebglProjectedLine(vertices, from.point, to.point, state, stair ? palette.stairRoute : palette.route, active ? 9 : stair ? 7 : 5.8, 1);
+      if (active) {
+        const a = this.projectWebglPoint(from.point, state);
+        const b = this.projectWebglPoint(to.point, state);
+        const angle = Math.atan2(b.y - a.y, b.x - a.x);
+        const x = (a.x + b.x) / 2;
+        const y = (a.y + b.y) / 2;
+        const size = stair ? 11 : 10;
+        const arrow = [
+          { x: x + Math.cos(angle) * size, y: y + Math.sin(angle) * size },
+          { x: x + Math.cos(angle + 2.45) * size * 0.75, y: y + Math.sin(angle + 2.45) * size * 0.75 },
+          { x: x + Math.cos(angle - 2.45) * size * 0.75, y: y + Math.sin(angle - 2.45) * size * 0.75 }
+        ];
+        pushWebglPolygon(vertices, arrow, stair ? palette.stairRoute : palette.route, 1);
+      }
+    }
+  },
+
+  pushWebglRouteNodes(vertices, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    route.points.forEach((point, index) => {
+      if (displayFloorForRoutePoint(point) !== floorId) return;
+      const first = index === 0;
+      const last = index === route.points.length - 1;
+      const active = index === this.data.activeStepIndex + 1;
+      if (!first && !last && !active) return;
+      const radius = first || last ? 15 : active ? 11 : 8;
+      pushWebglCircle(vertices, this.projectWebglPoint(point.point, state), radius + 4, "#ffffff", 0.72, 28);
+      pushWebglCircle(vertices, this.projectWebglPoint(point.point, state), radius, first ? palette.start : last ? palette.target : point.kind.includes("stair") ? palette.stairRoute : palette.route, 1, 28);
+    });
+  },
+
+  floorDrawState(floorId, index, count, overrideLayerMode) {
+    const layerMode = overrideLayerMode || this.data.layerMode;
+    const viewport = floorViewport(floorId, layerMode);
+    const all = layerMode === "allFloors" || layerMode === "exploded" || layerMode === "section" || layerMode === "raised202";
+    const raisedFocus = layerMode === "raised202";
+    const exploded = layerMode === "exploded";
+    const section = layerMode === "section";
+    const stageW = canvasBox.width;
+    const stageH = canvasBox.height;
+    const compactLandscape = stageH < 280 || stageW < 520;
+    const routeActive = Boolean(this.data.route && this.data.viewPreset === "route");
+    const usableW = stageW * (compactLandscape ? 0.9 : all ? (routeActive ? 0.92 : 0.96) : 0.9);
+    const usableH = stageH * (compactLandscape ? (all ? 0.58 : 0.7) : all ? (routeActive ? 0.78 : 0.84) : 0.82);
+    const scale = Math.min(usableW / viewport.width, usableH / viewport.height) * this.transform.zoom;
+    const visualOrder = { "1F": 0, "2F": 1, "25F": 2 };
+    const ordinal = visualOrder[floorId] || index;
+    const floorGap = all
+      ? compactLandscape
+        ? Math.max(exploded ? 72 : section ? 54 : raisedFocus ? 46 : 48, stageH * (exploded ? 0.34 : 0.25))
+        : Math.max(exploded ? 142 : section ? 92 : raisedFocus ? 76 : 86, stageH * (exploded ? 0.42 : section ? 0.28 : raisedFocus ? 0.23 : 0.27))
+      : 0;
+    const spreadX = compactLandscape ? (exploded ? 56 : raisedFocus ? 16 : section ? 28 : 34) : exploded ? 96 : raisedFocus ? 28 : section ? 58 : 74;
+    const routeShift = routeActive ? { x: compactLandscape ? 10 : 28, y: 0 } : { x: compactLandscape ? 0 : 12, y: compactLandscape ? 0 : 6 };
+    const baseX = stageW * (all ? (compactLandscape ? 0.42 : 0.43) : 0.5) + this.transform.panX + routeShift.x + (all ? ordinal * spreadX : 0);
+    const baseY = stageH * (all ? (compactLandscape ? (section ? 0.66 : raisedFocus ? 0.64 : 0.62) : section ? 0.8 : raisedFocus ? 0.78 : 0.82) : compactLandscape ? 0.5 : 0.58) + this.transform.panY + routeShift.y - (all ? ordinal * floorGap : 0);
+    const tiltY = all ? (compactLandscape ? (section ? 0.78 : raisedFocus ? 0.72 : 0.68) : section ? 0.68 : raisedFocus ? 0.62 : 0.56) : compactLandscape ? 0.88 : 0.78;
+    const skewX = all ? (compactLandscape ? (section ? -0.025 : raisedFocus ? -0.035 : -0.052) : section ? -0.04 : raisedFocus ? -0.05 : -0.088) : -0.018;
+    return { floorId, index, count, viewport, scale, baseX, baseY, tiltY, skewX, all, exploded, section, layerMode };
+  },
+
+  project(point, state) {
+    const x = (point[0] - state.viewport.minX - state.viewport.width / 2) * state.scale;
+    const y = (point[1] - state.viewport.minY - state.viewport.height / 2) * state.scale;
+    const rotation = this.transform.rotation || 0;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const px = x + y * state.skewX;
+    const py = y * state.tiltY;
+    return {
+      x: state.baseX + px * cos - py * sin,
+      y: state.baseY + px * sin + py * cos
+    };
+  },
+
+  drawProjectedPolygon(ctx, points, fill, stroke, lineWidth = 1) {
+    if (!points.length) return;
+    ctx.beginPath();
+    points.forEach((point, index) => {
+      if (index === 0) ctx.moveTo(point.x, point.y);
+      else ctx.lineTo(point.x, point.y);
+    });
+    ctx.closePath();
+    setFillStyle(ctx, fill);
+    ctx.fill();
+    if (stroke) {
+      setStrokeStyle(ctx, stroke);
+      setLineWidth(ctx, lineWidth);
+      setLineJoin(ctx, "round");
+      ctx.stroke();
+    }
+  },
+
+  drawExtrudedPolygon(ctx, polygon, state, options = {}) {
+    if (!polygon.length) return;
+    const depthPx = options.depthPx || (state.all ? 28 : 22);
+    const offset = [options.offsetX || 12 / state.scale, depthPx / state.scale];
+    const top = polygon.map((point) => this.project(point, state));
+    const bottom = polygon.map((point) => this.project([point[0] + offset[0], point[1] + offset[1]], state));
+    ctx.save();
+    if (options.groundShadow !== false) {
+      const shadow = top.map((point) => ({ x: point.x + 12, y: point.y + depthPx + 10 }));
+      this.drawProjectedPolygon(ctx, shadow, options.shadowFill || "rgba(18, 45, 78, 0.12)", null, 0);
+    }
+    for (let i = 0; i < top.length; i += 1) {
+      const j = (i + 1) % top.length;
+      const face = [top[i], top[j], bottom[j], bottom[i]];
+      const avgY = (top[i].y + top[j].y) / 2;
+      const visibleFace = avgY >= state.baseY - canvasBox.height * 0.42 || i % 2 === 0;
+      if (!visibleFace) continue;
+      this.drawProjectedPolygon(ctx, face, options.sideFill || palette.floorSide, options.sideStroke || "rgba(88,110,132,0.58)", 1);
+    }
+    setShadow(ctx, "rgba(20, 53, 94, 0.18)", 16, 0, 9);
+    this.drawProjectedPolygon(ctx, top, options.topFill || palette.floor, options.topStroke || palette.floorEdge, options.lineWidth || 3.4);
+    ctx.restore();
+  },
+
+  drawPolygon(ctx, polygon, state, fill, stroke, lineWidth = 1.5, shadow = false) {
+    if (!polygon.length) return;
+    ctx.save();
+    if (shadow) {
+      setShadow(ctx, "rgba(20, 53, 94, 0.16)", 14, 0, 10);
+    }
+    ctx.beginPath();
+    polygon.forEach((point, index) => {
+      const p = this.project(point, state);
+      if (index === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.closePath();
+    setFillStyle(ctx, fill);
+    ctx.fill();
+    if (stroke) {
+      setStrokeStyle(ctx, stroke);
+      setLineWidth(ctx, lineWidth);
+      setLineJoin(ctx, "round");
+      ctx.stroke();
+    }
+    ctx.restore();
+  },
+
+  drawLine(ctx, from, to, state, color, width, dashed = false) {
+    const a = this.project(from, state);
+    const b = this.project(to, state);
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    setStrokeStyle(ctx, color);
+    setLineWidth(ctx, width);
+    setLineCap(ctx, "round");
+    if (dashed) setLineDashCompat(ctx, [8, 7]);
+    ctx.stroke();
+    if (dashed) setLineDashCompat(ctx, []);
+    ctx.restore();
+  },
+
+  drawWallPrism(ctx, from, to, state, options = {}) {
+    const a = this.project(from, state);
+    const b = this.project(to, state);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.max(1, Math.hypot(dx, dy));
+    const nx = (-dy / len) * (options.width || 2.5);
+    const ny = (dx / len) * (options.width || 2.5);
+    const lift = options.lift || (state.all ? 7 : 5);
+    const top = [
+      { x: a.x + nx, y: a.y + ny - lift },
+      { x: b.x + nx, y: b.y + ny - lift },
+      { x: b.x - nx, y: b.y - ny - lift },
+      { x: a.x - nx, y: a.y - ny - lift }
+    ];
+    const side = [
+      { x: a.x - nx, y: a.y - ny - lift },
+      { x: b.x - nx, y: b.y - ny - lift },
+      { x: b.x - nx, y: b.y - ny + lift * 0.55 },
+      { x: a.x - nx, y: a.y - ny + lift * 0.55 }
+    ];
+    ctx.save();
+    this.drawProjectedPolygon(ctx, side, options.sideFill || "rgba(98, 119, 140, 0.45)", null, 0);
+    this.drawProjectedPolygon(ctx, top, options.topFill || "rgba(50, 70, 92, 0.78)", options.stroke || "rgba(36, 53, 72, 0.68)", 0.8);
+    ctx.restore();
+  },
+
+  drawPointPin(ctx, point, state, label, fill, radius = 11) {
+    const p = this.project(point, state);
+    ctx.save();
+    setShadow(ctx, "rgba(20, 53, 94, 0.24)", 18, 0, 0);
+    setFillStyle(ctx, fill);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fill();
+    setShadow(ctx, "rgba(0,0,0,0)", 0, 0, 0);
+    setFillStyle(ctx, "#fff");
+    setFont(ctx, 11, "900");
+    setTextAlign(ctx, "center");
+    setTextBaseline(ctx, "middle");
+    ctx.fillText(label, p.x, p.y);
+    ctx.restore();
+  },
+
+  drawMapPill(ctx, text, point, state, options = {}) {
+    if (!text) return;
+    const p = this.project(point, state);
+    const fontSize = options.fontSize || 12;
+    ctx.save();
+    setFont(ctx, fontSize, "900");
+    setTextAlign(ctx, "center");
+    setTextBaseline(ctx, "middle");
+    const width = Math.min(options.maxWidth || 112, measureTextWidth(ctx, text, fontSize) + 22);
+    const height = options.height || 30;
+    setShadow(ctx, "rgba(20, 53, 94, 0.22)", 14, 0, 4);
+    setFillStyle(ctx, options.fill || "#ffffff");
+    this.roundRect(ctx, p.x - width / 2, p.y - height / 2, width, height, height / 2);
+    ctx.fill();
+    if (options.stroke) {
+      setStrokeStyle(ctx, options.stroke);
+      setLineWidth(ctx, 1.5);
+      ctx.stroke();
+    }
+    setShadow(ctx, "rgba(0,0,0,0)", 0, 0, 0);
+    setFillStyle(ctx, options.color || palette.text);
+    ctx.fillText(text, p.x, p.y + 0.5);
+    ctx.restore();
+  },
+
+  drawCallout(ctx, text, point, state, options = {}) {
+    if (!text) return;
+    const p = this.project(point, state);
+    const fontSize = options.fontSize || 12;
+    const anchorOffset = options.anchorOffset || { x: 0, y: -36 };
+    const x = p.x + anchorOffset.x;
+    const y = p.y + anchorOffset.y;
+    ctx.save();
+    setFont(ctx, fontSize, "950");
+    setTextAlign(ctx, "center");
+    setTextBaseline(ctx, "middle");
+    const width = Math.min(options.maxWidth || 160, measureTextWidth(ctx, text, fontSize) + 24);
+    const height = options.height || 34;
+    setStrokeStyle(ctx, options.stroke || options.fill || "#0b6cff");
+    setLineWidth(ctx, 2);
+    ctx.beginPath();
+    ctx.moveTo(p.x, p.y - 4);
+    ctx.lineTo(x, y + height / 2 - 2);
+    ctx.stroke();
+    setShadow(ctx, "rgba(20, 53, 94, 0.25)", 16, 0, 5);
+    setFillStyle(ctx, options.fill || "#0b6cff");
+    this.roundRect(ctx, x - width / 2, y - height / 2, width, height, height / 2);
+    ctx.fill();
+    setShadow(ctx, "rgba(0,0,0,0)", 0, 0, 0);
+    setFillStyle(ctx, options.color || "#ffffff");
+    ctx.fillText(text, x, y + 0.5);
+    ctx.restore();
+  },
+
+  drawLabel(ctx, text, point, state, options = {}) {
+    if (!text) return;
+    const density = state.all && this.transform.zoom < 1.15 ? "sparse" : state.all ? "medium" : "dense";
+    if (options.priority === "low" && density === "sparse") return;
+    const p = this.project(point, state);
+    const lines = String(text).split("\n");
+    const fontSize = options.small ? 11 : density === "sparse" ? 12 : 13;
+    ctx.save();
+    setFont(ctx, fontSize, "700");
+    setTextAlign(ctx, "center");
+    setTextBaseline(ctx, "middle");
+    const width = Math.min(96, Math.max(...lines.map((line) => measureTextWidth(ctx, line, fontSize))) + 12);
+    const height = lines.length * (fontSize + 2) + 7;
+    setFillStyle(ctx, options.badge === false ? "transparent" : "rgba(255,255,255,0.9)");
+    if (options.badge !== false) {
+      this.roundRect(ctx, p.x - width / 2, p.y - height / 2, width, height, 9);
+      ctx.fill();
+    }
+    setFillStyle(ctx, options.color || palette.text);
+    lines.forEach((line, index) => {
+      ctx.fillText(line, p.x, p.y + (index - (lines.length - 1) / 2) * (fontSize + 3));
+    });
+    ctx.restore();
+  },
+
+  roundRect(ctx, x, y, width, height, radius) {
+    ctx.beginPath();
+    ctx.moveTo(x + radius, y);
+    ctx.arcTo(x + width, y, x + width, y + height, radius);
+    ctx.arcTo(x + width, y + height, x, y + height, radius);
+    ctx.arcTo(x, y + height, x, y, radius);
+    ctx.arcTo(x, y, x + width, y, radius);
+    ctx.closePath();
+  },
+
+  drawFloor(ctx, floorId, state) {
+    const sourceFloorId = floorId === "25F" ? "2F" : floorId;
+    const floor = mapData.floors.find((candidate) => candidate.id === sourceFloorId);
+    if (floor && floorId !== "25F") {
+      this.drawExtrudedPolygon(ctx, floor.outline, state, {
+        depthPx: state.exploded ? 64 : state.section ? 42 : 52,
+        offsetX: state.exploded ? 20 / state.scale : 14 / state.scale,
+        topFill: floorId === "2F" ? "#eef7ff" : palette.floor,
+        sideFill: floorId === "2F" ? "#a9bfd4" : "#9fb6cc",
+        topStroke: palette.floorEdge,
+        lineWidth: 4.2
+      });
+    } else {
+      const space = mapData.spaces.find((candidate) => candidate.id === "space-202-5");
+      const room = mapData.rooms.find((candidate) => candidate.id === "202-5");
+      const outline = space ? space.polygon : room.polygon;
+      this.drawExtrudedPolygon(ctx, outline, state, {
+        depthPx: 34,
+        offsetX: 9 / state.scale,
+        topFill: "#ffe7b8",
+        sideFill: "#d89b43",
+        topStroke: "#ce8721",
+        lineWidth: 4
+      });
+    }
+
+    this.drawSpaces(ctx, floorId, state);
+    this.drawRooms(ctx, floorId, state);
+    this.drawWalls(ctx, floorId, state);
+    this.drawDoors(ctx, floorId, state);
+    this.drawStairs(ctx, floorId, state);
+    this.drawCenterlines(ctx, floorId, state);
+    this.drawRoute(ctx, floorId, state);
+    this.drawRouteNodes(ctx, floorId, state);
+
+    const titlePoint = floorId === "25F" ? state.viewport.minX + 35 : state.viewport.minX + 70;
+    this.drawMapPill(ctx, floorTitles[floorId], [titlePoint, state.viewport.minY + 35], state, {
+      fill: floorId === "25F" ? "#fff2d7" : "#ffffff",
+      color: floorId === "25F" ? "#9a5a00" : "#31516f",
+      stroke: floorId === "25F" ? "#efb45a" : "#c7d9ee",
+      fontSize: 11,
+      height: 28
+    });
+  },
+
+  drawSpaces(ctx, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const spaces = mapData.spaces.filter((space) => {
+      if (floorId === "25F") return space.id === "space-202-5";
+      if (space.id === "space-202-5" || space.kind === "room") return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(space.center, raisedBounds, 24);
+      return space.floor === floorId;
+    });
+    spaces.forEach((space) => {
+      const fill = spaceColor(space);
+      const stroke = space.kind === "corridor" ? palette.corridorLine : "#8da1b5";
+      this.drawPolygon(ctx, space.polygon, state, fill, stroke, space.kind === "corridor" ? 3.2 : 1.8);
+      if (space.kind === "corridor") {
+        const box = boundsForPolygon(space.polygon);
+        this.drawLine(ctx, [(box.minX + box.maxX) / 2, box.minY + 8], [(box.minX + box.maxX) / 2, box.maxY - 8], state, "rgba(31, 118, 174, 0.32)", 2.8, true);
+      }
+      const priority = space.kind === "corridor" ? "normal" : "low";
+      this.drawLabel(ctx, space.kind === "corridor" ? "走廊" : space.label, space.center, state, { small: true, color: "#245672", priority, badge: space.kind === "corridor" });
+    });
+  },
+
+  drawRooms(ctx, floorId, state) {
+    const route = this.data.route;
+    const selectedRoom = this.data.selectedRoom;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const rooms = mapData.rooms.filter((room) => {
+      if (displayFloorForRoom(room) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(room.center, raisedBounds, 18) || room.id === "202-5";
+      return true;
+    });
+    rooms.forEach((room) => {
+      const onRoute = Boolean(route && (route.targetRoomId === room.id || route.nodeIds.includes(`center-${room.id}`) || route.nodeIds.includes(room.doorNodeId)));
+      this.drawPolygon(ctx, room.polygon, state, onRoute ? "#dbeafe" : roomColor(room), selectedRoom && selectedRoom.id === room.id ? "#17253a" : palette.wall, onRoute ? 4.2 : 2.6);
+      const labelPoint = room.labelPoint || room.center;
+      const density = state.all && this.transform.zoom < 1.15 ? "sparse" : state.all ? "medium" : "dense";
+      this.drawLabel(ctx, labelForRoom(room, density, onRoute), labelPoint, state, { color: onRoute ? "#0b4fb3" : palette.text, priority: onRoute ? "normal" : density === "sparse" ? "low" : "normal" });
+      lastTapTargets.push({ id: room.id, floorId, polygon: room.polygon, state });
+    });
+  },
+
+  drawWalls(ctx, floorId, state) {
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const sourceFloor = floorId === "25F" ? "2F" : floorId;
+    const walls = (mapData.walls || []).filter((wall) => {
+      if (wall.floor !== sourceFloor) return false;
+      if (floorId === "25F") return wall.roomId === "202-5" || wall.id.includes("202-5");
+      if (raisedBounds && floorId === "2F") return pointInBounds(wall.from, raisedBounds, 18) || pointInBounds(wall.to, raisedBounds, 18);
+      return true;
+    });
+    walls.forEach((wall) => {
+      const low = wall.kind === "low";
+      const outer = wall.kind === "outer";
+      if (state.all || outer) {
+        this.drawWallPrism(ctx, wall.from, wall.to, state, {
+          width: outer ? 2.7 : low ? 1.3 : 1.8,
+          lift: outer ? 8 : low ? 4 : 6,
+          topFill: low ? "rgba(84, 106, 128, 0.44)" : outer ? "rgba(47, 68, 90, 0.88)" : "rgba(47, 68, 90, 0.68)",
+          sideFill: low ? "rgba(126, 145, 164, 0.22)" : outer ? "rgba(76, 97, 118, 0.44)" : "rgba(98, 119, 140, 0.28)"
+        });
+      } else {
+        this.drawLine(ctx, wall.from, wall.to, state, low ? "rgba(73, 92, 112, 0.58)" : outer ? "#48617b" : "rgba(47, 68, 90, 0.88)", outer ? 3.8 : low ? 1.7 : 2.3);
+      }
+    });
+  },
+
+  drawCenterlines(ctx, floorId, state) {
+    const route = this.data.route;
+    const routeNodePairSet = new Set();
+    if (route) {
+      for (let i = 1; i < route.nodeIds.length; i += 1) {
+        routeNodePairSet.add(`${route.nodeIds[i - 1]}->${route.nodeIds[i]}`);
+        routeNodePairSet.add(`${route.nodeIds[i]}->${route.nodeIds[i - 1]}`);
+      }
+    }
+    (mapData.centerlines || []).forEach((line) => {
+      if (line.floor !== (floorId === "25F" ? "2F" : floorId)) return;
+      const onRoute = routeNodePairSet.has(`${line.from}->${line.to}`);
+      if (!onRoute && this.data.layerMode === "allFloors" && this.transform.zoom < 1.2) return;
+      const from = mapData.nodes.find((node) => node.id === line.from);
+      const to = mapData.nodes.find((node) => node.id === line.to);
+      if (!from || !to) return;
+      if (floorId === "25F" && !line.id.includes("202")) return;
+      this.drawLine(ctx, from.point, to.point, state, onRoute ? "rgba(11, 108, 255, 0.36)" : "rgba(42, 116, 160, 0.16)", onRoute ? 3.8 : 1.8, !onRoute);
+    });
+  },
+
+  drawDoors(ctx, floorId, state) {
+    const route = this.data.route;
+    const raisedBounds = this.data.layerMode === "raised202" ? raised202ContextBounds() : null;
+    const doors = mapData.doors.filter((door) => {
+      if (displayFloorForDoor(door) !== floorId) return false;
+      if (raisedBounds && floorId === "2F") return pointInBounds(door.point, raisedBounds, 24);
+      return true;
+    });
+    doors.forEach((door) => {
+      const active = Boolean(route && route.nodeIds.includes(door.nodeId));
+      this.drawLine(ctx, door.from, door.to, state, active ? palette.route : door.source === "inferred" ? palette.inferredDoor : palette.door, active ? 6 : 4.2, door.source === "inferred");
+      if (active) {
+        const p = this.project(door.point, state);
+        ctx.save();
+        setFillStyle(ctx, palette.route);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    });
+  },
+
+  drawStairs(ctx, floorId, state) {
+    mapData.stairs.forEach((stair) => {
+      const entries = [];
+      if (floorId === stair.lowerFloor) entries.push({ polygon: stair.lowerLanding, nodeId: stair.lowerNodeId, label: `${stair.label}下口` });
+      if (floorId === stair.upperFloor && stair.upperNodeId !== "stair-202-virtual") entries.push({ polygon: stair.upperLanding, nodeId: stair.upperNodeId, label: `${stair.label}上口` });
+      if (floorId === "25F" && stair.id === "stair-public") entries.push({ polygon: [[780, 255], [820, 255], [820, 315], [780, 315]], nodeId: "door-202-5", label: "202 平台梯" });
+      entries.forEach((entry) => {
+        const active = Boolean(this.data.route && this.data.route.nodeIds.includes(entry.nodeId));
+        this.drawExtrudedPolygon(ctx, entry.polygon, state, {
+        depthPx: active ? 30 : 24,
+        offsetX: 7 / state.scale,
+          topFill: active ? "#ffb12b" : palette.stair,
+          sideFill: active ? "#d77900" : "#d49639",
+          topStroke: palette.stairEdge,
+          lineWidth: active ? 3.4 : 2.4
+        });
+        this.drawStairTreads(ctx, entry.polygon, state, active);
+        if (active) {
+          const box = boundsForPolygon(entry.polygon);
+          this.drawLine(ctx, [box.minX + 4, box.minY + 4], [box.maxX - 4, box.maxY - 4], state, "rgba(255,255,255,0.9)", 3);
+        }
+        this.drawLabel(ctx, entry.label, this.centroid(entry.polygon), state, { small: true, color: "#704100" });
+      });
+    });
+  },
+
+  drawStairTreads(ctx, polygon, state, active = false) {
+    const box = boundsForPolygon(polygon);
+    const steps = 7;
+    for (let i = 1; i < steps; i += 1) {
+      const y = box.minY + ((box.maxY - box.minY) * i) / steps;
+      const inset = 5 + (i % 2) * 3;
+      this.drawLine(ctx, [box.minX + inset, y], [box.maxX - inset, y], state, active ? "rgba(255,255,255,0.86)" : "rgba(111, 62, 0, 0.82)", active ? 2 : 1.3);
+    }
+  },
+
+  drawRoute(ctx, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    ctx.save();
+    setGlobalAlpha(ctx, 0.28);
+    for (let index = 1; index < route.points.length; index += 1) {
+      const from = route.points[index - 1];
+      const to = route.points[index];
+      const fromFloor = displayFloorForRoutePoint(from);
+      const toFloor = displayFloorForRoutePoint(to);
+      if (fromFloor !== floorId || toFloor !== floorId) continue;
+      this.drawLine(ctx, from.point, to.point, state, "#ffffff", 15, false);
+    }
+    setGlobalAlpha(ctx, 1);
+    ctx.restore();
+    for (let index = 1; index < route.points.length; index += 1) {
+      const from = route.points[index - 1];
+      const to = route.points[index];
+      const fromFloor = displayFloorForRoutePoint(from);
+      const toFloor = displayFloorForRoutePoint(to);
+      if (fromFloor !== floorId || toFloor !== floorId) continue;
+      const active = index - 1 === this.data.activeStepIndex;
+      const stair = to.kind.includes("stair") || to.kind === "stair";
+      this.drawLine(ctx, from.point, to.point, state, stair ? palette.stairRoute : palette.route, active ? 9 : stair ? 7 : 5.8);
+      if (active) this.drawActiveRouteChevron(ctx, from.point, to.point, state, stair);
+    }
+  },
+
+  drawActiveRouteChevron(ctx, from, to, state, stair) {
+    const a = this.project(from, state);
+    const b = this.project(to, state);
+    const angle = Math.atan2(b.y - a.y, b.x - a.x);
+    const x = (a.x + b.x) / 2;
+    const y = (a.y + b.y) / 2;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(angle);
+    setFillStyle(ctx, stair ? palette.stairRoute : palette.route);
+    setShadow(ctx, "rgba(6, 24, 56, 0.22)", 12, 0, 2);
+    ctx.beginPath();
+    ctx.moveTo(10, 0);
+    ctx.lineTo(-5, -7);
+    ctx.lineTo(-2, 0);
+    ctx.lineTo(-5, 7);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  },
+
+  drawRouteNodes(ctx, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    route.points.forEach((point, index) => {
+      if (displayFloorForRoutePoint(point) !== floorId) return;
+      const p = this.project(point.point, state);
+      const first = index === 0;
+      const last = index === route.points.length - 1;
+      const active = index === this.data.activeStepIndex + 1;
+      this.drawPointPin(ctx, point.point, state, first ? "起" : last ? "终" : String(index + 1), first ? palette.start : last ? palette.target : point.kind.includes("stair") ? palette.stairRoute : palette.route, first || last ? 14 : active ? 11 : 8);
+      if (first || last || active) {
+        this.drawMapPill(ctx, first ? "现在" : last ? "目标" : "下一处", [point.point[0], point.point[1] - 22 / state.scale], state, {
+          fill: first ? "#16a060" : last ? "#ff3f6c" : "#0b6cff",
+          color: "#ffffff",
+          fontSize: 11,
+          height: 26
+        });
+      }
+    });
+    this.drawRouteCallouts(ctx, floorId, state);
+  },
+
+  drawRouteCallouts(ctx, floorId, state) {
+    const route = this.data.route;
+    if (!route) return;
+    const activeIndex = this.data.activeStepIndex || 0;
+    const start = route.points[0];
+    const next = route.points[Math.min(route.points.length - 1, activeIndex + 1)];
+    const target = route.points[route.points.length - 1];
+    const callouts = [
+      {
+        point: start,
+        text: `现在 ${roomLabel(route.startRoomId)} 房间内`,
+        fill: palette.start,
+        anchorOffset: { x: -18, y: 34 }
+      },
+      {
+        point: next,
+        text: `下一处 ${next ? nodeTitle({ kind: next.kind, label: next.label }, next.nodeId).replace(" 房间内", "").replace(" 门口", "门口") : ""}`,
+        fill: palette.route,
+        anchorOffset: { x: 8, y: -42 }
+      },
+      {
+        point: target,
+        text: `终点 ${roomLabel(route.targetRoomId)}`,
+        fill: palette.target,
+        anchorOffset: { x: 22, y: -48 }
+      }
+    ];
+    callouts.forEach((item) => {
+      if (!item.point || displayFloorForRoutePoint(item.point) !== floorId) return;
+      this.drawCallout(ctx, item.text, item.point.point, state, {
+        fill: item.fill,
+        stroke: item.fill,
+        anchorOffset: item.anchorOffset,
+        fontSize: 12,
+        maxWidth: 170
+      });
+    });
+  },
+
+  centroid(polygon) {
+    const sum = polygon.reduce((acc, point) => [acc[0] + point[0], acc[1] + point[1]], [0, 0]);
+    return [sum[0] / polygon.length, sum[1] / polygon.length];
+  },
+
+  canvasToMap(point, state) {
+    const rotation = this.transform.rotation || 0;
+    const cos = Math.cos(rotation);
+    const sin = Math.sin(rotation);
+    const dx = point.x - state.baseX;
+    const dy = point.y - state.baseY;
+    const px = dx * cos + dy * sin;
+    const py = -dx * sin + dy * cos;
+    const y = py / state.tiltY;
+    const x = px - y * state.skewX;
+    return [
+      x / state.scale + state.viewport.minX + state.viewport.width / 2,
+      y / state.scale + state.viewport.minY + state.viewport.height / 2
+    ];
+  },
+
+  handleCanvasTap(event) {
+    const touch = event.changedTouches && event.changedTouches[0];
+    const raw = touch || event.detail || {};
+    const tap = {
+      x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
+      y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
+    };
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, canvasBox);
+    if (panelAction) {
+      this.applyCanvasAction(panelAction);
+      return;
+    }
+    const guidanceAction = guidanceTapAction(tap, this.data.hasRoute, canvasBox);
+    if (guidanceAction) {
+      this.applyCanvasAction({ type: guidanceAction });
+      return;
+    }
+    const railAction = railTapAction(tap, canvasBox);
+    if (railAction) {
+      if (railAction.action === "back") {
+        this.goBack();
+        return;
+      }
+      if (railAction.panel) {
+        this.openPanel({ currentTarget: { dataset: { panel: railAction.panel } } });
+        return;
+      }
+      if (railAction.view) {
+        this.setViewPreset({ currentTarget: { dataset: { view: railAction.view } } });
+        return;
+      }
+    }
+    if (this.threeMap) {
+      const roomId = this.threeMap.pickRoom(tap.x, tap.y);
+      if (roomId) this.selectRoomById(roomId);
+      return;
+    }
+    const ids = this.visibleFloorIds();
+    for (let f = ids.length - 1; f >= 0; f -= 1) {
+      const state = this.floorDrawState(ids[f], f, ids.length);
+      const mapPoint = this.canvasToMap({ x: tap.x, y: tap.y }, state);
+      const rooms = mapData.rooms.filter((room) => displayFloorForRoom(room) === ids[f]);
+      for (const room of rooms) {
+        if (pointInPolygon(mapPoint, room.polygon)) {
+          this.selectRoomById(room.id);
+          return;
+        }
+      }
+    }
+  },
+
+  handlePageTap(event) {
+    const touch = event.changedTouches && event.changedTouches[0];
+    const raw = touch || event.detail || {};
+    const tap = {
+      x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
+      y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
+    };
+    const hostBox = pageBox();
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, hostBox);
+    if (panelAction) {
+      this.applyCanvasAction(panelAction);
+      return;
+    }
+    const guidanceAction = guidanceTapAction(tap, this.data.hasRoute, hostBox);
+    if (guidanceAction) {
+      this.applyCanvasAction({ type: guidanceAction });
+      return;
+    }
+    const railAction = railTapAction(tap, hostBox);
+    if (!railAction) return;
+    if (railAction.action === "back") {
+      this.goBack();
+      return;
+    }
+    if (railAction.panel) {
+      this.openPanel({ currentTarget: { dataset: { panel: railAction.panel } } });
+      return;
+    }
+    if (railAction.view) {
+      this.setViewPreset({ currentTarget: { dataset: { view: railAction.view } } });
+    }
+  },
+
+  handleRailOverlayTap(event) {
+    const dataset = event?.currentTarget?.dataset || {};
+    if (dataset.action === "back") {
+      this.goBack();
+      return;
+    }
+    if (dataset.panel) {
+      this.openPanel({ currentTarget: { dataset: { panel: dataset.panel } } });
+      return;
+    }
+    if (dataset.view) {
+      this.setViewPreset({ currentTarget: { dataset: { view: dataset.view } } });
+    }
+  },
+
+  applyCanvasAction(action) {
+    if (!action) return;
+    if (action.type === "close") {
+      this.closePanel();
+      return;
+    }
+    if (action.type === "layer") {
+      this.setLayer({ currentTarget: { dataset: { layer: action.value } } });
+      return;
+    }
+    if (action.type === "view") {
+      this.setViewPreset({ currentTarget: { dataset: { view: action.value } } });
+      return;
+    }
+    if (action.type === "open-layers") {
+      this.openPanel({ currentTarget: { dataset: { panel: "layers" } } });
+      return;
+    }
+    if (action.type === "open-view") {
+      this.openPanel({ currentTarget: { dataset: { panel: "view" } } });
+      return;
+    }
+    if (action.type === "prev") {
+      this.stepRouteProgress(-1);
+      return;
+    }
+    if (action.type === "focus") {
+      this.focusActiveStep();
+      return;
+    }
+    if (action.type === "next") {
+      this.advanceRouteCheckpoint();
+      return;
+    }
+    if (action.type === "target") {
+      this.selectQuickTarget({ currentTarget: { dataset: { id: action.value } } });
+      return;
+    }
+    if (action.type === "room-route" && this.data.selectedRoom?.id) {
+      this.selectQuickTarget({ currentTarget: { dataset: { id: this.data.selectedRoom.id } } });
+    }
+  },
+
+  handleTouchStart(event) {
+    if (this.threeMap) {
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchstart"));
+      } catch (error) {
+        console.error("[mini-three] touchstart failed", error);
+      }
+      return;
+    }
+    const touches = event.touches || [];
+    if (touches.length === 1) {
+      this.touchState = {
+        mode: "pan",
+        startX: touches[0].clientX,
+        startY: touches[0].clientY,
+        transform: cloneTransform(this.transform)
+      };
+    } else if (touches.length >= 2) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      this.touchState = {
+        mode: "pinch",
+        distance: Math.hypot(dx, dy),
+        angle: Math.atan2(dy, dx),
+        transform: cloneTransform(this.transform)
+      };
+    }
+  },
+
+  handleTouchMove(event) {
+    if (this.threeMap) {
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchmove"));
+      } catch (error) {
+        console.error("[mini-three] touchmove failed", error);
+      }
+      return;
+    }
+    if (!this.touchState) return;
+    const touches = event.touches || [];
+    if (this.touchState.mode === "pan" && touches.length === 1) {
+      this.transform.panX = this.touchState.transform.panX + touches[0].clientX - this.touchState.startX;
+      this.transform.panY = this.touchState.transform.panY + touches[0].clientY - this.touchState.startY;
+      this.transform.imagePanX = this.touchState.transform.imagePanX + touches[0].clientX - this.touchState.startX;
+      this.transform.imagePanY = this.touchState.transform.imagePanY + touches[0].clientY - this.touchState.startY;
+      this.drawMap();
+    } else if (this.touchState.mode === "pinch" && touches.length >= 2) {
+      const dx = touches[0].clientX - touches[1].clientX;
+      const dy = touches[0].clientY - touches[1].clientY;
+      const distance = Math.max(1, Math.hypot(dx, dy));
+      const angle = Math.atan2(dy, dx);
+      this.transform.zoom = Math.min(2.55, Math.max(0.82, this.touchState.transform.zoom * (distance / this.touchState.distance)));
+      this.transform.rotation = Math.min(0.32, Math.max(-0.32, (this.touchState.transform.rotation || 0) + (angle - this.touchState.angle) * 0.42));
+      this.transform.imageZoom = Math.min(2.4, Math.max(1, this.touchState.transform.imageZoom * (distance / this.touchState.distance)));
+      this.transform.imageRotation = Math.min(0.18, Math.max(-0.18, (this.touchState.transform.imageRotation || 0) + (angle - this.touchState.angle) * 0.35));
+      this.drawMap();
+    }
+  },
+
+  handleTouchEnd(event) {
+    if (this.threeMap) {
+      try {
+        this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event || {}, "touchend"));
+      } catch (error) {
+        console.error("[mini-three] touchend failed", error);
+      }
+    }
+    this.touchState = null;
+  },
+
+  setLayer(event) {
+    const layerMode = event.currentTarget.dataset.layer;
+    this.transform = normalizeTransform(this.defaultTransform(layerMode, this.data.viewPreset));
+    updateNativeVisualMetrics(layerMode, this.data.hasRoute);
+    this.setData({
+      ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, layerMode),
+      layerMode,
+      layerHint: layerHints[layerMode] || layerHints.allFloors,
+      allLayerClass: activeLayerClass(layerMode, "allFloors"),
+      layer1FClass: layerButtonClass(layerMode, "1F"),
+      layer2FClass: layerButtonClass(layerMode, "2F"),
+      layer25FClass: activeLayerClass(layerMode, "raised202"),
+      raised202LayerClass: activeLayerClass(layerMode, "raised202"),
+      explodedLayerClass: activeLayerClass(layerMode, "exploded"),
+      sectionLayerClass: activeLayerClass(layerMode, "section")
+    }, () => this.drawMap());
+  },
+
+  defaultTransform(layerMode = this.data.layerMode, viewPreset = this.data.viewPreset) {
+    const grouped = layerMode === "allFloors" || layerMode === "exploded" || layerMode === "section";
+    const compactLandscape = canvasBox.height > 0 && (canvasBox.height < 280 || canvasBox.width < 520);
+    const base = compactLandscape ? (grouped ? 1.46 : layerMode === "raised202" ? 1.42 : 1.36) : grouped ? 1.18 : layerMode === "raised202" ? 1.2 : 1.16;
+    const rotation = grouped || layerMode === "raised202" ? (compactLandscape ? -0.045 : -0.075) : 0;
+    let zoom = base;
+    if (viewPreset === "near") zoom = Math.max(1.22, base + 0.16);
+    if (viewPreset === "route") zoom = this.data.route ? Math.max(1.16, base + 0.12) : base;
+    const imageZoom = viewPreset === "route" ? 1.08 : viewPreset === "near" ? 1.14 : 1;
+    const imageRotation = viewPreset === "overview" ? 0 : rotation;
+    return normalizeTransform({
+      panX: 0,
+      panY: 0,
+      zoom,
+      rotation,
+      imagePanX: 0,
+      imagePanY: 0,
+      imageZoom,
+      imageRotation
+    });
+  },
+
+  setViewPreset(event) {
+    const viewPreset = event.currentTarget.dataset.view;
+    if (viewPreset === "rotateLeft" || viewPreset === "rotateRight") {
+      const delta = viewPreset === "rotateLeft" ? -0.09 : 0.09;
+      if (this.threeMap) {
+        this.threeMap.rotate(delta);
+        this.preserveCameraOnce = true;
+        this.setData({ viewPreset: "near" }, () => this.drawMap());
+        return;
+      }
+      this.transform = normalizeTransform(this.transform || {});
+      this.transform.rotation = Math.min(0.36, Math.max(-0.36, (this.transform.rotation || 0) + delta));
+      this.transform.imageRotation = Math.min(0.28, Math.max(-0.28, (this.transform.imageRotation || 0) + delta));
+      this.setData({ viewPreset: "near" }, () => this.drawMap());
+      return;
+    }
+    const nextPreset = viewPreset === "reset" ? "overview" : viewPreset;
+    this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, nextPreset));
+    this.transform = imagePresetTransform(this.transform, nextPreset);
+    this.setData({ viewPreset: nextPreset }, () => this.drawMap());
+  },
+
+  focusActiveStep() {
+    const route = this.data.route;
+    if (!route) {
+      this.transform = normalizeTransform(this.defaultTransform("allFloors", "overview"));
+      updateNativeVisualMetrics("allFloors", false);
+      this.setData({
+        ...buildNativeMapVisual(null, 0, "allFloors"),
+        layerMode: "allFloors",
+        viewPreset: "overview",
+        layerHint: layerHints.allFloors
+      }, () => this.drawMap());
+      return;
+    }
+    const point = route.points[Math.min(route.points.length - 1, (this.data.activeStepIndex || 0) + 1)];
+    const targetFloor = displayFloorForRoutePoint(point);
+    const layerMode = targetFloor === "25F" ? "raised202" : targetFloor;
+    this.transform = normalizeTransform(this.defaultTransform(layerMode, "route"));
+    const ids = layerMode === "allFloors" ? floorOrder : layerMode === "raised202" ? ["2F", "25F"] : [layerMode];
+    const floorId = layerMode === "allFloors" ? targetFloor : targetFloor === "25F" ? "25F" : targetFloor;
+    const state = this.floorDrawState(floorId, Math.max(0, ids.indexOf(floorId)), ids.length, layerMode);
+    const projected = this.project(point.point, state);
+    this.transform.panX += canvasBox.width * 0.47 - projected.x;
+    this.transform.panY += canvasBox.height * 0.48 - projected.y;
+    updateNativeVisualMetrics(layerMode, true);
+    this.setData({
+      ...buildNativeMapVisual(route, this.data.activeStepIndex || 0, layerMode),
+      layerMode,
+      viewPreset: "route",
+      layerHint: layerHints[layerMode] || layerHints.allFloors,
+      allLayerClass: activeLayerClass(layerMode, "allFloors"),
+      layer1FClass: activeLayerClass(layerMode, "1F"),
+      layer2FClass: activeLayerClass(layerMode, "2F"),
+      layer25FClass: activeLayerClass(layerMode, "raised202"),
+      raised202LayerClass: activeLayerClass(layerMode, "raised202"),
+      explodedLayerClass: activeLayerClass(layerMode, "exploded"),
+      sectionLayerClass: activeLayerClass(layerMode, "section")
+    }, () => this.drawMap());
+  },
+
+  stepRouteProgress(delta) {
+    if (!this.data.route) return;
+    if (delta && delta.currentTarget) delta = Number(delta.currentTarget.dataset.delta || 0);
+    this.setRouteState({
+      route: this.data.route,
+      targetRoomId: this.data.targetRoomId,
+      startRoomId: this.data.startRoomId,
+      activeStepIndex: (this.data.activeStepIndex || 0) + delta
+    });
+  },
+
+  advanceRouteCheckpoint() {
+    if (!this.data.route) return;
+    if (!this.data.canNextStep) {
+      this.clearRoute();
+      return;
+    }
+    this.stepRouteProgress(1);
+  },
+
+  openPanel(event) {
+    const panel = event.currentTarget.dataset.panel;
+    this.setData({
+      panel,
+      routeButtonClass: panelButtonClass(panel, "route"),
+      layersButtonClass: panelButtonClass(panel, "layers"),
+      viewButtonClass: panelButtonClass(panel, "view"),
+      roomButtonClass: panelButtonClass(panel, "room"),
+      ...hostRailStyles(panel, this.data.hasRoute)
+    }, () => this.drawMap());
+  },
+
+  closePanel() {
+    this.setData({
+      panel: "none",
+      routeButtonClass: "",
+      layersButtonClass: "",
+      viewButtonClass: "",
+      roomButtonClass: "",
+      ...hostRailStyles("none", this.data.hasRoute)
+    }, () => this.drawMap());
+  },
+
+  selectRoomById(id) {
+    const selectedRoom = mapData.rooms.find((room) => room.id === id);
+    this.setData({
+      selectedRoom,
+      selectedFloorLabel: selectedRoom ? `${displayFloorForRoom(selectedRoom)} · ${selectedRoom.roomNo}` : "点击地图房间",
+      panel: "room",
+      routeButtonClass: "",
+      layersButtonClass: "",
+      viewButtonClass: "",
+      roomButtonClass: "active",
+      ...hostRailStyles("room", this.data.hasRoute)
+    }, () => this.drawMap());
+  },
+
+  selectNativeRoom(event) {
+    const id = event.currentTarget.dataset.id;
+    if (id) this.selectRoomById(id);
+  },
+
+  selectQuickTarget(event) {
+    const targetRoomId = event.currentTarget.dataset.id;
+    const route = calculateRoute(this.data.startRoomId, targetRoomId);
+    this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
+    this.setRouteState({
+      layerMode: "allFloors",
+      layerHint: layerHints.allFloors,
+      targetRoomId,
+      route,
+      viewPreset: "route",
+      activeStepIndex: 0,
+      panel: "none",
+      allLayerClass: activeLayerClass("allFloors", "allFloors"),
+      layer1FClass: "",
+      layer2FClass: "",
+      layer25FClass: "",
+      raised202LayerClass: "",
+      explodedLayerClass: "",
+      sectionLayerClass: "",
+      routeButtonClass: "active",
+      layersButtonClass: "",
+      viewButtonClass: "",
+      roomButtonClass: ""
+    });
+    if (route) {
+      wx.nextTick(() => this.focusActiveStep());
+    }
+  },
+
+  clearRoute() {
+    updateNativeVisualMetrics(this.data.layerMode, false);
+    this.setRouteState({
+      targetRoomId: "",
+      route: null,
+      activeStepIndex: 0,
+      panel: "none",
+      routeButtonClass: "",
+      layersButtonClass: "",
+      viewButtonClass: "",
+      roomButtonClass: ""
+    });
+  },
+
+  goBack() {
+    wx.reLaunch({ url: "/pages/home/home" });
+  }
+});

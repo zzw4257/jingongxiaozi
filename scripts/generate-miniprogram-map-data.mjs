@@ -1,0 +1,179 @@
+import fs from "node:fs";
+import path from "node:path";
+import vm from "node:vm";
+import ts from "typescript";
+
+const root = process.cwd();
+const sourceFile = path.join(root, "src/features/map/data/mapData.ts");
+const runtimeSourceFile = path.join(root, "src/features/map/runtime.ts");
+const outputFile = path.join(root, "miniprogram/miniprogram/data/map-data.js");
+const outputJsonFile = path.join(root, "miniprogram/miniprogram/data/map-data.json");
+const outputRuntimeFile = path.join(root, "miniprogram/miniprogram/data/map-runtime.js");
+
+function loadTsModule(file) {
+  const source = fs.readFileSync(file, "utf8");
+  const compiled = ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+    fileName: file,
+  }).outputText;
+  const module = { exports: {} };
+  const sandbox = {
+    module,
+    exports: module.exports,
+    require: (specifier) => {
+      if (specifier.endsWith("/types") || specifier.endsWith("./types")) return {};
+      throw new Error(`Unexpected require in ${path.basename(file)}: ${specifier}`);
+    },
+  };
+  vm.runInNewContext(compiled, sandbox, { filename: file });
+  return module.exports;
+}
+
+function transpileTsToCommonJs(file) {
+  const source = fs.readFileSync(file, "utf8");
+  return ts.transpileModule(source, {
+    compilerOptions: {
+      module: ts.ModuleKind.CommonJS,
+      target: ts.ScriptTarget.ES2020,
+      esModuleInterop: true,
+    },
+    fileName: file,
+  }).outputText;
+}
+
+const { jingongMapData } = loadTsModule(sourceFile);
+
+const allPoints = [
+  ...jingongMapData.floors.flatMap((floor) => floor.outline),
+  ...jingongMapData.rooms.flatMap((room) => room.polygon),
+  ...jingongMapData.spaces.flatMap((space) => space.polygon),
+  ...jingongMapData.doors.flatMap((door) => [door.from, door.to, door.point]),
+  ...jingongMapData.nodes.map((node) => node.point),
+];
+
+const minX = Math.min(...allPoints.map((point) => point[0]));
+const maxX = Math.max(...allPoints.map((point) => point[0]));
+const minY = Math.min(...allPoints.map((point) => point[1]));
+const maxY = Math.max(...allPoints.map((point) => point[1]));
+
+const pickRoom = (room) => ({
+  id: room.id,
+  roomNo: room.roomNo,
+  name: room.name,
+  floor: room.floor,
+  area: room.area,
+  polygon: room.polygon,
+  center: room.center,
+  labelPoint: room.labelPoint,
+  doorNodeId: room.doorNodeId,
+  description: room.description,
+  tags: room.tags,
+  parentRoomId: room.parentRoomId,
+});
+
+const pickSpace = (space) => ({
+  id: space.id,
+  label: space.label,
+  floor: space.floor,
+  kind: space.kind,
+  polygon: space.polygon,
+  center: space.center,
+  navigable: space.navigable,
+  description: space.description,
+  labelPriority: space.labelPriority ?? 0,
+});
+
+const pickDoor = (door) => ({
+  id: door.id,
+  floor: door.floor,
+  from: door.from,
+  to: door.to,
+  point: door.point,
+  source: door.source,
+  nodeId: door.nodeId,
+  label: door.label,
+});
+
+const pickStair = (stair) => ({
+  id: stair.id,
+  label: stair.label,
+  access: stair.access,
+  ownerRoomId: stair.ownerRoomId,
+  lowerFloor: stair.lowerFloor,
+  upperFloor: stair.upperFloor,
+  lowerLanding: stair.lowerLanding,
+  upperLanding: stair.upperLanding,
+  lowerNodeId: stair.lowerNodeId,
+  upperNodeId: stair.upperNodeId,
+});
+
+const pickWall = (wall) => ({
+  id: wall.id,
+  floor: wall.floor,
+  from: wall.from,
+  to: wall.to,
+  kind: wall.kind,
+  roomId: wall.roomId,
+});
+
+const pickCenterline = (centerline) => ({
+  id: centerline.id,
+  floor: centerline.floor,
+  from: centerline.from,
+  to: centerline.to,
+  kind: centerline.kind,
+  edgeId: centerline.edgeId,
+});
+
+const miniData = {
+  generatedFrom: "src/features/map/data/mapData.ts",
+  scaleMetersPerUnit: jingongMapData.scaleMetersPerUnit,
+  defaultStartRoomId: jingongMapData.defaultStartRoomId,
+  viewport: { minX, maxX, minY, maxY, width: maxX - minX, height: maxY - minY },
+  floors: jingongMapData.floors.map((floor) => ({
+    id: floor.id,
+    label: floor.label,
+    elevation: floor.elevation,
+    outline: floor.outline,
+    corridorPolygons: floor.corridorPolygons,
+  })),
+  rooms: jingongMapData.rooms.map(pickRoom),
+  spaces: jingongMapData.spaces.map(pickSpace),
+  doors: jingongMapData.doors.map(pickDoor),
+  stairs: jingongMapData.stairs.map(pickStair),
+  walls: jingongMapData.walls.map(pickWall),
+  centerlines: jingongMapData.centerlines.map(pickCenterline),
+  nodes: jingongMapData.nodes.map((node) => ({
+    id: node.id,
+    floor: node.floor,
+    point: node.point,
+    kind: node.kind,
+    label: node.label,
+  })),
+  edges: jingongMapData.edges.map((edge) => ({
+    from: edge.from,
+    to: edge.to,
+    distance: edge.distance,
+    kind: edge.kind,
+    note: edge.note,
+  })),
+};
+
+fs.mkdirSync(path.dirname(outputFile), { recursive: true });
+fs.writeFileSync(
+  outputFile,
+  `// Generated by scripts/generate-miniprogram-map-data.mjs. Do not edit by hand.\nmodule.exports = ${JSON.stringify(miniData, null, 2)};\n`,
+);
+fs.writeFileSync(outputJsonFile, `${JSON.stringify(miniData, null, 2)}\n`);
+fs.writeFileSync(
+  outputRuntimeFile,
+  `// Generated by scripts/generate-miniprogram-map-data.mjs from src/features/map/runtime.ts. Do not edit by hand.\n${transpileTsToCommonJs(runtimeSourceFile)}`,
+);
+
+console.log(`Generated ${path.relative(root, outputFile)} from ${path.relative(root, sourceFile)}.`);
+console.log(`Generated ${path.relative(root, outputJsonFile)} from ${path.relative(root, sourceFile)}.`);
+console.log(`Generated ${path.relative(root, outputRuntimeFile)} from ${path.relative(root, runtimeSourceFile)}.`);

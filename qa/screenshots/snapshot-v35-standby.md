@@ -1,0 +1,6 @@
+- main [ref=e3]:
+  - button "待机表情，打开地图导航" [ref=e6] [cursor=pointer]
+  - button "打开地图导航" [ref=e7] [cursor=pointer]:
+    - img [ref=e8]
+  - button "打开应用抽屉" [ref=e12] [cursor=pointer]:
+    - img [ref=e13]

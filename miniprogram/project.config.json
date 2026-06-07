@@ -1,0 +1,50 @@
+{
+  "appid": "",
+  "projectname": "jingong-xiaozi-miniprogram",
+  "miniprogramRoot": "miniprogram/",
+  "compileType": "miniprogram",
+  "setting": {
+    "urlCheck": false,
+    "es6": true,
+    "enhance": true,
+    "postcss": true,
+    "minified": true,
+    "minifyWXML": true
+  },
+  "condition": {
+    "miniprogram": {
+      "list": [
+        {
+          "name": "地图页-默认总览",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile",
+          "scene": null
+        },
+        {
+          "name": "地图页-202路线",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile&targetRoomId=202-5&announce=summary,distance,direction,floorChange",
+          "scene": null
+        },
+        {
+          "name": "地图页-104路线",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile&targetRoomId=104-2F01&announce=summary,distance,direction,floorChange",
+          "scene": null
+        },
+        {
+          "name": "地图页-108路线",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile&targetRoomId=108-2F04&announce=summary,distance,direction,floorChange",
+          "scene": null
+        },
+        {
+          "name": "地图页-208路线",
+          "pathName": "pages/map/map",
+          "query": "source=miniprogram&ui=mobile&targetRoomId=208&announce=summary,distance,direction,floorChange",
+          "scene": null
+        }
+      ]
+    }
+  }
+}

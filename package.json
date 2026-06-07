@@ -1,0 +1,40 @@
+{
+  "name": "jingong-xiaozi",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview",
+    "tauri": "tauri",
+    "check:geometry": "node scripts/verify-geometry.mjs",
+    "check:model": "node scripts/verify-model-assets.mjs",
+    "check:alignment": "node scripts/verify-alignment.mjs",
+    "check:miniprogram": "node scripts/verify-miniprogram.mjs",
+    "check:miniprogram:release": "node scripts/verify-miniprogram.mjs --release",
+    "check:miniprogram:parity": "node scripts/verify-miniprogram.mjs --parity",
+    "build:miniprogram:vendor": "node scripts/build-miniprogram-three-vendor.mjs",
+    "sync:miniprogram:map": "node scripts/generate-miniprogram-map-data.mjs",
+    "qa:map-report": "node scripts/generate-map-qa-report.mjs",
+    "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-geometry.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs && node scripts/verify-alignment.mjs && node scripts/generate-map-qa-report.mjs",
+    "qa:mobile": "node scripts/qa-mobile-layout.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.11.0",
+    "lucide-react": "^0.468.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.184.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.11.2",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.184.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "three-platformize": "^1.133.3",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.1"
+  }
+}

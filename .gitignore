@@ -4,10 +4,17 @@ src-tauri/target/
 .DS_Store
 *.log
 env.txt
+.env
+.env.*
+*.keystore
+*.jks
+*.p12
+*.idsig
 .playwright-mcp/
 src-tauri/gen/android/app/build/
 src-tauri/gen/android/app/.cxx/
 src-tauri/gen/android/app/src/main/jniLibs/
+build/android-test/
 output/*.apk
 output/*.idsig
 build/android-release/
@@ -15,4 +22,9 @@ qa/android-screenshots/*.png
 qa/screenshots/*.png
 qa/alignment/*.json
 kiosk-*.png
+tmp/chrome*/
+tmp/miniprogram-*/
+closed-final-*.json
+space-fix-*.png
+docs/design-report.zip
 models/*.skb

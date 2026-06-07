@@ -12,8 +12,24 @@ const EXPLODE_HEIGHT = 1.18;
 const SLAB_THICKNESS = 0.045;
 const WALL_HEIGHT = 0.38;
 const OUTER_WALL_HEIGHT = 0.54;
-const ROUTE_LIFT = 0.18;
+const ROUTE_LIFT = 0.12;
 const RAISED_202_HEIGHT = 0.46;
+const SEMANTIC_RENDER_POLICY = {
+  roomSurfaceLift: SLAB_THICKNESS + 0.025,
+  serviceSurfaceLift: SLAB_THICKNESS + 0.018,
+  doorThresholdLift: 0.035,
+  wallOverviewScale: {
+    outer: 0.5,
+    inner: 0.36,
+    low: 0.28,
+  },
+  routeKeyPinLift: {
+    disc: 0.018,
+    ring: 0.045,
+    marker: 0.095,
+    label: 0.28,
+  },
+};
 const raised202Polygon = [
   [620, 88],
   [1058, 88],
@@ -900,15 +916,16 @@ function shouldDrawFloorShell(floor, layerMode) {
 }
 
 function shouldDrawWall(wall, layerMode) {
-  if (layerMode !== "allFloors" || wall.floor !== "2F") return true;
-  if (wall.kind === "outer") return false;
-  const room = wallRoomFor(wall);
-  return isPublicSecondFloorRoom(room) || isRaised202Room(room?.id);
+  return true;
 }
 
 function wallScaleFor(wall, layerMode, focused) {
   if (focused) return wall.kind === "outer" ? 0.72 : 0.56;
-  if (layerMode === "allFloors") return wall.kind === "outer" ? 0.32 : wall.kind === "low" ? 0.18 : 0.22;
+  if (layerMode === "allFloors") {
+    if (wall.kind === "outer") return SEMANTIC_RENDER_POLICY.wallOverviewScale.outer;
+    if (wall.kind === "low") return SEMANTIC_RENDER_POLICY.wallOverviewScale.low;
+    return SEMANTIC_RENDER_POLICY.wallOverviewScale.inner;
+  }
   if (layerMode === "exploded") return wall.kind === "outer" ? 0.7 : wall.kind === "low" ? 0.28 : 0.46;
   return 1;
 }
@@ -1975,7 +1992,15 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         color: onRoute ? 0x78ccff : space.kind === "corridor" ? 0x9ee4ff : spaceColor[space.kind] || spaceColor.room,
           opacity: space.kind === "corridor" ? 1 : focused ? 0.99 : 0.96,
       });
-      const mesh = extrudedPolygonMesh(space.polygon, space.floor, layerMode, space.kind === "corridor" ? 0.052 : 0.034, mat, SLAB_THICKNESS + 0.012, space.id);
+      const mesh = extrudedPolygonMesh(
+        space.polygon,
+        space.floor,
+        layerMode,
+        space.kind === "corridor" ? 0.052 : 0.034,
+        mat,
+        SEMANTIC_RENDER_POLICY.serviceSurfaceLift,
+        space.id,
+      );
       mesh.name = `semantic-space-${space.id}`;
       semanticRoot.add(mesh);
       if (space.kind === "corridor") {
@@ -2007,7 +2032,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
           color: state.route?.targetRoomId === room.id ? 0x0b6cff : state.route?.startRoomId === room.id ? 0x19a15f : onRoute ? 0xdbeafe : roomColor[room.area] || roomColor.other,
           opacity: state.route?.targetRoomId === room.id || state.route?.startRoomId === room.id ? 1 : onRoute ? 1 : room.area === "other" ? 0.98 : 1,
         }),
-        SLAB_THICKNESS + 0.018,
+        SEMANTIC_RENDER_POLICY.roomSurfaceLift,
         room.id,
       );
       mesh.name = `semantic-room-${room.id}`;
@@ -2074,10 +2099,11 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     });
     mapData.doors.forEach((door) => {
       if (!visibleForLayer(door.floor, layerMode, { point: door.point, semanticId: door.connects?.[0] || door.nodeId })) return;
-      const from = mapPointToModel(door.from, door.floor, { layerMode, lift: SLAB_THICKNESS + 0.13, semanticId: door.connects?.[0] || door.nodeId });
-      const to = mapPointToModel(door.to, door.floor, { layerMode, lift: SLAB_THICKNESS + 0.13, semanticId: door.connects?.[0] || door.nodeId });
+      const doorLift = SLAB_THICKNESS + SEMANTIC_RENDER_POLICY.doorThresholdLift + (isRaised202Point(door.point, door.floor) ? RAISED_202_HEIGHT : 0);
+      const from = mapPointToModel(door.from, door.floor, { layerMode, lift: doorLift, semanticId: door.connects?.[0] || door.nodeId });
+      const to = mapPointToModel(door.to, door.floor, { layerMode, lift: doorLift, semanticId: door.connects?.[0] || door.nodeId });
       const active = routeNodeIds.has(door.nodeId);
-      const doorMesh = tubeBetween(from, to, active ? 0.04 : 0.027, material({ color: active ? 0x0b6cff : door.source === "inferred" ? 0xffc85a : 0xffffff, emissive: active ? 0x073c9b : 0x9ecfff, emissiveIntensity: active ? 0.28 : 0.16 }));
+      const doorMesh = tubeBetween(from, to, active ? 0.04 : door.source === "inferred" ? 0.018 : 0.022, material({ color: active ? 0x0b6cff : door.source === "inferred" ? 0xffc85a : 0xffffff, emissive: active ? 0x073c9b : 0x9ecfff, emissiveIntensity: active ? 0.28 : 0.16 }));
       doorMesh.name = `door-${door.nodeId}`;
       semanticRoot.add(doorMesh);
       if (activeLegNodeIds.has(door.nodeId)) {
@@ -2086,7 +2112,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
           text: "门",
           variant: "door",
           priority: 116,
-          position: mapPointToModel(door.point, door.floor, { layerMode, lift: 0.34, semanticId: door.connects?.[0] || door.nodeId }),
+          position: mapPointToModel(door.point, door.floor, { layerMode, lift: doorLift + 0.16, semanticId: door.connects?.[0] || door.nodeId }),
         });
       }
     });
@@ -2180,10 +2206,10 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const base = routePointToVector(point, state.layerMode);
       routeRoot.add(makeDisc(base.clone(), first ? 0.3 : last ? 0.32 : 0.28, new THREE.MeshBasicMaterial({ color: first ? 0xc8f7df : last ? 0xffd5df : 0xdbeafe, transparent: true, opacity: first || last ? 0.74 : 0.52 })));
       routeRoot.add(makeBeaconRing(base.clone(), first ? 0.36 : last ? 0.42 : 0.34, color, first || last ? 0.74 : 0.62));
-      routeRoot.add(makeBeaconRing(base.clone().add(new THREE.Vector3(0, 0.04, 0)), first ? 0.5 : last ? 0.56 : 0.46, color, first || last ? 0.28 : 0.22));
+      routeRoot.add(makeBeaconRing(base.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.ring, 0)), first ? 0.5 : last ? 0.56 : 0.46, color, first || last ? 0.28 : 0.22));
       const markerGeometry = last ? new THREE.ConeGeometry(0.18, 0.46, 32) : first ? new THREE.CylinderGeometry(0.095, 0.095, 0.28, 28) : new THREE.SphereGeometry(0.12, 24, 14);
       const marker = new THREE.Mesh(markerGeometry, material({ color, emissive: color, emissiveIntensity: first || last ? 0.42 : 0.28, roughness: 0.34 }));
-      marker.position.copy(base.add(new THREE.Vector3(0, first ? 0.19 : last ? 0.16 : 0.12 + arrayIndex * 0.002, 0)));
+      marker.position.copy(base.add(new THREE.Vector3(0, first ? 0.13 : last ? 0.105 : SEMANTIC_RENDER_POLICY.routeKeyPinLift.marker + arrayIndex * 0.002, 0)));
       routeRoot.add(marker);
       const nextText = currentLeg?.checkpointKind === "destination"
         ? "到达终点"
@@ -2213,7 +2239,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         priority: first || last ? 118 : next ? 120 : 116,
         start: first,
         target: last,
-        position: marker.position.clone().add(new THREE.Vector3(first ? -0.16 : 0.16, 0.24, last ? -0.08 : 0.08)),
+        position: marker.position.clone().add(new THREE.Vector3(first ? -0.16 : 0.16, SEMANTIC_RENDER_POLICY.routeKeyPinLift.label, last ? -0.08 : 0.08)),
       });
     });
     scene.add(routeRoot);

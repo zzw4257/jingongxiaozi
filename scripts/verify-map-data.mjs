@@ -1,4 +1,5 @@
 import { createServer } from "vite";
+import fs from "node:fs";
 
 const distance = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -34,6 +35,19 @@ const server = await createServer({
 });
 
 try {
+  const mapRenderer = fs.readFileSync(new URL("../src/features/map3d/Map3DApp.tsx", import.meta.url), "utf8");
+  for (const token of ["SEMANTIC_RENDER_POLICY", "minimumPassiveRoomOpacity", "doorThresholdLift", "routeKeyPinLift"]) {
+    if (!mapRenderer.includes(token)) {
+      throw new Error(`Map renderer must keep centralized semantic render policy token: ${token}`);
+    }
+  }
+  if (mapRenderer.includes("building.add(pointMarker(center")) {
+    throw new Error("Ordinary door points must not be product-visible; only active checkpoint doors may render markers.");
+  }
+  if (/wall\.kind\s*===\s*[\"']outer[\"']\)\s*return\s*false/.test(mapRenderer)) {
+    throw new Error("Second-floor outer walls must not be hidden in all-floors view.");
+  }
+
   const { jingongMapData } = await server.ssrLoadModule("/src/features/map/data/mapData.ts");
   const roomIds = jingongMapData.rooms.map((room) => room.id);
   const duplicates = roomIds.filter((id, index) => roomIds.indexOf(id) !== index);

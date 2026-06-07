@@ -164,7 +164,7 @@ export const modelAlignment = {
     target: [-0.02, 0.7, 0.16] as ModelPoint,
     fov: 34,
   },
-  routeLift: 0.18,
-  hotspotLift: 0.12,
+  routeLift: 0.12,
+  hotspotLift: 0.055,
   semanticAnchors2F,
 };

@@ -19,98 +19,82 @@ module.exports = {
       "outline": [
         [
           70,
-          535
-        ],
-        [
-          160,
-          535
-        ],
-        [
-          160,
-          405
-        ],
-        [
-          235,
-          405
-        ],
-        [
-          235,
-          210
-        ],
-        [
-          455,
-          210
-        ],
-        [
-          455,
-          300
-        ],
-        [
-          610,
-          300
-        ],
-        [
-          610,
-          250
-        ],
-        [
-          690,
-          250
-        ],
-        [
-          690,
-          190
-        ],
-        [
-          1090,
-          190
-        ],
-        [
-          1090,
-          315
-        ],
-        [
-          1135,
-          315
-        ],
-        [
-          1135,
-          450
-        ],
-        [
-          1035,
-          450
-        ],
-        [
-          1035,
-          585
-        ],
-        [
-          960,
-          585
-        ],
-        [
-          960,
-          690
-        ],
-        [
-          650,
-          690
-        ],
-        [
-          650,
-          615
-        ],
-        [
-          350,
-          615
-        ],
-        [
-          350,
           690
         ],
         [
           70,
+          405
+        ],
+        [
+          160,
+          405
+        ],
+        [
+          160,
+          340
+        ],
+        [
+          235,
+          340
+        ],
+        [
+          235,
+          210
+        ],
+        [
+          455,
+          210
+        ],
+        [
+          455,
+          300
+        ],
+        [
+          690,
+          300
+        ],
+        [
+          690,
+          190
+        ],
+        [
+          1090,
+          190
+        ],
+        [
+          1090,
+          315
+        ],
+        [
+          1135,
+          315
+        ],
+        [
+          1135,
+          450
+        ],
+        [
+          1115,
+          450
+        ],
+        [
+          1115,
+          585
+        ],
+        [
+          1010,
+          585
+        ],
+        [
+          1010,
+          615
+        ],
+        [
+          960,
+          615
+        ],
+        [
+          960,
           690
         ]
       ],
@@ -218,82 +202,70 @@ module.exports = {
       "outline": [
         [
           90,
-          70
-        ],
-        [
-          230,
-          70
-        ],
-        [
-          230,
-          15
-        ],
-        [
-          470,
-          15
-        ],
-        [
-          470,
-          120
-        ],
-        [
-          635,
-          120
-        ],
-        [
-          635,
-          95
-        ],
-        [
-          930,
-          95
-        ],
-        [
-          930,
-          160
-        ],
-        [
-          1180,
-          160
-        ],
-        [
-          1180,
-          280
-        ],
-        [
-          1050,
-          280
-        ],
-        [
-          1050,
-          245
-        ],
-        [
-          920,
-          245
-        ],
-        [
-          920,
-          345
-        ],
-        [
-          520,
-          345
-        ],
-        [
-          520,
-          705
-        ],
-        [
-          235,
-          705
-        ],
-        [
-          235,
           625
         ],
         [
           90,
+          70
+        ],
+        [
+          230,
+          70
+        ],
+        [
+          230,
+          15
+        ],
+        [
+          930,
+          15
+        ],
+        [
+          930,
+          88
+        ],
+        [
+          1058,
+          88
+        ],
+        [
+          1058,
+          150
+        ],
+        [
+          930,
+          160
+        ],
+        [
+          1180,
+          160
+        ],
+        [
+          1180,
+          280
+        ],
+        [
+          1058,
+          280
+        ],
+        [
+          1058,
+          350
+        ],
+        [
+          520,
+          350
+        ],
+        [
+          520,
+          705
+        ],
+        [
+          235,
+          705
+        ],
+        [
+          235,
           625
         ]
       ],
@@ -2125,11 +2097,11 @@ module.exports = {
           205
         ],
         [
-          1050,
+          970,
           205
         ],
         [
-          1050,
+          970,
           255
         ],
         [
@@ -2138,11 +2110,11 @@ module.exports = {
         ]
       ],
       "center": [
-        985,
+        945,
         230
       ],
       "labelPoint": [
-        985,
+        945,
         230
       ],
       "doorNodeId": "door-201",
@@ -4334,11 +4306,11 @@ module.exports = {
           205
         ],
         [
-          1050,
+          970,
           205
         ],
         [
-          1050,
+          970,
           255
         ],
         [
@@ -4347,7 +4319,7 @@ module.exports = {
         ]
       ],
       "center": [
-        985,
+        945,
         230
       ],
       "navigable": true,
@@ -4725,6 +4697,254 @@ module.exports = {
       "navigable": false,
       "description": "二层东侧卫生间/服务空间占位，后续用 CAD/SKP 校准。",
       "labelPriority": 18
+    },
+    {
+      "id": "support-108-2F-west",
+      "label": "108/208 二层承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          90,
+          70
+        ],
+        [
+          635,
+          70
+        ],
+        [
+          635,
+          345
+        ],
+        [
+          90,
+          345
+        ]
+      ],
+      "center": [
+        362.5,
+        207.5
+      ],
+      "navigable": false,
+      "description": "108 独立二层、208/209 区域下方的楼板承托实体；用于避免二层显示成空框架。",
+      "labelPriority": 18
+    },
+    {
+      "id": "support-c2-main",
+      "label": "公共二层过道承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          500,
+          190
+        ],
+        [
+          620,
+          190
+        ],
+        [
+          620,
+          272
+        ],
+        [
+          500,
+          272
+        ]
+      ],
+      "center": [
+        560,
+        231
+      ],
+      "navigable": false,
+      "description": "公共楼梯上口与二层主走廊下方的承托实体。",
+      "labelPriority": 18
+    },
+    {
+      "id": "support-106-2F",
+      "label": "106 二层承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          760,
+          15
+        ],
+        [
+          930,
+          15
+        ],
+        [
+          930,
+          95
+        ],
+        [
+          760,
+          95
+        ]
+      ],
+      "center": [
+        845,
+        55
+      ],
+      "navigable": false,
+      "description": "106 独立二层平台下方承托实体。",
+      "labelPriority": 16
+    },
+    {
+      "id": "support-104-2F",
+      "label": "104 二层承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          1050,
+          160
+        ],
+        [
+          1180,
+          160
+        ],
+        [
+          1180,
+          280
+        ],
+        [
+          1050,
+          280
+        ]
+      ],
+      "center": [
+        1115,
+        220
+      ],
+      "navigable": false,
+      "description": "104 独立二层平台下方承托实体。",
+      "labelPriority": 16
+    },
+    {
+      "id": "support-202-east-service",
+      "label": "二层东侧服务承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          920,
+          205
+        ],
+        [
+          1050,
+          205
+        ],
+        [
+          1050,
+          280
+        ],
+        [
+          920,
+          280
+        ]
+      ],
+      "center": [
+        985,
+        242.5
+      ],
+      "navigable": false,
+      "description": "201、卫生间和东侧服务空间下方承托实体。",
+      "labelPriority": 14
+    },
+    {
+      "id": "support-202-east-connector",
+      "label": "二层东侧过道承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          920,
+          160
+        ],
+        [
+          1050,
+          160
+        ],
+        [
+          1050,
+          245
+        ],
+        [
+          920,
+          245
+        ]
+      ],
+      "center": [
+        985,
+        202.5
+      ],
+      "navigable": false,
+      "description": "202 东侧连接过道的楼板承托实体。",
+      "labelPriority": 14
+    },
+    {
+      "id": "support-office-2f",
+      "label": "办公区二层承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          235,
+          625
+        ],
+        [
+          520,
+          625
+        ],
+        [
+          520,
+          705
+        ],
+        [
+          235,
+          705
+        ]
+      ],
+      "center": [
+        377.5,
+        665
+      ],
+      "navigable": false,
+      "description": "204-210 办公区下方楼板承托实体。",
+      "labelPriority": 14
+    },
+    {
+      "id": "support-202-lower",
+      "label": "202 二层半下方承托",
+      "floor": "2F",
+      "kind": "support",
+      "polygon": [
+        [
+          620,
+          88
+        ],
+        [
+          1058,
+          88
+        ],
+        [
+          1058,
+          350
+        ],
+        [
+          620,
+          350
+        ]
+      ],
+      "center": [
+        839,
+        219
+      ],
+      "navigable": false,
+      "description": "202 二层半平台投影下方仍为实体楼板和承托空间。",
+      "labelPriority": 26
     }
   ],
   "doors": [
@@ -4846,16 +5066,16 @@ module.exports = {
       "id": "door-shape-108-1F03",
       "floor": "1F",
       "from": [
-        455,
-        314
+        429,
+        340
       ],
       "to": [
         455,
         340
       ],
       "point": [
-        455,
-        327
+        442,
+        340
       ],
       "source": "inferred",
       "nodeId": "door-108-1F03",
@@ -4903,16 +5123,16 @@ module.exports = {
       "id": "door-shape-108-1F01",
       "floor": "1F",
       "from": [
-        455,
-        569
+        429,
+        595
       ],
       "to": [
         455,
         595
       ],
       "point": [
-        455,
-        582
+        442,
+        595
       ],
       "source": "inferred",
       "nodeId": "door-108-1F01",
@@ -5189,15 +5409,15 @@ module.exports = {
       "floor": "1F",
       "from": [
         780,
-        606.5
+        561.5
       ],
       "to": [
         780,
-        623.5
+        578.5
       ],
       "point": [
         780,
-        615
+        570
       ],
       "source": "inferred",
       "nodeId": "door-ibe",
@@ -5607,15 +5827,15 @@ module.exports = {
       "floor": "2F",
       "from": [
         290,
-        655.65
+        625
       ],
       "to": [
         290,
-        674.35
+        643.7
       ],
       "point": [
         290,
-        665
+        634.35
       ],
       "source": "inferred",
       "nodeId": "door-204",
@@ -5626,15 +5846,15 @@ module.exports = {
       "floor": "2F",
       "from": [
         345,
-        655.65
+        625
       ],
       "to": [
         345,
-        674.35
+        643.7
       ],
       "point": [
         345,
-        665
+        634.35
       ],
       "source": "inferred",
       "nodeId": "door-205",
@@ -5644,16 +5864,16 @@ module.exports = {
       "id": "door-shape-206",
       "floor": "2F",
       "from": [
-        400,
-        655.65
+        370.65,
+        625
       ],
       "to": [
-        400,
-        674.35
+        389.35,
+        625
       ],
       "point": [
-        400,
-        665
+        380,
+        625
       ],
       "source": "inferred",
       "nodeId": "door-206",
@@ -5664,15 +5884,15 @@ module.exports = {
       "floor": "2F",
       "from": [
         400,
-        655.65
+        625
       ],
       "to": [
         400,
-        674.35
+        643.7
       ],
       "point": [
         400,
-        665
+        634.35
       ],
       "source": "inferred",
       "nodeId": "door-207",
@@ -5683,15 +5903,15 @@ module.exports = {
       "floor": "2F",
       "from": [
         455,
-        653.95
+        625
       ],
       "to": [
         455,
-        676.05
+        647.0999999999999
       ],
       "point": [
         455,
-        665
+        636.05
       ],
       "source": "inferred",
       "nodeId": "door-210",
@@ -5927,11 +6147,11 @@ module.exports = {
       "floor": "1F",
       "from": [
         70,
-        535
+        690
       ],
       "to": [
-        160,
-        535
+        70,
+        405
       ],
       "kind": "outer"
     },
@@ -5939,8 +6159,8 @@ module.exports = {
       "id": "outer-1f-1",
       "floor": "1F",
       "from": [
-        160,
-        535
+        70,
+        405
       ],
       "to": [
         160,
@@ -5956,8 +6176,8 @@ module.exports = {
         405
       ],
       "to": [
-        235,
-        405
+        160,
+        340
       ],
       "kind": "outer"
     },
@@ -5965,12 +6185,12 @@ module.exports = {
       "id": "outer-1f-3",
       "floor": "1F",
       "from": [
-        235,
-        405
+        160,
+        340
       ],
       "to": [
         235,
-        210
+        340
       ],
       "kind": "outer"
     },
@@ -5979,10 +6199,10 @@ module.exports = {
       "floor": "1F",
       "from": [
         235,
-        210
+        340
       ],
       "to": [
-        455,
+        235,
         210
       ],
       "kind": "outer"
@@ -5991,6 +6211,19 @@ module.exports = {
       "id": "outer-1f-5",
       "floor": "1F",
       "from": [
+        235,
+        210
+      ],
+      "to": [
+        455,
+        210
+      ],
+      "kind": "outer"
+    },
+    {
+      "id": "outer-1f-6",
+      "floor": "1F",
+      "from": [
         455,
         210
       ],
@@ -6001,28 +6234,15 @@ module.exports = {
       "kind": "outer"
     },
     {
-      "id": "outer-1f-6",
+      "id": "outer-1f-7",
       "floor": "1F",
       "from": [
         455,
         300
       ],
       "to": [
-        610,
+        690,
         300
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-1f-7",
-      "floor": "1F",
-      "from": [
-        610,
-        300
-      ],
-      "to": [
-        610,
-        250
       ],
       "kind": "outer"
     },
@@ -6030,12 +6250,12 @@ module.exports = {
       "id": "outer-1f-8",
       "floor": "1F",
       "from": [
-        610,
-        250
+        690,
+        300
       ],
       "to": [
         690,
-        250
+        190
       ],
       "kind": "outer"
     },
@@ -6044,10 +6264,10 @@ module.exports = {
       "floor": "1F",
       "from": [
         690,
-        250
+        190
       ],
       "to": [
-        690,
+        1090,
         190
       ],
       "kind": "outer"
@@ -6056,12 +6276,12 @@ module.exports = {
       "id": "outer-1f-10",
       "floor": "1F",
       "from": [
-        690,
+        1090,
         190
       ],
       "to": [
         1090,
-        190
+        315
       ],
       "kind": "outer"
     },
@@ -6070,10 +6290,10 @@ module.exports = {
       "floor": "1F",
       "from": [
         1090,
-        190
+        315
       ],
       "to": [
-        1090,
+        1135,
         315
       ],
       "kind": "outer"
@@ -6082,12 +6302,12 @@ module.exports = {
       "id": "outer-1f-12",
       "floor": "1F",
       "from": [
-        1090,
+        1135,
         315
       ],
       "to": [
         1135,
-        315
+        450
       ],
       "kind": "outer"
     },
@@ -6096,10 +6316,10 @@ module.exports = {
       "floor": "1F",
       "from": [
         1135,
-        315
+        450
       ],
       "to": [
-        1135,
+        1115,
         450
       ],
       "kind": "outer"
@@ -6108,12 +6328,12 @@ module.exports = {
       "id": "outer-1f-14",
       "floor": "1F",
       "from": [
-        1135,
+        1115,
         450
       ],
       "to": [
-        1035,
-        450
+        1115,
+        585
       ],
       "kind": "outer"
     },
@@ -6121,11 +6341,11 @@ module.exports = {
       "id": "outer-1f-15",
       "floor": "1F",
       "from": [
-        1035,
-        450
+        1115,
+        585
       ],
       "to": [
-        1035,
+        1010,
         585
       ],
       "kind": "outer"
@@ -6134,12 +6354,12 @@ module.exports = {
       "id": "outer-1f-16",
       "floor": "1F",
       "from": [
-        1035,
+        1010,
         585
       ],
       "to": [
-        960,
-        585
+        1010,
+        615
       ],
       "kind": "outer"
     },
@@ -6147,12 +6367,12 @@ module.exports = {
       "id": "outer-1f-17",
       "floor": "1F",
       "from": [
-        960,
-        585
+        1010,
+        615
       ],
       "to": [
         960,
-        690
+        615
       ],
       "kind": "outer"
     },
@@ -6161,10 +6381,10 @@ module.exports = {
       "floor": "1F",
       "from": [
         960,
-        690
+        615
       ],
       "to": [
-        650,
+        960,
         690
       ],
       "kind": "outer"
@@ -6173,69 +6393,30 @@ module.exports = {
       "id": "outer-1f-19",
       "floor": "1F",
       "from": [
-        650,
-        690
-      ],
-      "to": [
-        650,
-        615
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-1f-20",
-      "floor": "1F",
-      "from": [
-        650,
-        615
-      ],
-      "to": [
-        350,
-        615
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-1f-21",
-      "floor": "1F",
-      "from": [
-        350,
-        615
-      ],
-      "to": [
-        350,
-        690
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-1f-22",
-      "floor": "1F",
-      "from": [
-        350,
+        960,
         690
       ],
       "to": [
         70,
         690
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-1f-23",
-      "floor": "1F",
-      "from": [
-        70,
-        690
-      ],
-      "to": [
-        70,
-        535
       ],
       "kind": "outer"
     },
     {
       "id": "outer-2f-0",
+      "floor": "2F",
+      "from": [
+        90,
+        625
+      ],
+      "to": [
+        90,
+        70
+      ],
+      "kind": "outer"
+    },
+    {
+      "id": "outer-2f-1",
       "floor": "2F",
       "from": [
         90,
@@ -6248,7 +6429,7 @@ module.exports = {
       "kind": "outer"
     },
     {
-      "id": "outer-2f-1",
+      "id": "outer-2f-2",
       "floor": "2F",
       "from": [
         230,
@@ -6261,28 +6442,15 @@ module.exports = {
       "kind": "outer"
     },
     {
-      "id": "outer-2f-2",
+      "id": "outer-2f-3",
       "floor": "2F",
       "from": [
         230,
         15
       ],
       "to": [
-        470,
+        930,
         15
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-2f-3",
-      "floor": "2F",
-      "from": [
-        470,
-        15
-      ],
-      "to": [
-        470,
-        120
       ],
       "kind": "outer"
     },
@@ -6290,12 +6458,12 @@ module.exports = {
       "id": "outer-2f-4",
       "floor": "2F",
       "from": [
-        470,
-        120
+        930,
+        15
       ],
       "to": [
-        635,
-        120
+        930,
+        88
       ],
       "kind": "outer"
     },
@@ -6303,12 +6471,12 @@ module.exports = {
       "id": "outer-2f-5",
       "floor": "2F",
       "from": [
-        635,
-        120
+        930,
+        88
       ],
       "to": [
-        635,
-        95
+        1058,
+        88
       ],
       "kind": "outer"
     },
@@ -6316,12 +6484,12 @@ module.exports = {
       "id": "outer-2f-6",
       "floor": "2F",
       "from": [
-        635,
-        95
+        1058,
+        88
       ],
       "to": [
-        930,
-        95
+        1058,
+        150
       ],
       "kind": "outer"
     },
@@ -6329,8 +6497,8 @@ module.exports = {
       "id": "outer-2f-7",
       "floor": "2F",
       "from": [
-        930,
-        95
+        1058,
+        150
       ],
       "to": [
         930,
@@ -6372,7 +6540,7 @@ module.exports = {
         280
       ],
       "to": [
-        1050,
+        1058,
         280
       ],
       "kind": "outer"
@@ -6381,12 +6549,12 @@ module.exports = {
       "id": "outer-2f-11",
       "floor": "2F",
       "from": [
-        1050,
+        1058,
         280
       ],
       "to": [
-        1050,
-        245
+        1058,
+        350
       ],
       "kind": "outer"
     },
@@ -6394,12 +6562,12 @@ module.exports = {
       "id": "outer-2f-12",
       "floor": "2F",
       "from": [
-        1050,
-        245
+        1058,
+        350
       ],
       "to": [
-        920,
-        245
+        520,
+        350
       ],
       "kind": "outer"
     },
@@ -6407,12 +6575,12 @@ module.exports = {
       "id": "outer-2f-13",
       "floor": "2F",
       "from": [
-        920,
-        245
+        520,
+        350
       ],
       "to": [
-        920,
-        345
+        520,
+        705
       ],
       "kind": "outer"
     },
@@ -6420,12 +6588,12 @@ module.exports = {
       "id": "outer-2f-14",
       "floor": "2F",
       "from": [
-        920,
-        345
+        520,
+        705
       ],
       "to": [
-        520,
-        345
+        235,
+        705
       ],
       "kind": "outer"
     },
@@ -6433,12 +6601,12 @@ module.exports = {
       "id": "outer-2f-15",
       "floor": "2F",
       "from": [
-        520,
-        345
+        235,
+        705
       ],
       "to": [
-        520,
-        705
+        235,
+        625
       ],
       "kind": "outer"
     },
@@ -6446,51 +6614,12 @@ module.exports = {
       "id": "outer-2f-16",
       "floor": "2F",
       "from": [
-        520,
-        705
-      ],
-      "to": [
-        235,
-        705
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-2f-17",
-      "floor": "2F",
-      "from": [
-        235,
-        705
-      ],
-      "to": [
-        235,
-        625
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-2f-18",
-      "floor": "2F",
-      "from": [
         235,
         625
       ],
       "to": [
         90,
         625
-      ],
-      "kind": "outer"
-    },
-    {
-      "id": "outer-2f-19",
-      "floor": "2F",
-      "from": [
-        90,
-        625
-      ],
-      "to": [
-        90,
-        70
       ],
       "kind": "outer"
     },
@@ -8842,7 +8971,7 @@ module.exports = {
         205
       ],
       "to": [
-        1050,
+        970,
         205
       ],
       "kind": "inner"
@@ -8851,11 +8980,11 @@ module.exports = {
       "id": "wall-201-1",
       "floor": "2F",
       "from": [
-        1050,
+        970,
         205
       ],
       "to": [
-        1050,
+        970,
         255
       ],
       "kind": "inner"
@@ -8864,7 +8993,7 @@ module.exports = {
       "id": "wall-201-2",
       "floor": "2F",
       "from": [
-        1050,
+        970,
         255
       ],
       "to": [
@@ -9796,7 +9925,7 @@ module.exports = {
       "id": "c1-108",
       "floor": "1F",
       "point": [
-        470,
+        445,
         595
       ],
       "kind": "corridor",
@@ -9837,7 +9966,7 @@ module.exports = {
       "floor": "1F",
       "point": [
         835,
-        615
+        570
       ],
       "kind": "corridor",
       "label": "101 门外走廊"
@@ -9917,7 +10046,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         160,
-        235
+        285
       ],
       "kind": "corridor",
       "label": "二层西侧走廊转折点"
@@ -9927,7 +10056,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         380,
-        665
+        610
       ],
       "kind": "corridor",
       "label": "二层办公走廊"
@@ -10036,8 +10165,8 @@ module.exports = {
       "id": "door-108-1F03",
       "floor": "1F",
       "point": [
-        455,
-        327
+        442,
+        340
       ],
       "kind": "door",
       "label": "木工"
@@ -10066,8 +10195,8 @@ module.exports = {
       "id": "door-108-1F01",
       "floor": "1F",
       "point": [
-        455,
-        582
+        442,
+        595
       ],
       "kind": "door",
       "label": "综合实践区"
@@ -10217,7 +10346,7 @@ module.exports = {
       "floor": "1F",
       "point": [
         780,
-        615
+        570
       ],
       "kind": "door",
       "label": "IBE 服务中心"
@@ -10437,7 +10566,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         290,
-        665
+        634.35
       ],
       "kind": "door",
       "label": "办公室"
@@ -10447,7 +10576,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         345,
-        665
+        634.35
       ],
       "kind": "door",
       "label": "办公室"
@@ -10456,8 +10585,8 @@ module.exports = {
       "id": "door-206",
       "floor": "2F",
       "point": [
-        400,
-        665
+        380,
+        625
       ],
       "kind": "door",
       "label": "办公室"
@@ -10467,7 +10596,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         400,
-        665
+        634.35
       ],
       "kind": "door",
       "label": "办公室"
@@ -10477,7 +10606,7 @@ module.exports = {
       "floor": "2F",
       "point": [
         455,
-        665
+        636.05
       ],
       "kind": "door",
       "label": "会议室"
@@ -10956,7 +11085,7 @@ module.exports = {
       "id": "center-201",
       "floor": "2F",
       "point": [
-        985,
+        945,
         230
       ],
       "kind": "room-center",

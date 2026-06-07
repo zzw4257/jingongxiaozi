@@ -217,19 +217,19 @@ const SEMANTIC_RENDER_POLICY = {
   serviceSurfaceLift: modelAlignment.slabThickness + 0.018,
   corridorSurfaceLift: modelAlignment.slabThickness + 0.01,
   wallOverviewScale: {
-    outer: 0.3,
-    inner: 0.22,
-    low: 0.18,
+    outer: 0.24,
+    inner: 0.12,
+    low: 0.1,
   },
-  doorThresholdLift: 0.035,
+  doorThresholdLift: 0.014,
   doorFrameHeight: {
-    passive: 0.14,
-    active: 0.22,
+    passive: 0.1,
+    active: 0.16,
   },
   routeKeyPinLift: {
     disc: 0.018,
     ring: 0.045,
-    marker: 0.095,
+    marker: 0.075,
     label: 0.28,
   },
   minimumPassiveRoomOpacity: 0.72,
@@ -337,8 +337,8 @@ function isSingleSecondFloor(session: Pick<MapSessionState, "activeFloor" | "lay
 
 function visibleSupportDecksForSession(session: MapSessionState) {
   if (!floorVisibility("2F", session)) return [];
-  if (session.layerMode === "raised202" || session.layerMode === "section") return [];
   if (session.layerMode === "allFloors") return [];
+  if (session.layerMode === "raised202" || session.layerMode === "section") return [];
   return secondFloorSupportDecks;
 }
 
@@ -471,6 +471,7 @@ function isModelAuthorityView(session: Pick<MapSessionState, "activeFloor" | "la
 
 function shouldDrawWholeFloorSlab(floor: FloorGeometry, session: Pick<MapSessionState, "activeFloor" | "layerMode">): boolean {
   if (floor.id === "1F") return true;
+  if (session.layerMode === "allFloors") return false;
   if (session.layerMode === "single" && session.activeFloor === "2F") return true;
   return session.layerMode === "raised202" || session.layerMode === "exploded" || session.layerMode === "section";
 }
@@ -484,6 +485,7 @@ function shouldDrawWall(
   wallRoom: MapRoom | undefined,
   session: MapSessionState,
 ): boolean {
+  if (session.layerMode === "allFloors") return false;
   return true;
 }
 
@@ -1168,6 +1170,7 @@ function raisedPlatformOutline(session: MapSessionState, material: THREE.Materia
 
 function raisedPlatformBoundaryWall(session: MapSessionState, material: THREE.Material) {
   const root = new THREE.Group();
+  if (session.layerMode === "allFloors") return root;
   const polygon = raised202Space.platformPolygon;
   const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
   const focus = session.layerMode === "raised202";
@@ -1207,11 +1210,11 @@ function raisedPlatformLowerContext(session: MapSessionState, material: THREE.Ma
   const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
   const detailedContext = session.layerMode === "raised202" || session.layerMode === "exploded";
   const supportMaterial = new THREE.MeshStandardMaterial({
-    color: detailedContext ? 0xd5c6ad : 0xc8b89f,
+    color: detailedContext ? 0xd5c6ad : 0x8fa2b1,
     roughness: 0.82,
     metalness: 0.01,
     transparent: !detailedContext,
-    opacity: detailedContext ? 1 : 0.88,
+    opacity: detailedContext ? 1 : 0.2,
   });
   const surface = extrudedPolygonMesh(
     polygon,
@@ -1219,11 +1222,11 @@ function raisedPlatformLowerContext(session: MapSessionState, material: THREE.Ma
     session,
     detailedContext ? 0.052 : 0.042,
     new THREE.MeshStandardMaterial({
-      color: detailedContext ? 0xe6dac4 : 0xdacdb8,
+      color: detailedContext ? 0xe6dac4 : 0xd9e4ec,
       roughness: 0.82,
       metalness: 0.01,
       transparent: !detailedContext,
-      opacity: detailedContext ? 1 : 0.88,
+      opacity: detailedContext ? 1 : 0.16,
     }),
     modelAlignment.slabThickness + 0.006,
     "202-lower-context",
@@ -1355,7 +1358,7 @@ function supportDeckGeometry(session: MapSessionState, deck: SupportDeck, materi
 }
 
 function routePointToVector(point: RouteResult["points"][number], session: MapSessionState) {
-  const routeLiftBoost = session.layerMode === "allFloors" ? 0.06 : session.layerMode === "raised202" ? 0.08 : 0;
+  const routeLiftBoost = session.layerMode === "allFloors" ? 0.018 : session.layerMode === "raised202" ? 0.035 : 0;
   const [x, y, z] = mapPointToModel(point.point, point.floor, {
     layerMode: session.layerMode,
     activeFloor: session.activeFloor,
@@ -2384,14 +2387,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       roughness: 0.86,
       metalness: 0.01,
       transparent: true,
-      opacity: session.layerMode === "allFloors" ? 0.72 : session.layerMode === "exploded" ? 0.62 : 0.94,
+      opacity: session.layerMode === "allFloors" ? 0.34 : session.layerMode === "exploded" ? 0.5 : 0.9,
     });
     const supportDeckEdgeMaterial = new THREE.MeshStandardMaterial({
       color: 0x60788d,
       roughness: 0.62,
       metalness: 0.02,
       transparent: true,
-      opacity: session.layerMode === "allFloors" ? 0.54 : 0.78,
+      opacity: session.layerMode === "allFloors" ? 0.36 : 0.72,
     });
     const raisedPlatformWallMaterial = new THREE.MeshStandardMaterial({
       color: session.layerMode === "raised202" ? 0x5f768a : 0x7c91a4,
@@ -2425,7 +2428,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               : isSingleSecondFloor(session) && floor.id === "2F"
                 ? 0.48
               : session.layerMode === "allFloors"
-                ? floor.id === "2F" ? 0.46 : SOLID_LAYER_OPACITY
+                ? floor.id === "2F" ? 0.28 : 0.92
                 : 1;
         const slab = extrudedPolygonMesh(
           shellOutline.length >= 3 ? shellOutline : floor.outline,
@@ -3036,14 +3039,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         ...mapPointToModel(fromNode.point, fromNode.floor, {
           ...modelOptions,
           semanticId: centerline.from,
-          lift: modelAlignment.slabThickness + 0.105 + raised202LiftForPoint(fromNode.point, fromNode.floor),
+          lift: modelAlignment.slabThickness + 0.062 + raised202LiftForPoint(fromNode.point, fromNode.floor),
         }),
       );
       const end = new THREE.Vector3(
         ...mapPointToModel(toNode.point, toNode.floor, {
           ...modelOptions,
           semanticId: centerline.to,
-          lift: modelAlignment.slabThickness + 0.105 + raised202LiftForPoint(toNode.point, toNode.floor),
+          lift: modelAlignment.slabThickness + 0.062 + raised202LiftForPoint(toNode.point, toNode.floor),
         }),
       );
       const material = withOpacity(centerlineMaterial.clone(), onRouteCenterline ? 0.96 : 0.22);
@@ -3082,7 +3085,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       threshold.name = `${door.id}-threshold`;
       building.add(threshold);
       const doorAxis = to.clone().sub(from);
-      const showDoorFrame = doorIsOnRoute || doorIsActiveCheckpoint || (singleFocus && !route);
+      const showDoorFrame = doorIsActiveCheckpoint || (singleFocus && !route);
       const frameHeight = doorIsOnRoute || doorIsActiveCheckpoint ? SEMANTIC_RENDER_POLICY.doorFrameHeight.active : SEMANTIC_RENDER_POLICY.doorFrameHeight.passive;
       if (showDoorFrame && doorAxis.lengthSq() > 0.00001) {
         const frameMaterial = material.clone();

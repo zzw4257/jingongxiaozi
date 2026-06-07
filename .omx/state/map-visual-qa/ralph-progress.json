@@ -1,0 +1,21 @@
+{
+  "scope": "map-visual-qa",
+  "updatedAt": "2026-06-07T19:45:00+08:00",
+  "score": 92,
+  "threshold": 90,
+  "verdict": "pass",
+  "screenshots": [
+    "qa/screenshots/zone-pass-v2-single-2f-844x390.png",
+    "qa/screenshots/zone-pass-v2-route-104-844x390.png",
+    "qa/screenshots/zone-pass-v2-route-108-844x390.png",
+    "qa/screenshots/zone-pass-v2-route-202-844x390.png",
+    "qa/screenshots/zone-pass-default-844x390.png",
+    "qa/screenshots/zone-pass-raised202-844x390.png"
+  ],
+  "reasoning": "2F single-floor view now labels independent second-floor islands, public second-floor corridor, and the 202 raised platform. Exploded route views keep stair portals paired without drawing fake cross-offset stair bodies, and non-route structure is visually subdued.",
+  "next_actions": [
+    "Keep second-floor zone labels when changing label collision rules.",
+    "Do not reintroduce stair bodies across exploded XZ offsets.",
+    "Sync the same semantic zone and route-subduing policy to the mini-program only after mobile acceptance."
+  ]
+}

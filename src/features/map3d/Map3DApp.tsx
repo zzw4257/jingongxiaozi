@@ -485,7 +485,7 @@ function shouldDrawWall(
   wallRoom: MapRoom | undefined,
   session: MapSessionState,
 ): boolean {
-  if (session.layerMode === "allFloors") return false;
+  if (session.layerMode === "allFloors") return Boolean(wallRoom);
   return true;
 }
 
@@ -1103,6 +1103,7 @@ function raisedPlatformRim(session: MapSessionState, material: THREE.Material) {
   const polygon = raised202Space.platformPolygon;
   const modelOptions = { layerMode: session.layerMode, activeFloor: session.activeFloor };
   const isFocus = session.layerMode === "raised202";
+  const isOverview = session.layerMode === "allFloors";
   for (let index = 0; index < polygon.length; index++) {
     const from = polygon[index];
     const to = polygon[(index + 1) % polygon.length];
@@ -1127,8 +1128,8 @@ function raisedPlatformRim(session: MapSessionState, material: THREE.Material) {
         lift: modelAlignment.slabThickness + raised202Space.height + 0.04,
       }),
     );
-    root.add(tubeBetween(upperStart, upperEnd, isFocus ? 0.018 : 0.012, material.clone()));
-    if (index % 2 === 0 || isFocus) {
+    root.add(tubeBetween(upperStart, upperEnd, isFocus ? 0.018 : isOverview ? 0.009 : 0.012, material.clone()));
+    if (!isOverview && (index % 2 === 0 || isFocus)) {
       const post = tubeBetween(lower, upperStart, isFocus ? 0.011 : 0.008, material.clone());
       post.name = `raised-202-support-${index}`;
       root.add(post);
@@ -2246,6 +2247,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const drawSemanticSurfaces = shouldDrawSemanticSurfaces(session);
     const drawFocusedFloorSurfaces = shouldDrawFocusedFloorSurfaces(session);
     const routeActiveRoomIds = new Set([route?.startRoomId, route?.targetRoomId].filter((item): item is string => Boolean(item)));
+    const isRouteOverview = session.layerMode === "allFloors" && Boolean(route);
 
     const corridorMaterial = new THREE.MeshStandardMaterial({
       color: focusedFloorMap ? 0xb7e8ff : session.layerMode === "exploded" ? 0xc9edf8 : 0xbfe7ff,
@@ -2901,16 +2903,17 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         return new THREE.Vector3(x, y, z);
       });
       const showRoomOutline =
-        (!modelFirstOverview && !modelAuthorityView) ||
+        (!isRouteOverview && !modelFirstOverview && !modelAuthorityView) ||
         emphasizedRoom ||
         roomIsRouteContext ||
-        (!route && session.layerMode === "allFloors" && overviewLabelRoomIds.has(room.id));
+        (session.layerMode === "allFloors" && overviewLabelRoomIds.has(room.id));
       if (showRoomOutline) {
         const outline = new THREE.Line(new THREE.BufferGeometry().setFromPoints(linePoints), floorEdgeMaterial.clone());
         outline.name = `room-${room.id}-outline`;
         building.add(outline);
       }
-      if (active || target || start || roomIsRouteContext || (!modelAuthorityView && raisedLift > 0 && !subduedSemanticFill)) {
+      const drawRaisedRoomEdge = !isRouteOverview && !modelAuthorityView && raisedLift > 0 && !subduedSemanticFill;
+      if (active || target || start || roomIsRouteContext || drawRaisedRoomEdge) {
         linePoints.slice(0, -1).forEach((point, index) => {
           const edgeTube = tubeBetween(point, linePoints[index + 1], active || target || start ? 0.015 : session.layerMode === "exploded" && room.floor === "2F" ? 0.012 : 0.01, (raisedLift > 0 ? raisedEdgeMaterial : corridorEdgeMaterial).clone());
           edgeTube.name = `room-${room.id}-edge-${index}`;
@@ -2966,6 +2969,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const roomWallMatch = wall.id.match(/^wall-(.+)-\d+$/);
       const wallRoom = roomWallMatch ? getRoomById(jingongMapData, roomWallMatch[1]) : undefined;
       if (!shouldDrawWall(wall, wallRoom, session)) continue;
+      if (isRouteOverview && wallRoom && !routeActiveRoomIds.has(wallRoom.id) && !overviewLabelRoomIds.has(wallRoom.id)) continue;
       if (!shouldDrawOuterShellWall(wall.id, session)) continue;
       if (session.layerMode === "raised202" && !wallRoom) continue;
       if (session.layerMode === "raised202" && wallRoom && !isRaised202Room(wallRoom)) continue;
@@ -3005,8 +3009,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
               ? wall.kind === "outer"
                 ? 0.045
                 : wall.kind === "low"
-                  ? 0.024
-                  : 0.019
+                  ? 0.018
+                  : 0.015
               : wall.kind === "outer"
                 ? 0.04
                 : wall.kind === "low"

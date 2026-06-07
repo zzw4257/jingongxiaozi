@@ -217,9 +217,9 @@ const SEMANTIC_RENDER_POLICY = {
   serviceSurfaceLift: modelAlignment.slabThickness + 0.018,
   corridorSurfaceLift: modelAlignment.slabThickness + 0.01,
   wallOverviewScale: {
-    outer: 0.5,
-    inner: 0.36,
-    low: 0.28,
+    outer: 0.3,
+    inner: 0.22,
+    low: 0.18,
   },
   doorThresholdLift: 0.035,
   doorFrameHeight: {
@@ -419,7 +419,7 @@ function shouldShowRoomLabel(room: MapRoom, session: MapSessionState, startRoomI
 
 function roomMinDensity(room: MapRoom, session: MapSessionState, startRoomId?: string, hasRoute = false): LabelDensity {
   if (room.id === session.selectedRoomId || room.id === session.targetRoomId || room.id === startRoomId) return "far";
-  if (hasRoute && !overviewLabelRoomIds.has(room.id)) return "near";
+  if (hasRoute && !overviewLabelRoomIds.has(room.id)) return "mid";
   if (overviewLabelRoomIds.has(room.id)) return "far";
   if (session.layerMode === "raised202") return "mid";
   if (session.layerMode === "single" || session.layerMode === "section") return "mid";
@@ -429,7 +429,7 @@ function roomMinDensity(room: MapRoom, session: MapSessionState, startRoomId?: s
 function shouldKeepRoomLabelDuringRoute(room: MapRoom, session: MapSessionState, route?: RouteResult, startRoomId?: string): boolean {
   if (!route) return true;
   if (room.id === session.selectedRoomId || room.id === session.targetRoomId || room.id === startRoomId) return true;
-  return false;
+  return true;
 }
 
 function cameraLabelDensity(camera: THREE.Camera, controls?: OrbitControls | null): LabelDensity {
@@ -596,9 +596,9 @@ function shouldDrawStairBody(session: MapSessionState, onRoute: boolean): boolea
 }
 
 function routeLabelNudge(roomId: string): { x: number; y: number } {
-  if (roomId === "route-current-location") return { x: -30, y: 34 };
-  if (roomId === "route-next-portal") return { x: 28, y: -34 };
-  if (roomId === "route-target-location") return { x: 22, y: -28 };
+  if (roomId === "route-current-location") return { x: 48, y: 46 };
+  if (roomId === "route-next-portal") return { x: 56, y: -62 };
+  if (roomId === "route-target-location") return { x: -92, y: -8 };
   return { x: 0, y: 0 };
 }
 
@@ -1355,7 +1355,7 @@ function supportDeckGeometry(session: MapSessionState, deck: SupportDeck, materi
 }
 
 function routePointToVector(point: RouteResult["points"][number], session: MapSessionState) {
-  const routeLiftBoost = session.layerMode === "allFloors" ? 0.18 : session.layerMode === "raised202" ? 0.12 : 0;
+  const routeLiftBoost = session.layerMode === "allFloors" ? 0.06 : session.layerMode === "raised202" ? 0.08 : 0;
   const [x, y, z] = mapPointToModel(point.point, point.floor, {
     layerMode: session.layerMode,
     activeFloor: session.activeFloor,
@@ -1753,11 +1753,18 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       return;
     }
     const midpoint = from.clone().lerp(to, 0.52);
-    midpoint.y += activeLeg.checkpointKind === "stair" ? 0.34 : 0.18;
-    const offset = activeLeg.checkpointKind === "stair" ? new THREE.Vector3(2.75, 2.85, 3.18) : new THREE.Vector3(2.25, 2.42, 2.68);
+    midpoint.y += activeLeg.checkpointKind === "stair" ? 0.24 : 0.12;
+    const compact = cameraViewportProfile(hostRef.current) === "compactLandscape";
+    const offset = activeLeg.checkpointKind === "stair"
+      ? compact
+        ? new THREE.Vector3(3.18, 4.45, 3.55)
+        : new THREE.Vector3(3.0, 4.1, 3.38)
+      : compact
+        ? new THREE.Vector3(2.86, 4.18, 3.18)
+        : new THREE.Vector3(2.62, 3.82, 2.95);
     if (camera instanceof THREE.PerspectiveCamera) {
       camera.position.copy(midpoint).add(offset);
-      camera.fov = cameraViewportProfile(hostRef.current) === "compactLandscape" ? 31 : 34;
+      camera.fov = compact ? 34 : 35;
       camera.up.set(0, 1, 0);
       camera.updateProjectionMatrix();
     } else if (camera instanceof THREE.OrthographicCamera) {
@@ -1907,7 +1914,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           box.y < item.y + item.height &&
           box.y + box.height > item.y,
       );
-      const allowPriorityOverride = label.priority >= 108 || (label.priority >= 90 && !label.roomId.startsWith("route-"));
+      const isRouteLabel = label.roomId.startsWith("route-");
+      const allowPriorityOverride = !isRouteLabel && (label.priority >= 108 || label.priority >= 90);
       const visible = label.visible && !outside && (!collides || allowPriorityOverride || relaxedNearRoom);
       if (visible && trackCollisions) occupied.push(box);
       return { ...label, visible };
@@ -2340,21 +2348,21 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       roughness: 0.78,
       metalness: 0.02,
       transparent: true,
-      opacity: singleFocus ? 1 : session.layerMode === "exploded" ? 0.58 : 0.92,
+      opacity: singleFocus ? 1 : session.layerMode === "allFloors" ? 0.72 : session.layerMode === "exploded" ? 0.58 : 0.92,
     });
     const innerWallMaterial = new THREE.MeshStandardMaterial({
       color: singleFocus ? 0x9fb1c1 : session.layerMode === "exploded" ? 0xb6c6d3 : 0x9dadbd,
       roughness: 0.88,
       metalness: 0,
       transparent: true,
-      opacity: singleFocus ? 1 : session.layerMode === "exploded" ? 0.46 : 0.84,
+      opacity: singleFocus ? 1 : session.layerMode === "allFloors" ? 0.58 : session.layerMode === "exploded" ? 0.46 : 0.84,
     });
     const lowWallMaterial = new THREE.MeshStandardMaterial({
       color: 0x9fb1c0,
       roughness: 0.8,
       metalness: 0.01,
       transparent: true,
-      opacity: session.layerMode === "exploded" ? 0.36 : 0.78,
+      opacity: session.layerMode === "allFloors" ? 0.48 : session.layerMode === "exploded" ? 0.36 : 0.78,
     });
     const serviceMaterials = Object.fromEntries(
       Object.entries(spaceColor).map(([kind, color]) => [
@@ -3295,25 +3303,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           if (isActiveSegment) addRouteStairGuide(root, point, nextPoint, stairRouteMaterial);
         }
       });
-      points.forEach((point, index) => {
-        if (index === 0 || index === points.length - 1) return;
-        if (!visibleRoutePoints[index]) return;
-        const isActiveNode = index === activeFromIndex || index === activeToIndex;
-        const pulse = new THREE.Mesh(
-          new THREE.SphereGeometry(isActiveNode ? 0.12 : route.points[index].kind.includes("stair") ? 0.095 : 0.055, 18, 12),
-          new THREE.MeshStandardMaterial({
-            color: isActiveNode ? 0x0b6cff : route.points[index].kind.includes("stair") ? 0xffa100 : 0xffffff,
-            emissive: isActiveNode ? 0x063a9f : route.points[index].kind.includes("stair") ? 0xd96a00 : 0x0b6cff,
-            emissiveIntensity: isActiveNode ? 0.48 : 0.18,
-            roughness: 0.38,
-            transparent: true,
-            opacity: isActiveNode ? 1 : 0.46,
-          }),
-        );
-        pulse.position.copy(point);
-        root.add(pulse);
-      });
-
         const target = getRoomById(jingongMapData, route.targetRoomId);
         const visibleRouteNodeToVector = (nodeId: string) => {
           const index = routePointIndex(nodeId, route);

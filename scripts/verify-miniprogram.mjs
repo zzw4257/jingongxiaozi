@@ -165,9 +165,9 @@ for (const token of ["native-cover-ui", "native-shell-ui", "map-rail native-hot-
     throw new Error(`map page must not render duplicate native shell UI; remove token: ${token}`);
   }
 }
-for (const token of ["mp-map-rail", "mp-map-north", "handleRailOverlayTap", "data-panel=\"route\"", "data-panel=\"layers\"", "data-panel=\"view\"", "data-view=\"reset\""]) {
-  if (!webMap.includes(token)) {
-    throw new Error(`map page must keep the mobile-aligned mini program host controls: ${token}`);
+for (const token of ["mp-map-rail", "mp-map-north", "mp-rail-button", "data-panel=\"route\"", "data-panel=\"layers\"", "data-panel=\"view\"", "data-view=\"reset\""]) {
+  if (webMap.includes(token)) {
+    throw new Error(`map page must not render duplicate WXML map controls; WebGL HUD owns token: ${token}`);
   }
 }
 for (const duplicatedLabel of [
@@ -209,12 +209,12 @@ for (const token of ["three-platformize-runtime", "WechatPlatform", "GLTFLoader"
     throw new Error(`mini program must use shared Three/GLB scene token: ${token}`);
   }
 }
-for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill"]) {
+for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill", "hudReservedBoxes", "boxesOverlap", "isCompactHud"]) {
   if (!miniThreeScene.includes(token)) {
     throw new Error(`mini program HUD must use bounded WebGL widgets, missing token: ${token}`);
   }
 }
-for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStack", "drawNorthIndicator", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {
+for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStackLocal", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {
   if (!miniThreeScene.includes(token)) {
     throw new Error(`Three HUD must own mobile map controls, missing token: ${token}`);
   }
@@ -477,12 +477,15 @@ function smokeLoadMapPage() {
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".mp-map-rail", ".mp-map-north", ".mp-rail-button", ".three-map-label-layer", ".three-map-label", ".label-route", ".label-stair", ".label-compact-room", ".map-canvas"]) {
+for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".three-map-label-layer", ".three-map-label", ".label-route", ".label-stair", ".label-compact-room", ".map-canvas"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen Three map styling: ${token}`);
   }
 }
 for (const token of [
+  ".mp-map-rail",
+  ".mp-map-north",
+  ".mp-rail-button",
   ".mini-map-rail",
   ".mini-rail-button",
   ".mini-map-compass",
@@ -515,7 +518,7 @@ for (const token of [".map-native-start-bar", ".native-start-button", ".native-s
   }
 }
 const canvasCssBlock = webMapWxss.match(/\.map-canvas\s*\{[^}]*\}/)?.[0] || "";
-const canvasOwnsRuntimeWidth = /width:\s*100%/.test(canvasCssBlock) || (/right:\s*72px/.test(canvasCssBlock) && /width:\s*auto/.test(canvasCssBlock));
+const canvasOwnsRuntimeWidth = /width:\s*100%/.test(canvasCssBlock) || (/right:\s*0/.test(canvasCssBlock) && /width:\s*auto/.test(canvasCssBlock));
 if (!/display:\s*block/.test(canvasCssBlock) || !canvasOwnsRuntimeWidth || !/height:\s*100%/.test(canvasCssBlock) || !/opacity:\s*1\b/.test(canvasCssBlock) || !/pointer-events:\s*auto/.test(canvasCssBlock)) {
   throw new Error("map WebGL canvas must be the visible primary runtime renderer, not a hidden compatibility node");
 }

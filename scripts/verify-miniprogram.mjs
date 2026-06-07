@@ -477,6 +477,15 @@ function smokeLoadMapPage() {
 smokeLoadMapPage();
 
 const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
+const threeMapScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/three-map-scene.js"), "utf8");
+for (const token of ["SEMANTIC_RENDER_POLICY", "doorThresholdLift", "routeKeyPinLift", "wallOverviewScale"]) {
+  if (!threeMapScene.includes(token)) {
+    throw new Error(`mini program Three scene must keep mobile semantic render policy token: ${token}`);
+  }
+}
+if (/wall\.kind\s*===\s*[\"']outer[\"']\)\s*return\s*false/.test(threeMapScene)) {
+  throw new Error("mini program must not hide second-floor outer walls in all-floors view.");
+}
 for (const token of ["position: fixed", ".native-map-page", ".map-backplate", ".map-stage", ".three-map-label-layer", ".three-map-label", ".label-route", ".label-stair", ".label-compact-room", ".map-canvas"]) {
   if (!webMapWxss.includes(token)) {
     throw new Error(`map.wxss must keep full-screen Three map styling: ${token}`);

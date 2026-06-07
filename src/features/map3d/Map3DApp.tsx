@@ -212,6 +212,29 @@ const SERVICE_SPACE_OPACITY: Record<keyof typeof spaceColor, number> = {
   void: 0.68,
   room: 0.88,
 };
+const SEMANTIC_RENDER_POLICY = {
+  roomSurfaceLift: modelAlignment.slabThickness + 0.025,
+  serviceSurfaceLift: modelAlignment.slabThickness + 0.018,
+  corridorSurfaceLift: modelAlignment.slabThickness + 0.01,
+  wallOverviewScale: {
+    outer: 0.5,
+    inner: 0.36,
+    low: 0.28,
+  },
+  doorThresholdLift: 0.035,
+  doorFrameHeight: {
+    passive: 0.14,
+    active: 0.22,
+  },
+  routeKeyPinLift: {
+    disc: 0.018,
+    ring: 0.045,
+    marker: 0.095,
+    label: 0.28,
+  },
+  minimumPassiveRoomOpacity: 0.72,
+  minimumServiceOpacity: 0.82,
+} as const;
 const roomCssClass: Record<AreaType, string> = {
   teaching: "teaching",
   processing: "processing",
@@ -453,8 +476,7 @@ function shouldDrawWholeFloorSlab(floor: FloorGeometry, session: Pick<MapSession
 }
 
 function shouldDrawOuterShellWall(wallId: string, session: Pick<MapSessionState, "activeFloor" | "layerMode">): boolean {
-  if (!wallId.startsWith("outer-2f")) return true;
-  return isSingleSecondFloor(session) || session.layerMode === "exploded" || session.layerMode === "section";
+  return true;
 }
 
 function shouldDrawWall(
@@ -462,10 +484,7 @@ function shouldDrawWall(
   wallRoom: MapRoom | undefined,
   session: MapSessionState,
 ): boolean {
-  if (session.layerMode !== "allFloors" || wall.floor !== "2F") return true;
-  if (wall.kind === "outer") return false;
-  if (!wallRoom) return false;
-  return isPublicSecondFloorRoom(wallRoom) || isRaised202Room(wallRoom);
+  return true;
 }
 
 function shouldShowFloorBadge(session: Pick<MapSessionState, "layerMode">): boolean {
@@ -1066,7 +1085,7 @@ function addStairPortalPairMarker(root: THREE.Group, a: THREE.Vector3, b: THREE.
   }
 }
 
-function doorSegmentToVector(door: DoorSegment, endpoint: "from" | "to", session: MapSessionState, lift = 0.12) {
+function doorSegmentToVector(door: DoorSegment, endpoint: "from" | "to", session: MapSessionState, lift = SEMANTIC_RENDER_POLICY.doorThresholdLift) {
   const point = endpoint === "from" ? door.from : door.to;
   const [x, y, z] = mapPointToModel(point, door.floor, {
     layerMode: session.layerMode,
@@ -2345,7 +2364,10 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           roughness: 0.76,
           metalness: 0.02,
           transparent: true,
-          opacity: modelAuthorityView ? 0.36 : SERVICE_SPACE_OPACITY[kind as keyof typeof spaceColor],
+          opacity: Math.max(
+            modelAuthorityView ? SEMANTIC_RENDER_POLICY.minimumServiceOpacity : SERVICE_SPACE_OPACITY[kind as keyof typeof spaceColor],
+            SEMANTIC_RENDER_POLICY.minimumServiceOpacity,
+          ),
         }),
       ]),
     ) as Record<keyof typeof spaceColor, THREE.MeshStandardMaterial>;
@@ -2601,9 +2623,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       if (modelFirstOverview && mapSpace.id !== session.selectedRoomId) continue;
       const raisedLift = raised202LiftForPoint(mapSpace.center, mapSpace.floor);
       const material = serviceMaterials[mapSpace.kind] ?? serviceMaterials.reserved;
-        if (modelAuthorityView && mapSpace.kind !== "restroom" && mapSpace.kind !== "service" && mapSpace.kind !== "storage") continue;
       const mesh = extrudedPolygonMesh(mapSpace.polygon, mapSpace.floor, session, 0.025, material.clone(), raisedLift, mapSpace.id);
-      mesh.position.y += modelAlignment.slabThickness + 0.018;
+      mesh.position.y += SEMANTIC_RENDER_POLICY.serviceSurfaceLift;
       mesh.name = `space-${mapSpace.id}`;
       building.add(mesh);
       const outline = [...mapSpace.polygon, mapSpace.polygon[0]].map((point) => {
@@ -2790,7 +2811,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         metalness: 0.02,
         transparent: true,
         opacity: !shouldFillRoomSurface
-          ? 0.018
+          ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
           : routeEndpointRoom
             ? active || target
               ? 0.86
@@ -2805,26 +2826,26 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
                 : 0.9
           : passiveFocusedRoom
               ? session.layerMode === "raised202"
-                ? 0.08
+                ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
                 : session.layerMode === "exploded"
                   ? 0.22
-                  : 0.1
+                  : SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
           : isModelFocusMode
-                ? 0.045
+                ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
           : singleRoomFill
                 ? focusedFloorMap
                   ? room.area === "other"
                     ? 0.72
                     : 0.9
                   : modelAuthorityView
-                    ? 0.08
+                    ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
                     : 0.72
                 : subduedSemanticFill
-                  ? 0.015
+                  ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
           : session.layerMode === "exploded" && room.floor === "2F"
                     ? 0.5
                     : modelFirstOverview
-                      ? 0.06
+                      ? SEMANTIC_RENDER_POLICY.minimumPassiveRoomOpacity
                       : session.layerMode === "allFloors"
                         ? room.area === "other"
                           ? 0.72
@@ -2852,7 +2873,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           ? 0.026
           : 0.018;
       const roomMesh = extrudedPolygonMesh(room.polygon, room.floor, session, shouldFillRoomSurface ? roomHeight : 0.004, material, raisedLift, room.id);
-      roomMesh.position.y += modelAlignment.slabThickness + (subduedSemanticFill ? 0.014 : session.layerMode === "exploded" && room.floor === "2F" ? 0.026 : 0.025);
+      roomMesh.position.y += SEMANTIC_RENDER_POLICY.roomSurfaceLift + (session.layerMode === "exploded" && room.floor === "2F" ? 0.001 : 0);
       roomMesh.name = `room-${room.id}`;
       roomMesh.userData.roomId = room.id;
       roomMesh.castShadow = true;
@@ -2889,25 +2910,24 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const [x, y, z] = mapPointToModel(room.center, room.floor, {
         ...modelOptions,
         semanticId: room.id,
-        lift: modelAlignment.hotspotLift + 0.13 + raisedLift,
+        lift: SEMANTIC_RENDER_POLICY.roomSurfaceLift + 0.018 + raisedLift,
       });
-      const hotspotRadius = active || target || start ? 0.13 : modelAuthorityView ? 0.026 : modelFirstOverview ? 0.038 : 0.058;
-      const hotspot = new THREE.Mesh(
-        new THREE.CylinderGeometry(hotspotRadius, hotspotRadius, active || target || start ? 0.06 : modelAuthorityView ? 0.026 : 0.032, 24),
-        new THREE.MeshStandardMaterial({
-          color: target ? 0xff3f6c : start ? 0x18a058 : active ? 0x0b6cff : modelFirstOverview ? 0xeaf2ff : 0xffffff,
-          emissive: target ? 0x5a0012 : active ? 0x06236b : 0x000000,
-          roughness: 0.42,
-          metalness: 0.02,
-          transparent: true,
-          opacity: active || target || start ? 1 : modelAuthorityView ? 0.18 : !modelFirstOverview ? 1 : overviewLabelRoomIds.has(room.id) ? 0.74 : 0.38,
-        }),
-      );
-      hotspot.position.set(x, y, z);
-      hotspot.userData.roomId = room.id;
-      hotspot.castShadow = true;
-      markers.add(hotspot);
-      interactive.push(hotspot);
+      if (active || target || start) {
+        const hotspot = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.13, 0.13, 0.048, 24),
+          new THREE.MeshStandardMaterial({
+            color: target ? 0xff3f6c : start ? 0x18a058 : 0x0b6cff,
+            emissive: target ? 0x5a0012 : active ? 0x06236b : 0x063b1f,
+            roughness: 0.42,
+            metalness: 0.02,
+          }),
+        );
+        hotspot.position.set(x, y, z);
+        hotspot.userData.roomId = room.id;
+        hotspot.castShadow = true;
+        markers.add(hotspot);
+        interactive.push(hotspot);
+      }
 
       if (!hideRoomLabelForRouteEndpoint && shouldKeepRoomLabelDuringRoute(room, session, route, startRoomId) && shouldShowRoomLabel(room, session, startRoomId)) {
         const forceFullLabel = active || target || start || overviewLabelRoomIds.has(room.id);
@@ -2944,8 +2964,10 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         const overviewWallScale =
           session.layerMode === "allFloors"
             ? wall.kind === "outer"
-              ? 0.32
-              : 0.22
+              ? SEMANTIC_RENDER_POLICY.wallOverviewScale.outer
+              : wall.kind === "low"
+                ? SEMANTIC_RENDER_POLICY.wallOverviewScale.low
+                : SEMANTIC_RENDER_POLICY.wallOverviewScale.inner
             : session.layerMode === "exploded"
               ? wall.kind === "outer"
                 ? 0.7
@@ -3045,15 +3067,15 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const doorIsActiveCheckpoint = Boolean(activeLeg && (activeLeg.fromNodeId === door.nodeId || activeLeg.toNodeId === door.nodeId));
       if (session.layerMode === "raised202" && !doorBelongsToRaised202(door) && !doorIsOnRoute && !doorIsActiveCheckpoint) continue;
       if (modelFirstOverview && !doorIsOnRoute && !routeActiveRoomIds.has(door.connects[0]) && door.connects[0] !== activeRoomId) continue;
-      const from = doorSegmentToVector(door, "from", session, 0.15);
-      const to = doorSegmentToVector(door, "to", session, 0.15);
+      const from = doorSegmentToVector(door, "from", session);
+      const to = doorSegmentToVector(door, "to", session);
       const material = door.source === "inferred" ? inferredDoorMaterial.clone() : doorMaterial.clone();
-      const threshold = tubeBetween(from, to, doorIsOnRoute ? 0.048 : door.source === "inferred" ? 0.026 : 0.03, material);
+      const threshold = tubeBetween(from, to, doorIsOnRoute ? 0.04 : door.source === "inferred" ? 0.018 : 0.022, material);
       threshold.name = `${door.id}-threshold`;
       building.add(threshold);
       const doorAxis = to.clone().sub(from);
-      const showDoorFrame = doorIsOnRoute || doorIsActiveCheckpoint || singleFocus;
-      const frameHeight = doorIsOnRoute || doorIsActiveCheckpoint ? 0.24 : 0.16;
+      const showDoorFrame = doorIsOnRoute || doorIsActiveCheckpoint || (singleFocus && !route);
+      const frameHeight = doorIsOnRoute || doorIsActiveCheckpoint ? SEMANTIC_RENDER_POLICY.doorFrameHeight.active : SEMANTIC_RENDER_POLICY.doorFrameHeight.passive;
       if (showDoorFrame && doorAxis.lengthSq() > 0.00001) {
         const frameMaterial = material.clone();
         const frameRadius = doorIsOnRoute ? 0.018 : 0.011;
@@ -3075,9 +3097,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const center = new THREE.Vector3(...mapPointToModel(door.point, door.floor, {
         ...modelOptions,
         semanticId: door.connects[0],
-        lift: modelAlignment.slabThickness + 0.17 + raised202LiftForPoint(door.point, door.floor),
+        lift: modelAlignment.slabThickness + SEMANTIC_RENDER_POLICY.doorThresholdLift + raised202LiftForPoint(door.point, door.floor),
       }));
-      building.add(pointMarker(center, door.source === "inferred" ? 0.035 : 0.042, material.clone()));
+      if (doorIsActiveCheckpoint) {
+        const checkpointMarker = pointMarker(center, 0.052, material.clone());
+        checkpointMarker.name = `${door.id}-active-checkpoint-marker`;
+        building.add(checkpointMarker);
+      }
       if (doorIsActiveCheckpoint || (singleFocus && !route)) {
         labels.push({
           roomId: `door-${door.id}`,
@@ -3091,7 +3117,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           start: false,
           target: false,
           variant: "door",
-          position: center.clone().add(new THREE.Vector3(0, 0.12, 0)),
+          position: center.clone().add(new THREE.Vector3(0, doorIsActiveCheckpoint ? 0.16 : 0.1, 0)),
         });
       }
     }
@@ -3310,14 +3336,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             roughness: 0.34,
           }),
         );
-        nextMarker.position.copy(nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.075 : 0.17, 0)));
+        nextMarker.position.copy(nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.06 : SEMANTIC_RENDER_POLICY.routeKeyPinLift.marker, 0)));
         root.add(nextMarker);
         root.add(makeDisc(nextVector.clone(), 0.34, new THREE.MeshBasicMaterial({ color: nextColor, transparent: true, opacity: 0.28 })));
         root.add(makeBeaconRing(nextVector.clone(), 0.37, nextColor, 0.76));
-        root.add(makeBeaconRing(nextVector.clone().add(new THREE.Vector3(0, 0.03, 0)), 0.52, nextColor, 0.28));
+        root.add(makeBeaconRing(nextVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.ring, 0)), 0.52, nextColor, 0.28));
         const nextBeacon = tubeBetween(
-          nextVector.clone().add(new THREE.Vector3(0, 0.03, 0)),
-          nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.24 : 0.32, 0)),
+          nextVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.disc, 0)),
+          nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.22 : 0.26, 0)),
           0.016,
           new THREE.MeshBasicMaterial({
             color: nextColor,
@@ -3331,7 +3357,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           new THREE.TorusGeometry(0.27, 0.024, 12, 58),
           new THREE.MeshBasicMaterial({ color: nextColor, transparent: true, opacity: 0.78 }),
         );
-        checkpointBase.position.copy(nextVector.clone().add(new THREE.Vector3(0, 0.07, 0)));
+        checkpointBase.position.copy(nextVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.ring, 0)));
         checkpointBase.rotation.x = Math.PI / 2;
         checkpointBase.name = "route-next-checkpoint-ground-ring";
         root.add(checkpointBase);
@@ -3347,14 +3373,14 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           start: false,
           target: false,
           variant: "route",
-          position: nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.26 : 0.34, 0)),
+          position: nextVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.24 : SEMANTIC_RENDER_POLICY.routeKeyPinLift.label, 0)),
         });
       }
       if (currentVector) {
         root.add(makeDisc(currentVector.clone(), 0.3, startDiscMaterial));
-        root.add(makeDisc(currentVector.clone().add(new THREE.Vector3(0, 0.012, 0)), 0.38, outerHaloMaterial.clone()));
+        root.add(makeDisc(currentVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.disc, 0)), 0.38, outerHaloMaterial.clone()));
         root.add(makeBeaconRing(currentVector.clone(), 0.36, 0x18a058, 0.74));
-        root.add(makeBeaconRing(currentVector.clone().add(new THREE.Vector3(0, 0.04, 0)), 0.5, 0x18a058, 0.28));
+        root.add(makeBeaconRing(currentVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.ring, 0)), 0.5, 0x18a058, 0.28));
         const currentPin = new THREE.Mesh(
           isOrthographicMap ? new THREE.CylinderGeometry(0.18, 0.18, 0.1, 34) : new THREE.CylinderGeometry(0.095, 0.095, 0.28, 28),
           new THREE.MeshStandardMaterial({
@@ -3365,7 +3391,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           }),
         );
         currentPin.position.copy(currentVector);
-        currentPin.position.y += isOrthographicMap ? 0.06 : 0.09;
+        currentPin.position.y += isOrthographicMap ? 0.055 : 0.075;
         root.add(currentPin);
         const pinCap = new THREE.Mesh(
           new THREE.SphereGeometry(isOrthographicMap ? 0.14 : 0.12, 24, 14),
@@ -3377,19 +3403,19 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           }),
         );
         pinCap.position.copy(currentVector);
-        pinCap.position.y += isOrthographicMap ? 0.13 : 0.24;
+        pinCap.position.y += isOrthographicMap ? 0.12 : 0.17;
         root.add(pinCap);
         const currentGround = new THREE.Mesh(
           new THREE.TorusGeometry(0.31, 0.028, 12, 58),
           new THREE.MeshBasicMaterial({ color: 0x18a058, transparent: true, opacity: 0.78 }),
         );
-        currentGround.position.copy(currentVector.clone().add(new THREE.Vector3(0, 0.065, 0)));
+        currentGround.position.copy(currentVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.ring, 0)));
         currentGround.rotation.x = Math.PI / 2;
         currentGround.name = "route-current-ground-ring";
         root.add(currentGround);
         const currentBeacon = tubeBetween(
-          currentVector.clone().add(new THREE.Vector3(0, 0.03, 0)),
-          currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.31 : 0.44, 0)),
+          currentVector.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.disc, 0)),
+          currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.27 : 0.32, 0)),
           0.016,
           new THREE.MeshBasicMaterial({
             color: 0x18a058,
@@ -3411,7 +3437,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           start: true,
           target: false,
           variant: "route",
-          position: currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.24 : 0.32, 0)),
+          position: currentVector.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.23 : SEMANTIC_RENDER_POLICY.routeKeyPinLift.label, 0)),
         });
       }
 
@@ -3422,7 +3448,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           layerMode: session.layerMode,
           activeFloor: session.activeFloor,
           semanticId: room.id,
-          lift: 0.24 + raised202LiftForRoom(room.id, room.floor),
+          lift: modelAlignment.slabThickness + 0.11 + raised202LiftForRoom(room.id, room.floor),
         });
         const base = new THREE.Vector3(x, y, z);
         root.add(makeDisc(base.clone(), 0.32, targetDiscMaterial));
@@ -3441,11 +3467,11 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           }),
         );
         pin.position.copy(base);
-        pin.position.y += isOrthographicMap ? 0.06 : 0.13;
+        pin.position.y += isOrthographicMap ? 0.055 : 0.09;
         root.add(pin);
-        const targetBeaconHeight = isOrthographicMap ? 0.34 : 0.42;
+        const targetBeaconHeight = isOrthographicMap ? 0.3 : 0.34;
         const beacon = tubeBetween(
-          base.clone().add(new THREE.Vector3(0, 0.03, 0)),
+          base.clone().add(new THREE.Vector3(0, SEMANTIC_RENDER_POLICY.routeKeyPinLift.disc, 0)),
           base.clone().add(new THREE.Vector3(0, targetBeaconHeight, 0)),
           0.017,
           new THREE.MeshBasicMaterial({
@@ -3468,7 +3494,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           start: false,
           target: true,
           variant: "route",
-          position: base.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.28 : 0.34, 0)),
+          position: base.clone().add(new THREE.Vector3(0, isOrthographicMap ? 0.26 : SEMANTIC_RENDER_POLICY.routeKeyPinLift.label, 0)),
         });
       });
       labelAnchorsRef.current = [...labelAnchorsRef.current.filter((label) => !label.roomId.startsWith("route-")), ...routeLabels];

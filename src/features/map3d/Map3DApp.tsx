@@ -388,6 +388,12 @@ function floorBadgeText(floor: FloorGeometry, session: Pick<MapSessionState, "la
   return { text: floor.label, compactText: floor.id, fullText: floor.label };
 }
 
+function floorBadgeSemanticId(floor: FloorGeometry, session: Pick<MapSessionState, "layerMode">): string | undefined {
+  if (floor.id !== "2F") return undefined;
+  if (session.layerMode === "raised202") return "raised-202-shell";
+  return "c2-202";
+}
+
 function shouldDrawSemanticSurfaces(session: MapSessionState): boolean {
   return true;
 }
@@ -481,8 +487,13 @@ function layerChipHint(session: MapSessionState) {
 }
 
 function shouldDrawStairBody(session: MapSessionState, onRoute: boolean): boolean {
+  if (session.layerMode === "exploded") return false;
   if (onRoute) return true;
   return session.layerMode === "single" || session.layerMode === "raised202";
+}
+
+function shouldBridgeRouteSegment(step: RouteResult["steps"][number] | undefined, session: MapSessionState): boolean {
+  return !(session.layerMode === "exploded" && (step?.kind === "stair" || step?.kind === "internal-stair"));
 }
 
 function routeLabelNudge(roomId: string): { x: number; y: number } {
@@ -2506,7 +2517,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           start: false,
           target: false,
           variant: "floor",
-          position: new THREE.Vector3(...mapPointToModel(floor.outline[0], floor.id, { ...modelOptions, lift: 0.42 })),
+          position: new THREE.Vector3(
+            ...mapPointToModel(floor.outline[0], floor.id, {
+              ...modelOptions,
+              semanticId: floorBadgeSemanticId(floor, session),
+              lift: 0.42,
+            }),
+          ),
         });
       }
     }
@@ -2699,7 +2716,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const shouldShowRaisedLowerContext =
       floorVisibility("2F", session) &&
       (session.layerMode === "raised202" ||
-        session.layerMode === "exploded" ||
+        (session.layerMode === "exploded" && (!route || routeTouchesRaised202)) ||
         (session.layerMode === "single" && session.activeFloor === "2F"));
   if (shouldShowRaisedLowerContext) {
       building.add(raisedPlatformLowerContext(session, raisedLowerContextMaterial));
@@ -2746,7 +2763,13 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         });
       }
     }
-    if (floorVisibility("2F", session) && (session.layerMode === "raised202" || session.layerMode === "exploded" || routeTouchesRaised202 || (session.layerMode === "single" && session.activeFloor === "2F"))) {
+    if (
+      floorVisibility("2F", session) &&
+      (session.layerMode === "raised202" ||
+        (session.layerMode === "exploded" && (!route || routeTouchesRaised202)) ||
+        routeTouchesRaised202 ||
+        (session.layerMode === "single" && session.activeFloor === "2F"))
+    ) {
       const showSeparateRaisedPlatform = session.layerMode === "raised202" || (routeTouchesRaised202 && session.layerMode !== "exploded" && !modelFirstOverview);
       if (showSeparateRaisedPlatform && session.layerMode !== "raised202") {
         const raisedPlatform = extrudedPolygonMesh(
@@ -3253,18 +3276,30 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         const segmentHalo = withOpacity(segmentHaloBase.clone(), isActiveSegment ? (isStair ? 0.4 : 0.34) : isPassedSegment ? 0.08 : isOrthographicMap ? 0.16 : 0.2);
         const activeScale = isOrthographicMap ? 0.86 : session.layerMode === "allFloors" ? 1.02 : 0.94;
         const inactiveRadius = isPassedSegment ? 0.018 : 0.03;
-        const outerHalo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.14 : isDoor ? 0.11 : isRoomEntry ? 0.084 : 0.1) * activeScale : isPassedSegment ? 0.028 : 0.044, withOpacity(outerHaloMaterial.clone(), isActiveSegment ? 0.5 : isPassedSegment ? 0.08 : 0.16));
-        const halo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.096 : isDoor ? 0.078 : isRoomEntry ? 0.058 : 0.068) * activeScale : isPassedSegment ? 0.024 : 0.038, segmentHalo);
-        const tube = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.066 : isDoor ? 0.052 : isRoomEntry ? 0.04 : 0.048) * activeScale : inactiveRadius, segmentMaterial);
-        outerHalo.name = isStair ? "route-stair-outer-halo" : isDoor ? "route-door-outer-halo" : "route-walk-outer-halo";
-        halo.name = isStair ? "route-stair-halo" : isDoor ? "route-door-halo" : "route-walk-halo";
-        tube.name = isStair ? "route-stair-tube" : isDoor ? "route-door-tube" : isRoomEntry ? "route-entry-tube" : "route-walk-tube";
-        root.add(outerHalo);
-        root.add(halo);
-        root.add(tube);
-        if (isActiveSegment) addDirectionalArrows(root, point, nextPoint, segmentMaterialBase.clone(), isStair ? 1.7 : isDoor ? 1.34 : 1.22);
-        if (isStair) {
-          if (isActiveSegment) addRouteStairGuide(root, point, nextPoint, stairRouteMaterial);
+        const bridgeSegment = shouldBridgeRouteSegment(step, session);
+        if (bridgeSegment) {
+          const outerHalo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.14 : isDoor ? 0.11 : isRoomEntry ? 0.084 : 0.1) * activeScale : isPassedSegment ? 0.028 : 0.044, withOpacity(outerHaloMaterial.clone(), isActiveSegment ? 0.5 : isPassedSegment ? 0.08 : 0.16));
+          const halo = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.096 : isDoor ? 0.078 : isRoomEntry ? 0.058 : 0.068) * activeScale : isPassedSegment ? 0.024 : 0.038, segmentHalo);
+          const tube = tubeBetween(point, nextPoint, isActiveSegment ? (isStair ? 0.066 : isDoor ? 0.052 : isRoomEntry ? 0.04 : 0.048) * activeScale : inactiveRadius, segmentMaterial);
+          outerHalo.name = isStair ? "route-stair-outer-halo" : isDoor ? "route-door-outer-halo" : "route-walk-outer-halo";
+          halo.name = isStair ? "route-stair-halo" : isDoor ? "route-door-halo" : "route-walk-halo";
+          tube.name = isStair ? "route-stair-tube" : isDoor ? "route-door-tube" : isRoomEntry ? "route-entry-tube" : "route-walk-tube";
+          root.add(outerHalo);
+          root.add(halo);
+          root.add(tube);
+          if (isActiveSegment) addDirectionalArrows(root, point, nextPoint, segmentMaterialBase.clone(), isStair ? 1.7 : isDoor ? 1.34 : 1.22);
+          if (isStair && isActiveSegment) addRouteStairGuide(root, point, nextPoint, stairRouteMaterial);
+        } else {
+          const ringOpacity = isActiveSegment ? 0.88 : isPassedSegment ? 0.28 : 0.54;
+          root.add(makeBeaconRing(point.clone(), isActiveSegment ? 0.42 : 0.28, 0xffa100, ringOpacity));
+          root.add(makeBeaconRing(nextPoint.clone(), isActiveSegment ? 0.42 : 0.28, 0xffa100, ringOpacity));
+          const portalMaterial = withOpacity(stairRouteMaterial.clone(), isActiveSegment ? 0.96 : 0.48);
+          const lowerPost = tubeBetween(point.clone().add(new THREE.Vector3(0, 0.02, 0)), point.clone().add(new THREE.Vector3(0, isActiveSegment ? 0.34 : 0.22, 0)), isActiveSegment ? 0.03 : 0.02, portalMaterial.clone());
+          const upperPost = tubeBetween(nextPoint.clone().add(new THREE.Vector3(0, 0.02, 0)), nextPoint.clone().add(new THREE.Vector3(0, isActiveSegment ? 0.34 : 0.22, 0)), isActiveSegment ? 0.03 : 0.02, portalMaterial.clone());
+          lowerPost.name = "route-stair-portal-lower";
+          upperPost.name = "route-stair-portal-upper";
+          root.add(lowerPost);
+          root.add(upperPost);
         }
       });
         const target = getRoomById(jingongMapData, route.targetRoomId);

@@ -22,6 +22,9 @@ qa/android-screenshots/*.png
 qa/screenshots/*.png
 qa/alignment/*.json
 kiosk-*.png
+h5-*.png
+map-*.png
+tmp-window.xml
 tmp/chrome*/
 tmp/miniprogram-*/
 closed-final-*.json

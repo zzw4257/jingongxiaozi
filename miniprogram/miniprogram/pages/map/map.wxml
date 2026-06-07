@@ -14,31 +14,5 @@
       catchtouchcancel="handleTouchEnd"
     >
     </canvas>
-    <view class="mp-map-rail" aria-label="地图操作栏">
-      <view class="mp-rail-button" data-action="back" catchtap="handleRailOverlayTap">
-        <view class="mp-rail-symbol">←</view>
-        <view class="mp-rail-label">返回</view>
-      </view>
-      <view class="mp-rail-button {{panel === 'route' ? 'active' : ''}}" data-panel="route" catchtap="handleRailOverlayTap">
-        <view class="mp-rail-symbol">⌁</view>
-        <view class="mp-rail-label">路线</view>
-      </view>
-      <view class="mp-rail-button {{panel === 'layers' ? 'active' : ''}}" data-panel="layers" catchtap="handleRailOverlayTap">
-        <view class="mp-rail-symbol">▱</view>
-        <view class="mp-rail-label">图层</view>
-      </view>
-      <view class="mp-rail-button {{panel === 'view' ? 'active' : ''}}" data-panel="view" catchtap="handleRailOverlayTap">
-        <view class="mp-rail-symbol">⊙</view>
-        <view class="mp-rail-label">视角</view>
-      </view>
-      <view class="mp-rail-button" data-view="reset" catchtap="handleRailOverlayTap">
-        <view class="mp-rail-symbol">↗</view>
-        <view class="mp-rail-label">总览</view>
-      </view>
-    </view>
-    <view class="mp-map-north" aria-label="地图真北方向">
-      <view class="mp-map-north-icon">△</view>
-      <view class="mp-map-north-text">真北</view>
-    </view>
   </view>
 </view>

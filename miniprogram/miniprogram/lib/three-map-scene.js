@@ -197,7 +197,7 @@ const miniCameraPresets = {
 };
 const labelDensityRank = { far: 0, mid: 1, near: 2 };
 const hudPixelRatioLimit = 2;
-const hudLayoutRevision = "webgl-guidance-v7-safe-north";
+const hudLayoutRevision = "webgl-guidance-v11-reserved-label-zones";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -229,10 +229,18 @@ function createHudCanvas(width, height) {
 }
 
 function cameraZoomFactor(preset, compact) {
-  if (preset === "route") return compact ? 0.58 : 0.78;
+  if (preset === "route") return compact ? 0.46 : 0.72;
   if (preset === "near") return compact ? 1.04 : 1.02;
   if (preset === "overview") return compact ? 0.92 : 0.9;
   return 1;
+}
+
+function isCompactLandscape(width, height) {
+  return height <= 430 && width >= height * 1.45;
+}
+
+function isCompactHud(width, height) {
+  return height < 260 || width < 520 || isCompactLandscape(width, height);
 }
 
 function roundedRectPath(ctx, x, y, w, h, r) {
@@ -417,6 +425,48 @@ function labelMetrics(label) {
     width: (label.boxW || 92) + pad * 2,
     height: (label.boxH || 26) + pad * 2,
   };
+}
+
+function pushReservedBox(boxes, box, pad = 8) {
+  if (!box) return;
+  boxes.push({
+    x: box.x - pad,
+    y: box.y - pad,
+    w: box.width + pad * 2,
+    h: box.height + pad * 2,
+    hard: true,
+  });
+}
+
+function boxesOverlap(a, b) {
+  return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+}
+
+function hudReservedBoxes(width, height, hud) {
+  const boxes = [];
+  const safeLeft = Math.max(0, Number(hud.safeInsets?.left || 0));
+  const safeTop = Math.max(0, Number(hud.safeInsets?.top || 0));
+  const northX = Math.max(18, safeLeft + 14);
+  const northY = Math.max(18, safeTop + 10);
+  pushReservedBox(boxes, { x: northX, y: northY, width: 76, height: 38 }, 8);
+
+  const rail = railStackMetrics(width, height);
+  pushReservedBox(boxes, { x: rail.x, y: rail.y, width: rail.width, height: rail.height }, 8);
+
+  const guidance = guidanceMetrics(width, height, Boolean(hud.hasRoute), hud.safeInsets);
+  if (guidance) pushReservedBox(boxes, guidance, 8);
+
+  if (hud.panel && hud.panel !== "none") {
+    pushReservedBox(boxes, panelMetrics(width, height, hud.panel), 10);
+  }
+  return boxes;
+}
+
+function routeLabelNudge(labelId) {
+  if (labelId === "route-current-location") return { x: -30, y: 34 };
+  if (labelId === "route-next-portal") return { x: 28, y: -34 };
+  if (labelId === "route-target-location") return { x: 22, y: -28 };
+  return { x: 0, y: 0 };
 }
 
 function drawGuidanceLocal(ctx, hud, width, height, fullWidth, fullHeight) {
@@ -671,6 +721,11 @@ function drawFixedHudLocal(ctx, hud, width, height) {
     drawGuidanceLocal(ctx, hud, guidance.width, guidance.height, width, height);
     ctx.restore();
   }
+  const rail = railStackMetrics(width, height);
+  ctx.save();
+  ctx.translate(rail.x, rail.y);
+  drawRailStackLocal(ctx, hud, width, height, rail);
+  ctx.restore();
 }
 
 function drawGuidance(ctx, hud, width, height) {
@@ -823,6 +878,76 @@ function isRaised202Point(point, floor) {
 
 function isRaised202Room(roomId) {
   return Boolean(roomId && roomId.startsWith("202"));
+}
+
+function isIndependentSecondFloorRoom(roomId) {
+  return Boolean(roomId && (roomId === "104-2F01" || roomId === "106-2F" || roomId.startsWith("108-2F")));
+}
+
+function isPublicSecondFloorRoom(room) {
+  return Boolean(room && room.floor === "2F" && !isRaised202Room(room.id) && !isIndependentSecondFloorRoom(room.id));
+}
+
+function wallRoomFor(wall) {
+  const match = String(wall.id || "").match(/^wall-(.+)-\d+$/);
+  if (!match) return null;
+  return mapData.rooms.find((room) => room.id === match[1]) || null;
+}
+
+function shouldDrawFloorShell(floor, layerMode) {
+  if (floor.id === "1F") return true;
+  return layerMode === "2F" || layerMode === "raised202" || layerMode === "exploded" || layerMode === "section";
+}
+
+function shouldDrawWall(wall, layerMode) {
+  if (layerMode !== "allFloors" || wall.floor !== "2F") return true;
+  if (wall.kind === "outer") return false;
+  const room = wallRoomFor(wall);
+  return isPublicSecondFloorRoom(room) || isRaised202Room(room?.id);
+}
+
+function wallScaleFor(wall, layerMode, focused) {
+  if (focused) return wall.kind === "outer" ? 0.72 : 0.56;
+  if (layerMode === "allFloors") return wall.kind === "outer" ? 0.32 : wall.kind === "low" ? 0.18 : 0.22;
+  if (layerMode === "exploded") return wall.kind === "outer" ? 0.7 : wall.kind === "low" ? 0.28 : 0.46;
+  return 1;
+}
+
+function splitWallSegments(wall, doors) {
+  const dx = wall.to[0] - wall.from[0];
+  const dy = wall.to[1] - wall.from[1];
+  const lengthSq = dx * dx + dy * dy;
+  if (lengthSq < 1) return [{ from: wall.from, to: wall.to }];
+  const cuts = doors
+    .filter((door) => door.floor === wall.floor)
+    .map((door) => {
+      const endpoints = [door.from, door.to].map((point) => {
+        const t = ((point[0] - wall.from[0]) * dx + (point[1] - wall.from[1]) * dy) / lengthSq;
+        const projected = [wall.from[0] + dx * t, wall.from[1] + dy * t];
+        return { t, distance: Math.hypot(projected[0] - point[0], projected[1] - point[1]) };
+      });
+      return {
+        min: Math.max(0, Math.min(endpoints[0].t, endpoints[1].t)),
+        max: Math.min(1, Math.max(endpoints[0].t, endpoints[1].t)),
+        distance: Math.max(endpoints[0].distance, endpoints[1].distance),
+      };
+    })
+    .filter((cut) => cut.distance < 2.2 && cut.max - cut.min > 0.01)
+    .sort((a, b) => a.min - b.min);
+  if (!cuts.length) return [{ from: wall.from, to: wall.to }];
+  const segments = [];
+  let cursor = 0;
+  cuts.forEach((cut) => {
+    if (cut.min > cursor + 0.012) {
+      segments.push({
+        from: [wall.from[0] + dx * cursor, wall.from[1] + dy * cursor],
+        to: [wall.from[0] + dx * cut.min, wall.from[1] + dy * cut.min],
+      });
+    }
+    cursor = Math.max(cursor, cut.max);
+  });
+  if (cursor < 0.988) segments.push({ from: [wall.from[0] + dx * cursor, wall.from[1] + dy * cursor], to: wall.to });
+  return segments;
 }
 
 function polygonCenter(polygon) {
@@ -1431,7 +1556,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   }
 
   function projectedHudLabels() {
-    const compact = hudHeight < 260 || hudWidth < 520;
+    const compact = isCompactHud(hudWidth, hudHeight);
     return projectLabels().map((label) => {
       const w = compact
         ? label.variant === "route" ? 58 : label.variant === "floor" ? 52 : label.variant === "door" ? 28 : label.variant === "stair" ? 68 : label.variant === "corridor" ? 72 : label.variant === "compact-room" ? 34 : 54
@@ -1599,6 +1724,13 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     interactiveObjects = [];
     const layerMode = state.layerMode || "allFloors";
     const routeNodeIds = new Set(state.route?.nodeIds || []);
+    const activeLeg = state.route?.guidanceLegs?.[state.activeStepIndex || 0] || null;
+    const activeLegNodeIds = new Set([activeLeg?.fromNodeId, activeLeg?.toNodeId].filter(Boolean));
+    const activeLegPoints = [activeLeg?.fromNodeId, activeLeg?.toNodeId]
+      .map((nodeId) => mapData.nodes.find((node) => node.id === nodeId))
+      .filter(Boolean);
+    const activeLegTouchesPolygon = (floor, polygon) =>
+      activeLegPoints.some((node) => node.floor === floor && pointInPolygon(node.point, polygon));
     const focused = layerMode === "1F" || layerMode === "2F" || layerMode === "raised202";
     const floorMat = {
       "1F": semanticPlaneMaterial({ color: floorShellColor["1F"], opacity: layerMode === "exploded" ? 0.98 : 1 }),
@@ -1623,29 +1755,34 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     mapData.floors.forEach((floor) => {
       if (!floorVisible(floor.id, layerMode)) return;
       const floorOutline = layerMode === "raised202" && floor.id === "2F" ? raised202Polygon : floor.outline;
-      const floorMesh = extrudedPolygonMesh(floorOutline, floor.id, layerMode, SLAB_THICKNESS, floorMat[floor.id].clone(), 0, `floor-${floor.id}`);
-      floorMesh.name = `semantic-floor-${floor.id}`;
-      semanticRoot.add(floorMesh);
-      addPolygonOutline(
-        semanticRoot,
-        floorOutline,
-        floor.id,
-        layerMode,
-        `floor-${floor.id}`,
-        SLAB_THICKNESS + 0.028,
-        floor.id === "1F" ? 0.017 : 0.014,
-        floorEdgeMat,
-        `floor-outline-${floor.id}`,
-      );
-      labels.push({
-        id: `floor-${floor.id}`,
-        text: layerMode === "raised202" && floor.id === "2F" ? "202 二层半" : floor.label,
-        compactText: layerMode === "raised202" && floor.id === "2F" ? "2.5F" : floor.id,
-        fullText: layerMode === "raised202" && floor.id === "2F" ? "202 二层半" : floor.label,
-        variant: "floor",
-        priority: 20,
-        position: mapPointToModel(floorOutline[0], floor.id, { layerMode, lift: 0.16, semanticId: `floor-${floor.id}` }),
-      });
+      if (shouldDrawFloorShell(floor, layerMode)) {
+        const floorMesh = extrudedPolygonMesh(floorOutline, floor.id, layerMode, SLAB_THICKNESS, floorMat[floor.id].clone(), 0, `floor-${floor.id}`);
+        floorMesh.name = `semantic-floor-${floor.id}`;
+        semanticRoot.add(floorMesh);
+        addPolygonOutline(
+          semanticRoot,
+          floorOutline,
+          floor.id,
+          layerMode,
+          `floor-${floor.id}`,
+          SLAB_THICKNESS + 0.028,
+          floor.id === "1F" ? 0.017 : 0.014,
+          floorEdgeMat,
+          `floor-outline-${floor.id}`,
+        );
+      }
+      if (!state.route || layerMode !== "allFloors" || floor.id === "1F") {
+        labels.push({
+          id: `floor-${floor.id}`,
+          text: layerMode === "raised202" && floor.id === "2F" ? "202 二层半" : floor.label,
+          compactText: layerMode === "raised202" && floor.id === "2F" ? "2.5F" : floor.id,
+          fullText: layerMode === "raised202" && floor.id === "2F" ? "202 二层半" : floor.label,
+          minDensity: state.route ? "mid" : "far",
+          variant: "floor",
+          priority: state.route ? 12 : 20,
+          position: mapPointToModel(floorOutline[0], floor.id, { layerMode, lift: 0.16, semanticId: `floor-${floor.id}` }),
+        });
+      }
     });
     visibleSupportDecksForLayer(layerMode).forEach((deck) => {
       semanticRoot.add(supportDeckGeometry(layerMode, deck, supportDeckMat.clone(), supportDeckEdgeMat.clone()));
@@ -1703,8 +1840,9 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       if (space.kind === "corridor") {
         addPolygonOutline(semanticRoot, space.polygon, space.floor, layerMode, space.id, SLAB_THICKNESS + 0.085, 0.012, corridorEdgeMat, `corridor-outline-${space.id}`);
       }
+      const currentStepSpace = activeLegTouchesPolygon(space.floor, space.polygon);
       const shouldLabelSpace = state.route
-        ? Boolean(onRoute || (focused && space.kind !== "corridor"))
+        ? Boolean(currentStepSpace && (space.kind === "corridor" || focused))
         : Boolean((space.kind === "corridor" && (focused || layerMode !== "allFloors")) || focused);
       if (shouldLabelSpace) {
         labels.push({
@@ -1741,7 +1879,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const keyRoom = mapRuntime.overviewLabelRoomIds?.has?.(room.id);
       const routeEndpointRoom = Boolean(state.route && (state.route.startRoomId === room.id || state.route.targetRoomId === room.id));
       const shouldShowRoomLabel = state.route
-        ? Boolean(focused && !routeEndpointRoom && !onRoute)
+        ? Boolean((focused || layerMode === "raised202") && !routeEndpointRoom && !onRoute)
         : Boolean(focused || keyRoom);
       if (shouldShowRoomLabel) {
         labels.push({
@@ -1763,21 +1901,35 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     });
     mapData.walls.forEach((wall) => {
       if (!visibleForLayer(wall.floor, layerMode, { point: wall.from, semanticId: wall.id || wall.roomId || "" })) return;
-      const from = mapPointToModel(wall.from, wall.floor, { layerMode, lift: SLAB_THICKNESS + (wall.kind === "outer" ? OUTER_WALL_HEIGHT / 2 : WALL_HEIGHT / 2), semanticId: wall.roomId || wall.id });
-      const to = mapPointToModel(wall.to, wall.floor, { layerMode, lift: SLAB_THICKNESS + (wall.kind === "outer" ? OUTER_WALL_HEIGHT / 2 : WALL_HEIGHT / 2), semanticId: wall.roomId || wall.id });
-      const length = from.distanceTo(to);
-      if (length < 0.01) return;
-      const angle = -Math.atan2(to.z - from.z, to.x - from.x);
-      const wallMesh = orientedBox(
-        from.clone().add(to).multiplyScalar(0.5),
-        length,
-        wall.kind === "outer" ? OUTER_WALL_HEIGHT : wall.kind === "low" ? 0.18 : WALL_HEIGHT,
-        wall.kind === "outer" ? 0.054 : 0.036,
-        angle,
-        material({ color: wall.kind === "outer" ? 0x465b70 : 0x7b8e9f, opacity: focused ? 1 : layerMode === "exploded" ? 0.72 : 0.92 }),
-        `wall-${wall.id}`,
-      );
-      semanticRoot.add(wallMesh);
+      if (!shouldDrawWall(wall, layerMode)) return;
+      const baseHeight = wall.kind === "outer" ? OUTER_WALL_HEIGHT : wall.kind === "low" ? 0.18 : WALL_HEIGHT;
+      const height = baseHeight * wallScaleFor(wall, layerMode, focused);
+      if (height < 0.035) return;
+      const width = focused
+        ? wall.kind === "outer" ? 0.054 : 0.036
+        : layerMode === "allFloors"
+          ? wall.kind === "outer" ? 0.045 : wall.kind === "low" ? 0.024 : 0.019
+          : wall.kind === "outer" ? 0.04 : wall.kind === "low" ? 0.024 : 0.02;
+      splitWallSegments(wall, mapData.doors).forEach((segment, index) => {
+        const from = mapPointToModel(segment.from, wall.floor, { layerMode, lift: SLAB_THICKNESS + height / 2, semanticId: wall.roomId || wall.id });
+        const to = mapPointToModel(segment.to, wall.floor, { layerMode, lift: SLAB_THICKNESS + height / 2, semanticId: wall.roomId || wall.id });
+        const length = from.distanceTo(to);
+        if (length < 0.01) return;
+        const angle = -Math.atan2(to.z - from.z, to.x - from.x);
+        const wallMesh = orientedBox(
+          from.clone().add(to).multiplyScalar(0.5),
+          length,
+          height,
+          width,
+          angle,
+          material({
+            color: wall.kind === "outer" ? 0x6f8294 : wall.kind === "low" ? 0x9fb1c0 : 0x9dadbd,
+            opacity: focused ? 1 : layerMode === "exploded" ? (wall.kind === "outer" ? 0.58 : 0.46) : wall.kind === "outer" ? 0.92 : 0.84,
+          }),
+          `wall-${wall.id}-${index}`,
+        );
+        semanticRoot.add(wallMesh);
+      });
     });
     mapData.doors.forEach((door) => {
       if (!visibleForLayer(door.floor, layerMode, { point: door.point, semanticId: door.connects?.[0] || door.nodeId })) return;
@@ -1787,7 +1939,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const doorMesh = tubeBetween(from, to, active ? 0.04 : 0.027, material({ color: active ? 0x0b6cff : door.source === "inferred" ? 0xffc85a : 0xffffff, emissive: active ? 0x073c9b : 0x9ecfff, emissiveIntensity: active ? 0.28 : 0.16 }));
       doorMesh.name = `door-${door.nodeId}`;
       semanticRoot.add(doorMesh);
-      if (active) {
+      if (activeLegNodeIds.has(door.nodeId)) {
         labels.push({
           id: `door-${door.nodeId}`,
           text: "门",
@@ -1825,10 +1977,11 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const lower = mapPointToModel(stair.lowerLanding.reduce((acc, point) => [acc[0] + point[0] / stair.lowerLanding.length, acc[1] + point[1] / stair.lowerLanding.length], [0, 0]), stair.lowerFloor, { layerMode, lift: SLAB_THICKNESS + 0.08, semanticId: stair.lowerNodeId });
       const upper = mapPointToModel(stair.upperLanding.reduce((acc, point) => [acc[0] + point[0] / stair.upperLanding.length, acc[1] + point[1] / stair.upperLanding.length], [0, 0]), stair.upperFloor, { layerMode, lift: SLAB_THICKNESS + 0.08, semanticId: stair.upperNodeId });
       addStairPair(semanticRoot, lower, upper, active, stair.id === "stair-public");
-      if (active || !state.route) {
+      const currentStepStair = activeLegNodeIds.has(stair.lowerNodeId) || activeLegNodeIds.has(stair.upperNodeId);
+      if (currentStepStair || !state.route) {
         labels.push({
           id: `stair-${stair.id}`,
-          text: active ? `${stair.label} · 路线` : stair.label,
+          text: currentStepStair ? `${stair.label} · 路线` : stair.label,
           compactText: stair.access === "internal" ? "内梯" : "楼梯",
           variant: "stair",
           priority: active ? 118 : 58,
@@ -1875,11 +2028,13 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       }
     }
     const points = state.route.points;
+    const currentLeg = state.route.guidanceLegs?.[activeIndex] || null;
     [0, Math.min(points.length - 1, activeIndex + 1), points.length - 1].forEach((pointIndex, arrayIndex) => {
       const point = points[pointIndex];
       if (!point || !routePointVisible(point, state.layerMode)) return;
       const first = pointIndex === 0;
       const last = pointIndex === points.length - 1;
+      const next = !first && !last;
       const color = first ? 0x16a060 : last ? 0xff3f6c : 0x0b6cff;
       const base = routePointToVector(point, state.layerMode);
       routeRoot.add(makeDisc(base.clone(), first ? 0.3 : last ? 0.32 : 0.28, new THREE.MeshBasicMaterial({ color: first ? 0xc8f7df : last ? 0xffd5df : 0xdbeafe, transparent: true, opacity: first || last ? 0.74 : 0.52 })));
@@ -1889,14 +2044,32 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const marker = new THREE.Mesh(markerGeometry, material({ color, emissive: color, emissiveIntensity: first || last ? 0.42 : 0.28, roughness: 0.34 }));
       marker.position.copy(base.add(new THREE.Vector3(0, first ? 0.19 : last ? 0.16 : 0.12 + arrayIndex * 0.002, 0)));
       routeRoot.add(marker);
+      const nextText = currentLeg?.checkpointKind === "destination"
+        ? "到达终点"
+        : currentLeg?.checkpointKind === "stair"
+          ? "下一处楼梯"
+          : currentLeg?.checkpointKind === "door"
+            ? "下一处门"
+            : "下一转折点";
+      const nextCompact = currentLeg?.checkpointKind === "destination"
+        ? "终点"
+        : currentLeg?.checkpointKind === "stair"
+          ? "楼梯"
+          : currentLeg?.checkpointKind === "door"
+            ? "门口"
+            : "转折";
       labels.push({
         id: first ? "route-current-location" : last ? "route-target-location" : "route-next-portal",
-        text: first ? `现在 ${mapRuntime.roomLabel(mapData, state.route.startRoomId)}` : last ? `终点 ${mapRuntime.roomLabel(mapData, state.route.targetRoomId)}` : "下一处",
-        compactText: first ? `现在 ${mapRuntime.roomLabel(mapData, state.route.startRoomId)}` : last ? `终点 ${mapRuntime.roomLabel(mapData, state.route.targetRoomId)}` : "下一处",
-        fullText: first ? `现在 ${mapRuntime.roomLabel(mapData, state.route.startRoomId)}` : last ? `终点 ${mapRuntime.roomLabel(mapData, state.route.targetRoomId)}` : "下一处",
+        text: first ? "现在" : last ? "终点" : nextText,
+        compactText: first ? "现在" : last ? "终点" : nextCompact,
+        fullText: first
+          ? `现在 ${currentLeg?.fromLabel || mapRuntime.roomLabel(mapData, state.route.startRoomId)}`
+          : last
+            ? `终点 ${mapRuntime.roomLabel(mapData, state.route.targetRoomId)}`
+            : currentLeg?.checkpointLabel ? `下一处 ${currentLeg.checkpointLabel}` : nextText,
         minDensity: "far",
         variant: "route",
-        priority: first || last ? 130 : 126,
+        priority: first || last ? 118 : next ? 120 : 116,
         start: first,
         target: last,
         position: marker.position.clone().add(new THREE.Vector3(first ? -0.16 : 0.16, 0.24, last ? -0.08 : 0.08)),
@@ -1907,36 +2080,54 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   }
 
   function projectLabels() {
-    const compact = renderHeight < 260 || renderWidth < 520;
+    const compact = isCompactHud(renderWidth, renderHeight);
     const distance = camera.position.distanceTo(controls.target);
     const density = compact
       ? distance <= 4.8 ? "near" : distance <= 7.2 ? "mid" : "far"
       : distance <= 5.8 ? "near" : distance <= 8.8 ? "mid" : "far";
     const projected = labels.map((label) => {
       const vector = label.position.clone().project(camera);
+      const nudge = routeLabelNudge(label.id || label.roomId || "");
       return {
         ...label,
         text: density === "near" ? (label.fullText || label.text) : (label.compactText || label.text),
         variant: label.variant === "room" && density !== "near" && !label.active ? "compact-room" : label.variant,
-        x: Math.round((vector.x * 0.5 + 0.5) * renderWidth),
-        y: Math.round((-vector.y * 0.5 + 0.5) * renderHeight),
+        x: Math.round((vector.x * 0.5 + 0.5) * renderWidth + nudge.x),
+        y: Math.round((-vector.y * 0.5 + 0.5) * renderHeight + nudge.y),
         visible: vector.z > -1 && vector.z < 1,
       };
     }).sort((a, b) => b.priority - a.priority);
-    const occupied = [];
+    const occupied = hudReservedBoxes(renderWidth, renderHeight, hudState());
     return projected.map((label) => {
       const required = labelDensityRank[label.minDensity || "far"] || 0;
       const densityValue = labelDensityRank[density] || 0;
-      const w = compact
-        ? label.variant === "route" ? 58 : label.variant === "floor" ? 52 : label.variant === "door" ? 28 : label.variant === "stair" ? 68 : label.variant === "corridor" ? 72 : label.variant === "compact-room" ? 34 : 54
-        : label.variant === "route" ? 112 : label.variant === "floor" ? 86 : label.variant === "door" ? 42 : label.variant === "compact-room" ? 52 : 92;
-      const h = compact ? (label.variant === "route" ? 22 : label.variant === "compact-room" ? 18 : 21) : (label.variant === "route" ? 30 : label.variant === "compact-room" ? 24 : 26);
+      const w = label.start || label.target || label.active
+        ? compact ? 70 : 128
+        : label.variant === "compact-room"
+          ? compact ? 34 : 54
+          : label.variant === "note"
+            ? compact ? 86 : 138
+            : label.variant === "route"
+              ? compact ? 72 : 126
+              : label.variant === "corridor"
+                ? compact ? 76 : 112
+                : label.variant === "floor"
+                  ? compact ? 52 : 86
+                  : label.variant === "door"
+                    ? compact ? 28 : 42
+                    : compact ? 54 : 92;
+      const h = label.variant === "compact-room" ? (compact ? 18 : 24) : label.variant === "door" ? (compact ? 21 : 22) : label.variant === "route" ? (compact ? 24 : 32) : compact ? 21 : 30;
       const box = { x: label.x - w / 2, y: label.y - h / 2, w, h };
-      const outside = box.x < 4 || box.y < 4 || box.x + box.w > renderWidth - (compact ? 56 : 64) || box.y + box.h > renderHeight - 4;
-      const collides = occupied.some((item) => box.x < item.x + item.w && box.x + box.w > item.x && box.y < item.y + item.h && box.y + box.h > item.y);
-      const allowCollision = label.priority >= 126 || (!compact && label.priority >= 110) || (density === "near" && label.variant === "room" && !compact);
-      const visible = label.visible && densityValue >= required && !outside && (!collides || allowCollision);
-      if (visible && label.priority < 110) occupied.push(box);
+      const rightGuard = density === "near" && (label.variant === "room" || label.variant === "compact-room") ? 42 : compact ? 56 : 64;
+      const edgeGuard = density === "near" ? 4 : 8;
+      const outside = box.x < edgeGuard || box.y < edgeGuard || box.x + box.w > renderWidth - rightGuard || box.y + box.h > renderHeight - edgeGuard;
+      const isRouteLabel = label.variant === "route" || String(label.id || "").startsWith("route-");
+      const collisions = occupied.filter((item) => boxesOverlap(box, item));
+      const collides = collisions.length > 0;
+      const collidesWithHardUi = collisions.some((item) => item.hard);
+      const allowPriorityOverride = !collidesWithHardUi && !isRouteLabel && (label.priority || 0) >= 90;
+      const visible = label.visible && densityValue >= required && !outside && (!collides || allowPriorityOverride);
+      if (visible) occupied.push({ ...box, hard: false, priority: label.priority || 0 });
       return { ...label, visible };
     }).filter((label) => label.visible);
   }

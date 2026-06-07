@@ -73,7 +73,7 @@ function anchoredFloorPoint(point: Point, floor: FloorId, semanticId?: string): 
 
 export function mapPointToModel(point: Point, floor: FloorId, options: TransformOptions = {}): ModelPoint {
   const [offsetX, offsetZ] = floorOffsetXZ(floor, options);
-  const anchoredPoint = options.layerMode === "exploded" ? point : anchoredFloorPoint(point, floor, options.semanticId);
+  const anchoredPoint = anchoredFloorPoint(point, floor, options.semanticId);
   const x = (anchoredPoint[0] - MAP_CENTER[0]) * MODEL_SCALE + offsetX;
   const z = (anchoredPoint[1] - MAP_CENTER[1]) * MODEL_SCALE + offsetZ;
   const y = floorBaseY(floor, options) + (options.lift ?? 0);

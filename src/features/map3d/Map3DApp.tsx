@@ -2248,7 +2248,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     const drawFocusedFloorSurfaces = shouldDrawFocusedFloorSurfaces(session);
     const routeActiveRoomIds = new Set([route?.startRoomId, route?.targetRoomId].filter((item): item is string => Boolean(item)));
     const isRouteOverview = session.layerMode === "allFloors" && Boolean(route);
-    const routeTouchesRaised202InView = routeUsesRaised202(route);
 
     const corridorMaterial = new THREE.MeshStandardMaterial({
       color: focusedFloorMap ? 0xb7e8ff : session.layerMode === "exploded" ? 0xc9edf8 : 0xbfe7ff,
@@ -2481,7 +2480,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           (isRaisedCorridor && routeTouchesRaised202 && !(session.layerMode === "single" && session.activeFloor === "2F"));
         if (!showRaisedCorridor) return;
         if (session.layerMode === "single" && session.activeFloor === "2F" && !isRaisedCorridor && corridorSemanticId === "2F-corridor-2") return;
-        if (isRouteOverview && isRaisedCorridor && !corridorOnRoute) return;
         if (modelFirstOverview && !corridorOnRoute && !isRaisedCorridor) {
           return;
         }
@@ -2805,14 +2803,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
 
     for (const room of visibleRooms) {
-      if (isRouteOverview && isRaised202RoomId(room.id) && !routeTouchesRaised202InView) continue;
-      if (isRouteOverview && room.floor === "2F" && !routeActiveRoomIds.has(room.id) && !overviewLabelRoomIds.has(room.id)) {
-        const targetId = route?.targetRoomId ?? "";
-        const sameTargetGroup =
-          (targetId.startsWith("108-2F") && room.id.startsWith("108-2F")) ||
-          (targetId.startsWith("202") && room.id.startsWith("202"));
-        if (!sameTargetGroup) continue;
-      }
       const active = room.id === activeRoomId;
       const target = room.id === session.targetRoomId;
       const start = room.id === startRoomId;
@@ -3162,7 +3152,6 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     });
     for (const stair of jingongMapData.stairs) {
       const onRoute = stairIsOnRoute(stair, route);
-      if (isRouteOverview && !onRoute) continue;
       const singleSecondFloorStairContext = isSingleSecondFloor(session) && stair.upperFloor === "2F";
       const lowerVisible = floorVisibility(stair.lowerFloor, session) || singleSecondFloorStairContext;
       const upperVisible = floorVisibility(stair.upperFloor, session);

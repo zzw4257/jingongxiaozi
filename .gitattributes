@@ -1,0 +1,13 @@
+build/android-release/ export-ignore
+build/android-test/ export-ignore
+output/ export-ignore
+tmp/ export-ignore
+.playwright-mcp/ export-ignore
+env.txt export-ignore
+.env export-ignore
+.env.* export-ignore
+*.apk export-ignore
+*.idsig export-ignore
+*.keystore export-ignore
+*.jks export-ignore
+*.p12 export-ignore

@@ -3,7 +3,7 @@ import type { MapDirectRequest } from "../../shared/appTypes";
 export type FloorId = "1F" | "2F";
 
 export type AreaType = "teaching" | "processing" | "lab" | "office" | "service" | "other";
-export type SpaceKind = "room" | "corridor" | "service" | "restroom" | "storage" | "reserved" | "stair" | "void";
+export type SpaceKind = "room" | "corridor" | "service" | "restroom" | "storage" | "reserved" | "support" | "stair" | "void";
 export type GeometrySource = "model" | "cad" | "reference" | "inferred";
 
 export type Point = [number, number];
@@ -50,6 +50,35 @@ export type MapSpace = {
   navigable: boolean;
   description: string;
   labelPriority?: number;
+};
+
+export type ClosedSpace = MapSpace & {
+  semanticId: string;
+  boundaryRole: "floor-shell" | "room" | "transport" | "service" | "support" | "void";
+  elevationKind: "floor" | "raised-platform" | "support";
+};
+
+export type SpaceAdjacency = {
+  id: string;
+  floor: FloorId;
+  fromSpaceId: string;
+  toSpaceId?: string;
+  toNodeId?: string;
+  via: "door" | "stair" | "corridor";
+  viaDoorId?: string;
+  viaStairId?: string;
+  source: GeometrySource;
+};
+
+export type StairPortal = {
+  id: string;
+  stairId: string;
+  access: StairGeometry["access"];
+  ownerRoomId?: string;
+  lowerSpaceId: string;
+  upperSpaceId: string;
+  lowerNodeId: string;
+  upperNodeId: string;
 };
 
 export type StairGeometry = {
@@ -152,9 +181,12 @@ export type MapData = {
   floors: FloorGeometry[];
   rooms: MapRoom[];
   spaces: MapSpace[];
+  closedSpaces: ClosedSpace[];
+  spaceAdjacency: SpaceAdjacency[];
   walls: WallSegment[];
   doors: DoorSegment[];
   stairs: StairGeometry[];
+  stairPortals: StairPortal[];
   centerlines: CenterlineSegment[];
   calibration: ModelCalibration;
   nodes: NavNode[];

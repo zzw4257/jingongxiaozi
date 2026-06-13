@@ -1,4 +1,4 @@
-export type AppMode = "standby" | "chat" | "expert" | "map";
+export type AppMode = "standby" | "chat" | "expert" | "map" | "duplex";
 
 export type StandbyPhase = "idle" | "listening";
 
@@ -58,6 +58,10 @@ export type AppState =
       mode: "map";
       audio: AudioChainState;
       request?: MapDirectRequest;
+    }
+  | {
+      mode: "duplex";
+      audio: AudioChainState;
     };
 
 export const DEFAULT_AUDIO_STATE: AudioChainState = {

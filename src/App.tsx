@@ -1,5 +1,6 @@
-import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, RotateCcw, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, PlugZap, RotateCcw, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { applyBackendDirective, mockDirectives } from "./backend-bridge/directives";
 import { ChatView } from "./features/chat/ChatView";
 import { ExpertView } from "./features/expert/ExpertView";
@@ -10,8 +11,226 @@ import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 import { postMiniProgramMessage } from "./shared/miniProgramBridge";
 import { useDuplexKitRealtime } from "./duplexkit/useDuplexKitRealtime";
 
+const STATUS_DOT_STORAGE_KEY = "duplexkit.statusDot.position";
+
 function shouldKeepMapForVoiceDirective(directive: BackendDirective) {
   return directive.type === "wake" || directive.type === "listening" || directive.type === "processing" || directive.type === "chat" || directive.type === "expert";
+}
+
+function clampStatusDotPosition(position: { x: number; y: number }) {
+  const margin = 10;
+  const size = 44;
+  const width = window.innerWidth || 1080;
+  const height = window.innerHeight || 720;
+  return {
+    x: Math.min(Math.max(position.x, margin), Math.max(margin, width - size - margin)),
+    y: Math.min(Math.max(position.y, margin), Math.max(margin, height - size - margin)),
+  };
+}
+
+function readStatusDotPosition() {
+  try {
+    const raw = window.localStorage.getItem(STATUS_DOT_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
+    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
+    return clampStatusDotPosition({ x: parsed.x, y: parsed.y });
+  } catch {
+    return null;
+  }
+}
+
+function writeStatusDotPosition(position: { x: number; y: number }) {
+  try {
+    window.localStorage.setItem(STATUS_DOT_STORAGE_KEY, JSON.stringify(position));
+  } catch {
+    // The dot still drags in this session if WebView storage is unavailable.
+  }
+}
+
+function DraggableStatusDot({
+  recording,
+  realtimeStatus,
+  onOpen,
+}: {
+  recording: boolean;
+  realtimeStatus: string;
+  onOpen: () => void;
+}) {
+  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const latestPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const dragRef = useRef({
+    timer: 0,
+    pointerId: -1,
+    active: false,
+    moved: false,
+    startX: 0,
+    startY: 0,
+    initialX: 0,
+    initialY: 0,
+    suppressClick: false,
+  });
+
+  useEffect(() => {
+    const updateDefaultPosition = () => {
+      setPosition((current) => {
+        const next = current ?? readStatusDotPosition() ?? clampStatusDotPosition({ x: window.innerWidth - 112, y: 14 });
+        latestPositionRef.current = next;
+        return next;
+      });
+    };
+    updateDefaultPosition();
+    window.addEventListener("resize", updateDefaultPosition);
+    return () => window.removeEventListener("resize", updateDefaultPosition);
+  }, []);
+
+  const clearLongPress = () => {
+    if (dragRef.current.timer) {
+      window.clearTimeout(dragRef.current.timer);
+      dragRef.current.timer = 0;
+    }
+  };
+
+  const finishDrag = () => {
+    clearLongPress();
+    const latestPosition = latestPositionRef.current ?? position;
+    if (dragRef.current.active && latestPosition) {
+      writeStatusDotPosition(latestPosition);
+      dragRef.current.suppressClick = true;
+      window.setTimeout(() => {
+        dragRef.current.suppressClick = false;
+      }, 0);
+    }
+    dragRef.current.active = false;
+    setDragging(false);
+  };
+
+  return (
+    <button
+      className={`duplex-status-dot ${recording ? "recording" : ""} ${dragging ? "dragging" : ""}`}
+      style={position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined}
+      onClick={(event) => {
+        if (dragRef.current.suppressClick) {
+          event.preventDefault();
+          return;
+        }
+        onOpen();
+      }}
+      onPointerDown={(event) => {
+        const current = position ?? clampStatusDotPosition({ x: window.innerWidth - 112, y: 14 });
+        latestPositionRef.current = current;
+        dragRef.current.pointerId = event.pointerId;
+        dragRef.current.active = false;
+        dragRef.current.moved = false;
+        dragRef.current.startX = event.clientX;
+        dragRef.current.startY = event.clientY;
+        dragRef.current.initialX = current.x;
+        dragRef.current.initialY = current.y;
+        clearLongPress();
+        dragRef.current.timer = window.setTimeout(() => {
+          dragRef.current.active = true;
+          setDragging(true);
+          event.currentTarget.setPointerCapture(event.pointerId);
+        }, 350);
+      }}
+      onPointerMove={(event) => {
+        if (event.pointerId !== dragRef.current.pointerId) return;
+        const dx = event.clientX - dragRef.current.startX;
+        const dy = event.clientY - dragRef.current.startY;
+        if (!dragRef.current.active && Math.hypot(dx, dy) > 8) {
+          clearLongPress();
+          return;
+        }
+        if (!dragRef.current.active) return;
+        dragRef.current.moved = true;
+        const nextPosition = clampStatusDotPosition({ x: dragRef.current.initialX + dx, y: dragRef.current.initialY + dy });
+        latestPositionRef.current = nextPosition;
+        setPosition(nextPosition);
+      }}
+      onPointerUp={finishDrag}
+      onPointerCancel={finishDrag}
+      aria-label={`${realtimeStatus}，长按拖动`}
+      title={`${realtimeStatus}，长按拖动`}
+    >
+      {recording ? <Mic2 size={19} /> : <PlugZap size={19} />}
+    </button>
+  );
+}
+
+function DuplexConnectionView({
+  duplexKit,
+  realtimeStatus,
+  voiceControls,
+}: {
+  duplexKit: ReturnType<typeof useDuplexKitRealtime>;
+  realtimeStatus: string;
+  voiceControls: ReactNode;
+}) {
+  return (
+    <section className="duplex-page">
+      <div className="duplex-connection-card">
+        <div className="duplex-page-heading">
+          <span className="duplex-page-icon">
+            <PlugZap size={28} />
+          </span>
+          <div>
+            <h2>后端连接</h2>
+            <p>DuplexKit Realtime WebSocket</p>
+          </div>
+        </div>
+
+        <div className="duplex-status-row">
+          <span>状态</span>
+          <strong>{realtimeStatus}</strong>
+        </div>
+        <div className="duplex-status-row">
+          <span>地址</span>
+          <strong>{duplexKit.baseUrl || "未配置"}</strong>
+        </div>
+
+        <div className="duplex-form-grid">
+          <label>
+            <span>Mac IP</span>
+            <input value={duplexKit.host} inputMode="decimal" placeholder="10.x.x.x" onChange={(event) => duplexKit.setHost(event.target.value)} />
+          </label>
+          <label>
+            <span>Port</span>
+            <input value={duplexKit.port} inputMode="numeric" placeholder="5177" onChange={(event) => duplexKit.setPort(event.target.value)} />
+          </label>
+        </div>
+
+        <div className="duplex-page-actions">
+          <button className="directive-button strong" onClick={duplexKit.connectionState === "connected" ? duplexKit.disconnect : duplexKit.connect}>
+            {duplexKit.connectionState === "connected" ? "断开后端" : "连接后端"}
+          </button>
+          <button className="directive-button" disabled={duplexKit.connectionState !== "connected"} onClick={duplexKit.toggleMic}>
+            {duplexKit.micOn ? "停止聆听" : "开始聆听"}
+          </button>
+        </div>
+
+        <div className="duplex-meter" aria-label="DuplexKit microphone level">
+          <span style={{ width: `${Math.round(duplexKit.level * 100)}%` }} />
+        </div>
+        <p className="duplex-connection-note">{duplexKit.connectionState} · {duplexKit.serviceState}</p>
+        {duplexKit.error ? <p className="duplex-error">{duplexKit.error}</p> : null}
+        <div className="duplex-page-voice">{voiceControls}</div>
+      </div>
+
+      <div className="duplex-turn-list" aria-label="最近对话">
+        {duplexKit.turns.length === 0 ? (
+          <p className="duplex-empty">暂无对话</p>
+        ) : (
+          duplexKit.turns.slice(-6).map((turn) => (
+            <article className="duplex-turn" key={turn.id}>
+              <strong>{turn.role === "user" ? "我" : "后端"}</strong>
+              <span>{turn.text}</span>
+            </article>
+          ))
+        )}
+      </div>
+    </section>
+  );
 }
 
 export function App() {
@@ -95,6 +314,10 @@ export function App() {
     handleDirective({ type: "map", request });
   };
 
+  const openDuplexConnection = () => {
+    setAppState({ mode: "duplex", audio: { ...DEFAULT_AUDIO_STATE, source: "touch", message: "打开后端连接页面" } });
+  };
+
   useEffect(() => {
     const apiWindow = window as typeof window & {
       jingongOpenMap?: () => void;
@@ -120,6 +343,7 @@ export function App() {
     if (appState.mode === "standby") return appState.phase === "listening" ? "正在聆听" : "待机展示";
     if (appState.mode === "chat") return "常态对话";
     if (appState.mode === "expert") return "专家问答";
+    if (appState.mode === "duplex") return "后端连接";
     return "地图导航";
   }, [appState]);
 
@@ -171,10 +395,9 @@ export function App() {
 
   return (
     <main className={`app-shell ${displayMode === "kiosk" ? "kiosk-shell" : "desktop-shell"} mode-${activeRail} ${immersive ? "immersive-mode" : ""} ${navOpen ? "nav-open" : ""}`}>
-      <section className="duplex-control-dock">
-        <span>{realtimeStatus}</span>
-        {voiceControls}
-      </section>
+      {appState.mode !== "duplex" && duplexKit.connectionState !== "idle" && (
+        <DraggableStatusDot recording={duplexKit.micOn} realtimeStatus={realtimeStatus} onOpen={openDuplexConnection} />
+      )}
 
       <header className="app-header">
         <div className="brand-mark" aria-hidden="true">
@@ -218,6 +441,10 @@ export function App() {
           <BookOpenText size={20} />
           <span>专家</span>
         </button>
+        <button className={activeMode === "duplex" ? "rail-button active" : "rail-button"} onClick={openDuplexConnection}>
+          <PlugZap size={20} />
+          <span>后端</span>
+        </button>
       </section>
 
       <section className="app-content">
@@ -225,6 +452,7 @@ export function App() {
         {appState.mode === "chat" && <ChatView answer={appState.answer} keywords={appState.keywords} audio={appState.audio} />}
         {appState.mode === "expert" && <ExpertView answer={appState.answer} keywords={appState.keywords} citations={appState.citations} audio={appState.audio} />}
         {appState.mode === "map" && <MapShell initialRequest={appState.request} entrySource={appState.request ? "backend" : "manual"} onExit={() => setAppState(DEFAULT_APP_STATE)} />}
+        {appState.mode === "duplex" && <DuplexConnectionView duplexKit={duplexKit} realtimeStatus={realtimeStatus} voiceControls={voiceControls} />}
       </section>
 
       {immersive && appState.mode === "standby" && appState.phase === "idle" && (
@@ -279,6 +507,10 @@ export function App() {
             <BookOpenText size={22} />
             <span>专家问答</span>
           </button>
+          <button className={activeMode === "duplex" ? "drawer-item active" : "drawer-item"} onClick={() => { openDuplexConnection(); setNavOpen(false); }}>
+            <PlugZap size={22} />
+            <span>后端连接</span>
+          </button>
           <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
             <Bug size={22} />
             <span>后端调试</span>
@@ -313,34 +545,6 @@ export function App() {
           <button className="directive-button strong" onClick={() => openMapFromBackend({ targetRoomId: "108-2F04", announce: ["summary", "distance", "floorChange"] })}>
             MapDirect: 去 108 钳工
           </button>
-          <div className="duplex-panel">
-            <div className="duplex-panel-title">DuplexKit 后端</div>
-            <label>
-              <span>Mac IP</span>
-              <input value={duplexKit.host} inputMode="decimal" placeholder="10.x.x.x" onChange={(event) => duplexKit.setHost(event.target.value)} />
-            </label>
-            <label>
-              <span>Port</span>
-              <input value={duplexKit.port} inputMode="numeric" placeholder="5177" onChange={(event) => duplexKit.setPort(event.target.value)} />
-            </label>
-            <button className="directive-button strong" onClick={duplexKit.connectionState === "connected" ? duplexKit.disconnect : duplexKit.connect}>
-              {duplexKit.connectionState === "connected" ? "断开 DuplexKit" : "连接 DuplexKit"}
-            </button>
-            <button className="directive-button" disabled={duplexKit.connectionState !== "connected"} onClick={duplexKit.toggleMic}>
-              {duplexKit.micOn ? "停止实时语音" : "开始实时语音"}
-            </button>
-            <div className="duplex-meter" aria-label="DuplexKit microphone level">
-              <span style={{ width: `${Math.round(duplexKit.level * 100)}%` }} />
-            </div>
-            <p>{duplexKit.connectionState} · {duplexKit.serviceState}</p>
-            {duplexKit.error ? <p className="duplex-error">{duplexKit.error}</p> : null}
-            {duplexKit.turns.slice(-3).map((turn) => (
-              <article className="duplex-turn" key={turn.id}>
-                <strong>{turn.role === "user" ? "我" : "后端"}</strong>
-                <span>{turn.text}</span>
-              </article>
-            ))}
-          </div>
         </aside>
       )}
 

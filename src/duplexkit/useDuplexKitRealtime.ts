@@ -6,10 +6,35 @@ import type { BackendDirective, MapDirectRequest } from "../shared/appTypes";
 import type { DuplexKitConnectionState, DuplexKitRealtimeMessage, DuplexKitToolRequest, DuplexKitTurn } from "./types";
 
 const DEFAULT_PORT = "5177";
+const DEFAULT_HOST = "10.162.230.154";
+const HOST_STORAGE_KEY = "duplexkit.backend.host";
+const PORT_STORAGE_KEY = "duplexkit.backend.port";
+
+function readStoredValue(key: string): string {
+  try {
+    return window.localStorage.getItem(key) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeStoredValue(key: string, value: string) {
+  try {
+    window.localStorage.setItem(key, value);
+  } catch {
+    // Storage can be unavailable in restricted WebViews; connection still works for this session.
+  }
+}
 
 function initialHost(): string {
+  const stored = readStoredValue(HOST_STORAGE_KEY).trim();
+  if (stored) return stored;
   const host = window.location.hostname;
-  return host && host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".localhost") ? host : "127.0.0.1";
+  return host && host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".localhost") ? host : DEFAULT_HOST;
+}
+
+function initialPort(): string {
+  return readStoredValue(PORT_STORAGE_KEY).trim() || DEFAULT_PORT;
 }
 
 function errorMessage(error: unknown): string {
@@ -103,8 +128,8 @@ type Options = {
 };
 
 export function useDuplexKitRealtime({ onDirective }: Options) {
-  const [host, setHost] = useState(initialHost);
-  const [port, setPort] = useState(DEFAULT_PORT);
+  const [host, setHostValue] = useState(initialHost);
+  const [port, setPortValue] = useState(initialPort);
   const [connectionState, setConnectionState] = useState<DuplexKitConnectionState>("idle");
   const [serviceState, setServiceState] = useState("idle");
   const [micOn, setMicOn] = useState(false);
@@ -130,6 +155,16 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
       return "";
     }
   }, [host, port]);
+
+  const setHost = useCallback((value: string) => {
+    setHostValue(value);
+    writeStoredValue(HOST_STORAGE_KEY, value);
+  }, []);
+
+  const setPort = useCallback((value: string) => {
+    setPortValue(value);
+    writeStoredValue(PORT_STORAGE_KEY, value);
+  }, []);
 
   const sendClientDebug = useCallback((levelName: "info" | "warn" | "error", event: string, message?: string, data?: unknown) => {
     const socket = socketRef.current;
@@ -384,6 +419,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     level,
     error,
     turns,
+    baseUrl,
     connect,
     disconnect,
     toggleMic,

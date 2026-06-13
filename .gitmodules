@@ -1,0 +1,3 @@
+[submodule "vendor/DuplexKit"]
+	path = vendor/DuplexKit
+	url = https://github.com/ElysiaFollower/DuplexKit.git

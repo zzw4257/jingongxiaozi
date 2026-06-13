@@ -7,7 +7,7 @@ function normalize(value: string): string {
   return value
     .toLowerCase()
     .replace(/\s+/g, "")
-    .replace(/[，。,.、：:;；（）()]/g, "");
+    .replace(/[，。,.、：:;；（）()\-－—–_]/g, "");
 }
 
 function scoreRoom(room: MapRoom, query: string): number {
@@ -17,10 +17,12 @@ function scoreRoom(room: MapRoom, query: string): number {
   const normalizedRoomNo = normalize(room.roomNo);
   const normalizedName = normalize(room.name);
   const fields = [room.id, room.roomNo, room.name, room.description, ...room.tags].map(normalize);
+  if (normalizedId && normalizedQuery === normalizedId) return 120;
+  if (normalizedRoomNo && normalizedQuery === normalizedRoomNo) return 118;
+  if (normalizedId && normalizedQuery.startsWith(normalizedId)) return 110 + Math.min(20, normalizedId.length);
+  if (normalizedRoomNo && normalizedQuery.startsWith(normalizedRoomNo)) return 100 + Math.min(20, normalizedRoomNo.length);
   if (fields.some((field) => field === normalizedQuery)) return 100;
   if (normalizedRoomNo && normalizedName && normalizedQuery.includes(normalizedRoomNo) && normalizedQuery.includes(normalizedName)) return 98;
-  if (normalizedId && normalizedQuery.startsWith(normalizedId)) return 94;
-  if (normalizedRoomNo && normalizedQuery.startsWith(normalizedRoomNo)) return 94;
   if (fields.some((field) => field.includes(normalizedQuery))) return 80;
   if (fields.some((field) => normalizedQuery.includes(field) && field.length >= 2)) return 65;
   const tokenHits = fields.flatMap((field) => [...normalizedQuery].filter((char) => field.includes(char))).length;

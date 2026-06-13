@@ -1,5 +1,5 @@
 import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, RotateCcw, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { applyBackendDirective, mockDirectives } from "./backend-bridge/directives";
 import { ChatView } from "./features/chat/ChatView";
 import { ExpertView } from "./features/expert/ExpertView";
@@ -8,6 +8,11 @@ import { StandbyView } from "./features/standby/StandbyView";
 import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 import { postMiniProgramMessage } from "./shared/miniProgramBridge";
+import { useDuplexKitRealtime } from "./duplexkit/useDuplexKitRealtime";
+
+function shouldKeepMapForVoiceDirective(directive: BackendDirective) {
+  return directive.type === "wake" || directive.type === "listening" || directive.type === "processing" || directive.type === "chat" || directive.type === "expert";
+}
 
 export function App() {
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
@@ -20,6 +25,17 @@ export function App() {
   const activeRail = appState.mode === "standby" && appState.phase === "listening" ? "listening" : activeMode;
   const immersive = displayMode === "kiosk";
   const qaHotspotEnabled = import.meta.env.VITE_QA_HOTSPOT === "1";
+
+  const handleDirective = useCallback((directive: BackendDirective) => {
+    setAppState((current) => {
+      if (current.mode === "map" && shouldKeepMapForVoiceDirective(directive)) {
+        return current;
+      }
+      return applyBackendDirective(directive);
+    });
+  }, []);
+
+  const duplexKit = useDuplexKitRealtime({ onDirective: handleDirective });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -51,10 +67,6 @@ export function App() {
   useEffect(() => {
     setNavOpen(false);
   }, [activeRail]);
-
-  const handleDirective = (directive: BackendDirective) => {
-    setAppState(applyBackendDirective(directive));
-  };
 
   const openMapManual = () => {
     setAppState({ mode: "map", audio: { ...DEFAULT_AUDIO_STATE, source: "touch", message: "手动打开地图" } });
@@ -111,8 +123,59 @@ export function App() {
     return "地图导航";
   }, [appState]);
 
+  const realtimeStatus = useMemo(() => {
+    if (duplexKit.micOn) return "开麦中";
+    if (duplexKit.connectionState === "connected") return "已连接，未开麦";
+    if (duplexKit.connectionState === "connecting") return "连接中";
+    if (duplexKit.connectionState === "error") return "连接失败";
+    return "未连接";
+  }, [duplexKit.connectionState, duplexKit.micOn]);
+
+  const voiceControlLabel = useMemo(() => {
+    if (duplexKit.micOn) return "停止聆听";
+    if (duplexKit.connectionState === "connected") return "开始聆听";
+    if (duplexKit.connectionState === "connecting") return "连接中";
+    if (duplexKit.connectionState === "error") return "重新连接";
+    return "连接后端";
+  }, [duplexKit.connectionState, duplexKit.micOn]);
+
+  const handleVoiceControl = () => {
+    if (duplexKit.connectionState === "connected") {
+      duplexKit.toggleMic();
+      return;
+    }
+    if (duplexKit.connectionState !== "connecting") {
+      duplexKit.connect();
+    }
+  };
+
+  const voiceControls = (
+    <div className="duplex-control-group" aria-label="DuplexKit 语音控制">
+      <button
+        className={`duplex-voice-toggle ${duplexKit.micOn ? "recording" : ""}`}
+        onClick={handleVoiceControl}
+        disabled={duplexKit.connectionState === "connecting"}
+        title={duplexKit.connectionState === "connected" ? "开始或停止手机麦克风推流" : "连接 DuplexKit 后端"}
+      >
+        <Mic2 size={18} />
+        <span>{voiceControlLabel}</span>
+      </button>
+      {duplexKit.connectionState === "connected" && (
+        <button className="duplex-disconnect-toggle" onClick={duplexKit.disconnect} title="断开 DuplexKit 后端并停止麦克风">
+          <X size={17} />
+          <span>断开</span>
+        </button>
+      )}
+    </div>
+  );
+
   return (
     <main className={`app-shell ${displayMode === "kiosk" ? "kiosk-shell" : "desktop-shell"} mode-${activeRail} ${immersive ? "immersive-mode" : ""} ${navOpen ? "nav-open" : ""}`}>
+      <section className="duplex-control-dock">
+        <span>{realtimeStatus}</span>
+        {voiceControls}
+      </section>
+
       <header className="app-header">
         <div className="brand-mark" aria-hidden="true">
           <Bot size={31} strokeWidth={2.4} />
@@ -122,7 +185,7 @@ export function App() {
           <p>机器人头顶展示终端 / 聆听状态 / 对话问答 / 金工中心地图导航</p>
         </div>
         <div className="header-status">
-          <span>{title}</span>
+          <span>{title} · {realtimeStatus}</span>
         </div>
         <button
           className="display-mode-toggle"
@@ -141,7 +204,7 @@ export function App() {
         </button>
         <button className={activeRail === "listening" ? "rail-button active" : "rail-button"} onClick={() => handleDirective({ type: "listening", hint: "我在听，请说出需求" })}>
           <Mic2 size={20} />
-          <span>聆听</span>
+          <span>聆听展示</span>
         </button>
         <button className={activeMode === "map" ? "rail-button primary active" : "rail-button primary"} onClick={openMapManual}>
           <MapPinned size={20} />
@@ -202,7 +265,7 @@ export function App() {
           </button>
           <button className={activeRail === "listening" ? "drawer-item active" : "drawer-item"} onClick={() => { handleDirective({ type: "listening", hint: "我在听，请说出需求" }); setNavOpen(false); }}>
             <Mic2 size={22} />
-            <span>聆听状态</span>
+            <span>聆听展示</span>
           </button>
           <button className={activeMode === "map" ? "drawer-item primary active" : "drawer-item primary"} onClick={() => { openMapManual(); setNavOpen(false); }}>
             <MapPinned size={22} />
@@ -250,6 +313,34 @@ export function App() {
           <button className="directive-button strong" onClick={() => openMapFromBackend({ targetRoomId: "108-2F04", announce: ["summary", "distance", "floorChange"] })}>
             MapDirect: 去 108 钳工
           </button>
+          <div className="duplex-panel">
+            <div className="duplex-panel-title">DuplexKit 后端</div>
+            <label>
+              <span>Mac IP</span>
+              <input value={duplexKit.host} inputMode="decimal" placeholder="10.x.x.x" onChange={(event) => duplexKit.setHost(event.target.value)} />
+            </label>
+            <label>
+              <span>Port</span>
+              <input value={duplexKit.port} inputMode="numeric" placeholder="5177" onChange={(event) => duplexKit.setPort(event.target.value)} />
+            </label>
+            <button className="directive-button strong" onClick={duplexKit.connectionState === "connected" ? duplexKit.disconnect : duplexKit.connect}>
+              {duplexKit.connectionState === "connected" ? "断开 DuplexKit" : "连接 DuplexKit"}
+            </button>
+            <button className="directive-button" disabled={duplexKit.connectionState !== "connected"} onClick={duplexKit.toggleMic}>
+              {duplexKit.micOn ? "停止实时语音" : "开始实时语音"}
+            </button>
+            <div className="duplex-meter" aria-label="DuplexKit microphone level">
+              <span style={{ width: `${Math.round(duplexKit.level * 100)}%` }} />
+            </div>
+            <p>{duplexKit.connectionState} · {duplexKit.serviceState}</p>
+            {duplexKit.error ? <p className="duplex-error">{duplexKit.error}</p> : null}
+            {duplexKit.turns.slice(-3).map((turn) => (
+              <article className="duplex-turn" key={turn.id}>
+                <strong>{turn.role === "user" ? "我" : "后端"}</strong>
+                <span>{turn.text}</span>
+              </article>
+            ))}
+          </div>
         </aside>
       )}
 

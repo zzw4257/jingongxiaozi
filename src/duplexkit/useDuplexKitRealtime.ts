@@ -6,7 +6,6 @@ import type { BackendDirective, MapDirectRequest } from "../shared/appTypes";
 import type { DuplexKitConnectionState, DuplexKitRealtimeMessage, DuplexKitToolRequest, DuplexKitTurn } from "./types";
 
 const DEFAULT_PORT = "5177";
-const DEFAULT_HOST = "10.162.230.154";
 const HOST_STORAGE_KEY = "duplexkit.backend.host";
 const PORT_STORAGE_KEY = "duplexkit.backend.port";
 
@@ -30,7 +29,7 @@ function initialHost(): string {
   const stored = readStoredValue(HOST_STORAGE_KEY).trim();
   if (stored) return stored;
   const host = window.location.hostname;
-  return host && host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".localhost") ? host : DEFAULT_HOST;
+  return host && host !== "localhost" && host !== "127.0.0.1" && !host.endsWith(".localhost") ? host : "";
 }
 
 function initialPort(): string {

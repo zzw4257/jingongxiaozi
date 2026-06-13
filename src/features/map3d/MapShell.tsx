@@ -10,14 +10,8 @@ type Props = {
   onExit?: () => void;
 };
 
-function shouldDefaultToLegacyMap() {
-  if (typeof window === "undefined" || typeof navigator === "undefined") return false;
-  const runtimeWindow = window as Window & { isTauri?: boolean; __TAURI_INTERNALS__?: unknown };
-  return /Android/i.test(navigator.userAgent) && Boolean(runtimeWindow.isTauri || runtimeWindow.__TAURI_INTERNALS__);
-}
-
 export function MapShell({ initialRequest, entrySource, onExit }: Props) {
-  const [version, setVersion] = useState<"model3d" | "legacy">(() => (shouldDefaultToLegacyMap() ? "legacy" : "model3d"));
+  const [version, setVersion] = useState<"model3d" | "legacy">("model3d");
 
   if (version === "legacy") {
     return (

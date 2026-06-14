@@ -942,8 +942,8 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
   const stepCount = options.publicAccess ? 14 : 10;
   const run = Math.max(0.13, horizontalDistance / stepCount);
   const rise = verticalDistance / stepCount;
-  const stairWidth = options.active ? (options.publicAccess ? 0.68 : 0.52) : options.publicAccess ? 0.44 : 0.34;
-  const passiveOpacity = options.active ? 1 : 0.74;
+  const stairWidth = options.active ? (options.publicAccess ? 0.72 : 0.56) : options.publicAccess ? 0.5 : 0.4;
+  const passiveOpacity = options.active ? 1 : 0.9;
   const pairMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0xffa000 : options.publicAccess ? 0x8a9bad : 0xb68b57,
     emissive: options.active ? 0xb85d00 : 0x000000,
@@ -970,7 +970,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.32,
     metalness: 0.08,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.66,
+    opacity: options.active ? 1 : 0.82,
   });
   const nosingMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0xfff0bd : options.publicAccess ? 0xf4f7fb : 0xf4dfbf,
@@ -979,7 +979,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.36,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.72,
+    opacity: options.active ? 1 : 0.88,
   });
   const haloMaterial = new THREE.MeshBasicMaterial({
     color: options.active ? 0xffd27a : options.publicAccess ? 0xd8e1ea : 0xe9d0ad,
@@ -993,7 +993,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.6,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.78,
+    opacity: options.active ? 1 : 0.9,
   });
   const undercarriageMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0x9d5200 : options.publicAccess ? 0x748799 : 0x7d5b36,
@@ -1012,17 +1012,9 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.62,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.82,
+    opacity: options.active ? 1 : 0.9,
   });
   const stringerCenter = a.clone().lerp(b, 0.5);
-  const shaftMaterial = new THREE.MeshStandardMaterial({
-    color: options.active ? 0x6b3900 : options.publicAccess ? 0x526173 : 0x6f4d2e,
-    roughness: 0.74,
-    metalness: 0.02,
-    transparent: !options.active,
-    opacity: options.active ? 0.82 : 0.38,
-  });
-  const shaftCenter = stringerCenter.clone().add(new THREE.Vector3(0, -verticalDistance * 0.18, 0));
   if (options.active) {
     root.add(orientedBox(stringerCenter.clone().add(new THREE.Vector3(0, -0.035, 0)), horizontalDistance * 0.98, 0.05, stairWidth * 0.34, angle, undercarriageMaterial.clone(), "stair-solid-undercarriage"));
   }
@@ -1067,6 +1059,59 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
 
   addDirectionalArrow(root, a, b, pairMaterial.clone(), options.active ? 1.18 : 0.9);
   if (options.active) addRouteStairGuide(root, a, b, pairMaterial.clone());
+}
+
+function addStairLandingPreview(
+  root: THREE.Group,
+  anchor: THREE.Vector3,
+  toward: THREE.Vector3,
+  options: { active: boolean; publicAccess: boolean; upper: boolean },
+) {
+  const { horizontal, side, angle } = stairBasis(anchor, toward);
+  const stepCount = options.publicAccess ? 6 : 5;
+  const stairWidth = options.active ? (options.publicAccess ? 0.66 : 0.54) : options.publicAccess ? 0.5 : 0.42;
+  const stepRun = options.publicAccess ? 0.15 : 0.13;
+  const stepRise = options.publicAccess ? 0.032 : 0.028;
+  const opacity = options.active ? 1 : 0.92;
+  const baseColor = options.active ? 0xffa000 : options.publicAccess ? 0x7e91a5 : 0xb48650;
+  const treadMaterial = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    emissive: options.active ? 0x8b4400 : 0x000000,
+    emissiveIntensity: options.active ? 0.32 : 0,
+    roughness: 0.48,
+    metalness: 0.02,
+    transparent: !options.active,
+    opacity,
+  });
+  const railMaterial = new THREE.MeshStandardMaterial({
+    color: options.active ? 0xffc45a : options.publicAccess ? 0x53657a : 0x6d5135,
+    roughness: 0.36,
+    metalness: 0.06,
+    transparent: !options.active,
+    opacity: options.active ? 1 : 0.84,
+  });
+  const landingMaterial = treadMaterial.clone();
+  const direction = options.upper ? -1 : 1;
+  const runVector = horizontal.clone().multiplyScalar(direction);
+  root.add(makeBeaconRing(anchor.clone().add(new THREE.Vector3(0, 0.045, 0)), stairWidth * 0.62, baseColor, options.active ? 0.46 : 0.28));
+  root.add(orientedBox(anchor.clone().add(new THREE.Vector3(0, 0.035, 0)), stairWidth * 1.12, 0.06, stairWidth * 0.9, angle, landingMaterial, "stair-visible-landing"));
+
+  for (let index = 0; index < stepCount; index += 1) {
+    const ratio = index + 1;
+    const center = anchor
+      .clone()
+      .add(runVector.clone().multiplyScalar(stepRun * ratio))
+      .add(new THREE.Vector3(0, direction > 0 ? stepRise * ratio : -stepRise * ratio, 0));
+    const tread = orientedBox(center, stepRun * 0.9, 0.04, stairWidth, angle, treadMaterial.clone(), `stair-visible-tread-${index}`);
+    root.add(tread);
+  }
+
+  const railOffset = side.clone().multiplyScalar(stairWidth * 0.55);
+  const railStart = anchor.clone().add(runVector.clone().multiplyScalar(stepRun * 0.4)).add(new THREE.Vector3(0, 0.18, 0));
+  const railEnd = anchor.clone().add(runVector.clone().multiplyScalar(stepRun * (stepCount + 0.6))).add(new THREE.Vector3(0, 0.18 + direction * stepRise * stepCount, 0));
+  root.add(tubeBetween(railStart.clone().add(railOffset), railEnd.clone().add(railOffset), options.active ? 0.022 : 0.016, railMaterial.clone()));
+  root.add(tubeBetween(railStart.clone().sub(railOffset), railEnd.clone().sub(railOffset), options.active ? 0.022 : 0.016, railMaterial.clone()));
+  addDirectionalArrow(root, anchor.clone().add(new THREE.Vector3(0, 0.16, 0)), railEnd.clone().add(new THREE.Vector3(0, 0.05, 0)), treadMaterial.clone(), options.active ? 1 : 0.78);
 }
 
 function addStairPortalPairMarker(root: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, options: { active: boolean; publicAccess: boolean }) {
@@ -3334,16 +3379,26 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         lowerSemanticVisible &&
         upperSemanticVisible &&
         (onRoute || shouldDrawStairBody(session, false));
-      if (shouldShowStairConnection) {
-        const lowerPoint = stairCenter(stair.lowerLanding);
-        const upperPoint = stairCenter(stair.upperLanding);
+      const lowerPoint = stairCenter(stair.lowerLanding);
+      const upperPoint = stairCenter(stair.upperLanding);
       const stairLift = session.layerMode === "exploded" ? 0.16 : 0.1;
       const lowerVector = new THREE.Vector3(...mapPointToModel(lowerPoint, stair.lowerFloor, { ...modelOptions, semanticId: `${stair.id}-lower`, lift: stairLift }));
       const upperVector = new THREE.Vector3(...mapPointToModel(upperPoint, stair.upperFloor, { ...modelOptions, semanticId: `${stair.id}-upper`, lift: stairLift }));
+      if (shouldShowStairConnection) {
         if (!shouldDrawStairBody(session, onRoute)) {
           addStairPortalPairMarker(building, lowerVector, upperVector, { active: onRoute, publicAccess: stair.access === "public" });
         } else {
           addStairPairGeometry(building, lowerVector, upperVector, { active: onRoute, publicAccess: stair.access === "public" });
+        }
+      } else if ((lowerVisible && lowerSemanticVisible) || (upperVisible && upperSemanticVisible)) {
+        if (!modelFirstOverview || onRoute || session.layerMode === "single" || session.layerMode === "raised202" || session.layerMode === "exploded") {
+          const publicAccess = stair.access === "public";
+          if (lowerVisible && lowerSemanticVisible) {
+            addStairLandingPreview(building, lowerVector, upperVector, { active: onRoute, publicAccess, upper: false });
+          }
+          if (upperVisible && upperSemanticVisible) {
+            addStairLandingPreview(building, upperVector, lowerVector, { active: onRoute, publicAccess, upper: true });
+          }
         }
       }
       if (((onRoute && activeLeg?.kind?.includes("stair")) || !route) && (lowerSemanticVisible || upperSemanticVisible)) {

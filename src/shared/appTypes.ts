@@ -35,6 +35,24 @@ export type MapDirectRequest = {
   announce?: Array<"summary" | "distance" | "direction" | "floorChange">;
 };
 
+export type NavigationProgressPayload = {
+  type: "navigation_progress";
+  routeId: string;
+  activeLegIndex: number;
+  totalLegs: number;
+  routeSummary: string;
+  fromLabel: string;
+  checkpointLabel: string;
+  checkpointKind: "door" | "corridor" | "turn" | "stair" | "room" | "destination";
+  instruction: string;
+  distanceMeters: number;
+  remainingMeters: number;
+  remainingSeconds: number;
+  completed: boolean;
+  announce: boolean;
+  reason: "route_started" | "step_changed" | "manual_next" | "manual_previous" | "status_requested" | "completed";
+};
+
 export type AppState =
   | {
       mode: "standby";

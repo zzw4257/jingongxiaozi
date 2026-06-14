@@ -26,7 +26,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CSSProperties, PointerEvent } from "react";
-import type { MapDirectRequest } from "../../shared/appTypes";
+import type { MapDirectRequest, NavigationProgressPayload } from "../../shared/appTypes";
 import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
 import { calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
@@ -99,6 +99,7 @@ type NorthLayout = {
 
 const mapDebugEnabled = import.meta.env.VITE_MAP_DEBUG === "1";
 const TRUE_NORTH_VECTOR = new THREE.Vector3(0, 0, -1);
+const HEADING_CALIBRATION_STORAGE_KEY = "jingong.map.headingCalibration";
 
 function activeLegUi(route?: RouteResult, leg?: RouteResult["guidanceLegs"][number]) {
   if (!route || !leg) {
@@ -1561,17 +1562,44 @@ function bearingBetween(a: THREE.Vector3, b: THREE.Vector3) {
   return normalizeRadians(Math.atan2(b.x - a.x, b.z - a.z));
 }
 
+function readStoredHeadingCalibration() {
+  if (typeof window === "undefined") return { calibrated: false, calibrationOffset: 0 };
+  try {
+    const raw = window.localStorage.getItem(HEADING_CALIBRATION_STORAGE_KEY);
+    if (!raw) return { calibrated: false, calibrationOffset: 0 };
+    const parsed = JSON.parse(raw) as { calibrated?: unknown; calibrationOffset?: unknown };
+    return {
+      calibrated: parsed.calibrated === true,
+      calibrationOffset: typeof parsed.calibrationOffset === "number" ? normalizeRadians(parsed.calibrationOffset) : 0,
+    };
+  } catch {
+    return { calibrated: false, calibrationOffset: 0 };
+  }
+}
+
+function writeStoredHeadingCalibration(offset: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(HEADING_CALIBRATION_STORAGE_KEY, JSON.stringify({ calibrated: true, calibrationOffset: normalizeRadians(offset) }));
+  } catch {
+    // Direction still works for the current session when WebView storage is unavailable.
+  }
+}
+
 function useDeviceHeading(): DeviceHeadingState & {
   setCalibrationOffset: (offset: number) => void;
   requestPermission: () => Promise<void>;
 } {
   const missingSensorTimerRef = useRef<number | undefined>();
-  const [state, setState] = useState<DeviceHeadingState>({
-    supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
-    calibrated: false,
-    calibrationOffset: 0,
-    permissionState: "idle",
-    statusMessage: "使用真实南北方向作为地图基准",
+  const [state, setState] = useState<DeviceHeadingState>(() => {
+    const stored = readStoredHeadingCalibration();
+    return {
+      supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
+      calibrated: stored.calibrated,
+      calibrationOffset: stored.calibrationOffset,
+      permissionState: "idle",
+      statusMessage: stored.calibrated ? "已使用上次方向校准；可随时重新校准。" : "使用真实南北方向作为地图基准",
+    };
   });
 
   const attachOrientationListener = useCallback(() => {
@@ -1604,7 +1632,8 @@ function useDeviceHeading(): DeviceHeadingState & {
   useEffect(() => attachOrientationListener(), [attachOrientationListener]);
 
   const setCalibrationOffset = useCallback((offset: number) => {
-    setState((current) => ({ ...current, calibrated: true, calibrationOffset: offset }));
+    writeStoredHeadingCalibration(offset);
+    setState((current) => ({ ...current, calibrated: true, calibrationOffset: normalizeRadians(offset), statusMessage: undefined }));
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -1774,6 +1803,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const northLayoutSignatureRef = useRef("");
   const sessionLayerModeRef = useRef<MapSessionState["layerMode"]>(session.layerMode);
   const focusedLegSignatureRef = useRef("");
+  const navigationProgressSignatureRef = useRef("");
+  const routeStartedAnnouncementRef = useRef("");
   const panelDragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -3851,26 +3882,91 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     });
   }, [route]);
 
+  const navigationProgressPayload = useCallback(
+    (
+      leg: RouteResult["guidanceLegs"][number],
+      reason: NavigationProgressPayload["reason"],
+      announce: boolean,
+    ): NavigationProgressPayload | undefined => {
+      if (!route) return undefined;
+      const remainingMeters = Math.max(0, Math.round(route.guidanceLegs.slice(leg.index).reduce((sum, item) => sum + item.distanceMeters, 0)));
+      const remainingSeconds = Math.max(0, Math.round(route.estimatedSeconds * (remainingMeters / Math.max(1, route.totalMeters))));
+      const completed = leg.index >= route.guidanceLegs.length - 1 && reason === "completed";
+      return {
+        type: "navigation_progress",
+        routeId: route.id,
+        activeLegIndex: leg.index,
+        totalLegs: route.guidanceLegs.length,
+        routeSummary: route.summary,
+        fromLabel: leg.fromLabel,
+        checkpointLabel: leg.checkpointLabel,
+        checkpointKind: leg.checkpointKind,
+        instruction: leg.instruction,
+        distanceMeters: leg.distanceMeters,
+        remainingMeters,
+        remainingSeconds,
+        completed,
+        announce,
+        reason,
+      };
+    },
+    [route],
+  );
+
+  const emitNavigationProgress = useCallback(
+    (reason: NavigationProgressPayload["reason"], announce = false, leg = activeLeg) => {
+      if (typeof window === "undefined" || !leg) return;
+      const payload = navigationProgressPayload(leg, reason, announce);
+      if (!payload) return;
+      const signature = `${payload.routeId}:${payload.activeLegIndex}:${payload.reason}:${payload.announce ? 1 : 0}:${payload.completed ? 1 : 0}`;
+      if (!announce && navigationProgressSignatureRef.current === signature) return;
+      navigationProgressSignatureRef.current = signature;
+      window.dispatchEvent(new CustomEvent("jingong:navigation-progress", { detail: payload }));
+    },
+    [activeLeg, navigationProgressPayload],
+  );
+
+  useEffect(() => {
+    if (!route || !activeLeg) return;
+    const shouldAnnounceRouteStart = activeLeg.index === 0 && routeStartedAnnouncementRef.current !== route.id;
+    if (shouldAnnounceRouteStart) routeStartedAnnouncementRef.current = route.id;
+    emitNavigationProgress(shouldAnnounceRouteStart ? "route_started" : "step_changed", shouldAnnounceRouteStart);
+  }, [activeLeg?.index, emitNavigationProgress, route?.id]);
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const host = window as Window & { __jingongMapProgress?: (update: MapProgressUpdate) => void };
-    const bridge = (update: MapProgressUpdate) => updateRouteProgress(update, "backend");
+    const bridge = (update: MapProgressUpdate) => {
+      if (!route) return;
+      const nodeIndex =
+        update.currentNodeId !== undefined
+          ? route.guidanceLegs.findIndex((leg) => leg.fromNodeId === update.currentNodeId || leg.toNodeId === update.currentNodeId)
+          : -1;
+      const requestedIndex = update.activeLegIndex ?? (nodeIndex >= 0 ? nodeIndex : routeProgress?.activeLegIndex ?? activeLeg?.index ?? 0);
+      const nextIndex = THREE.MathUtils.clamp(requestedIndex, 0, Math.max(0, route.guidanceLegs.length - 1));
+      const nextLeg = route.guidanceLegs[nextIndex];
+      updateRouteProgress(update, "backend");
+      if (update.announce && nextLeg) emitNavigationProgress(update.reason ?? "step_changed", true, nextLeg);
+    };
     host.__jingongMapProgress = bridge;
     return () => {
       if (host.__jingongMapProgress === bridge) delete host.__jingongMapProgress;
     };
-  }, [updateRouteProgress]);
+  }, [activeLeg?.index, emitNavigationProgress, route, routeProgress?.activeLegIndex, updateRouteProgress]);
 
   const stepRouteProgress = (delta: number) => {
     if (!route) return;
-    updateRouteProgress({
-      activeLegIndex: (routeProgress?.routeId === route.id ? routeProgress.activeLegIndex : 0) + delta,
-    });
+    const baseIndex = routeProgress?.routeId === route.id ? routeProgress.activeLegIndex : 0;
+    const nextIndex = THREE.MathUtils.clamp(baseIndex + delta, 0, Math.max(0, route.guidanceLegs.length - 1));
+    updateRouteProgress({ activeLegIndex: nextIndex });
+    const nextLeg = route.guidanceLegs[nextIndex];
+    if (nextLeg) emitNavigationProgress(delta > 0 ? "manual_next" : "manual_previous", true, nextLeg);
   };
 
   const advanceRouteCheckpoint = () => {
     if (!route || !activeLeg) return;
     if (activeLeg.index >= route.guidanceLegs.length - 1) {
+      emitNavigationProgress("completed", true, activeLeg);
       setPanel("none");
       return;
     }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { downsample, DUPLEXKIT_SAMPLE_RATE, floatToInt16Buffer, PcmFloat32Player, rms } from "./audio";
 import { resolveRoomId, roomLabel } from "./roomResolver";
 import { isRealtimeMessage } from "./types";
-import type { BackendDirective, MapDirectRequest } from "../shared/appTypes";
+import type { BackendDirective, MapDirectRequest, NavigationProgressPayload } from "../shared/appTypes";
 import type { DuplexKitConnectionState, DuplexKitRealtimeMessage, DuplexKitToolRequest, DuplexKitTurn } from "./types";
 
 const DEFAULT_PORT = "5177";
@@ -105,7 +105,7 @@ function mapRequestForTool(request: DuplexKitToolRequest, current: MapDirectRequ
   }
 }
 
-function resultForTool(request: DuplexKitToolRequest, mapRequest?: MapDirectRequest) {
+function resultForTool(request: DuplexKitToolRequest, mapRequest?: MapDirectRequest, progress?: NavigationProgressPayload) {
   const target = roomLabel(mapRequest?.targetRoomId);
   const origin = roomLabel(mapRequest?.startRoomId);
   switch (request.tool) {
@@ -119,6 +119,18 @@ function resultForTool(request: DuplexKitToolRequest, mapRequest?: MapDirectRequ
       return { summary: `终点已设置为${target}`, visibleResult: `地图终点：${target}` };
     case "navigation.start":
       return { summary: `导航已启动，目的地是${target}`, visibleResult: `金工小子地图已显示到 ${target} 的路线。` };
+    case "navigation.next":
+      return progress
+        ? { summary: `已切到第${progress.activeLegIndex + 1}段，下一处是${progress.checkpointLabel}`, visibleResult: `当前段：${progress.instruction}` }
+        : { summary: "已请求切到下一段", visibleResult: "地图将切到下一段导航。" };
+    case "navigation.previous":
+      return progress
+        ? { summary: `已回到第${progress.activeLegIndex + 1}段，下一处是${progress.checkpointLabel}`, visibleResult: `当前段：${progress.instruction}` }
+        : { summary: "已请求回到上一段", visibleResult: "地图将回到上一段导航。" };
+    case "navigation.status":
+      return progress
+        ? { summary: `当前第${progress.activeLegIndex + 1}段，到${progress.checkpointLabel}还有${Math.round(progress.distanceMeters)}米`, visibleResult: `剩余约${Math.round(progress.remainingMeters)}米：${progress.instruction}` }
+        : { summary: "当前没有可播报的导航进度", visibleResult: "请先开始地图导航。" };
   }
 }
 
@@ -151,6 +163,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
   const sinkRef = useRef<GainNode | null>(null);
   const runningRef = useRef(false);
   const mapRequestRef = useRef<MapDirectRequest>({});
+  const latestNavigationProgressRef = useRef<NavigationProgressPayload | undefined>();
   const preserveDirectiveUntilRef = useRef(0);
   const speechStartedAtRef = useRef(0);
 
@@ -226,10 +239,10 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
 
   useEffect(() => () => disconnect(), [disconnect]);
 
-  const sendToolResult = useCallback((request: DuplexKitToolRequest, mapRequest?: MapDirectRequest) => {
+  const sendToolResult = useCallback((request: DuplexKitToolRequest, mapRequest?: MapDirectRequest, progress?: NavigationProgressPayload) => {
     const socket = socketRef.current;
     if (!socket || socket.readyState !== WebSocket.OPEN) return;
-    const result = resultForTool(request, mapRequest);
+    const result = resultForTool(request, mapRequest, progress);
     socket.send(
       JSON.stringify({
         type: "tool_result",
@@ -243,6 +256,13 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     );
   }, []);
 
+  const sendNavigationProgress = useCallback((progress: NavigationProgressPayload) => {
+    latestNavigationProgressRef.current = progress;
+    const socket = socketRef.current;
+    if (!socket || socket.readyState !== WebSocket.OPEN) return;
+    socket.send(JSON.stringify(progress));
+  }, []);
+
   const handleToolRequest = useCallback(
     (request: DuplexKitToolRequest) => {
       preserveDirectiveUntilRef.current = Date.now() + 12_000;
@@ -251,6 +271,22 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
         mapRequestRef.current = {};
         onDirective({ type: "idle", emotion: "neutral" });
         sendToolResult(request, undefined);
+        return;
+      }
+      if (request.tool === "navigation.next" || request.tool === "navigation.previous" || request.tool === "navigation.status") {
+        const current = latestNavigationProgressRef.current;
+        const mapProgress = (window as Window & { __jingongMapProgress?: (update: { activeLegIndex?: number; announce?: boolean; reason?: "manual_next" | "manual_previous" | "status_requested" }) => void }).__jingongMapProgress;
+        if (mapProgress && current && request.tool !== "navigation.status") {
+          const isNext = request.tool === "navigation.next";
+          mapProgress({
+            activeLegIndex: current.activeLegIndex + (isNext ? 1 : -1),
+            announce: true,
+            reason: isNext ? "manual_next" : "manual_previous",
+          });
+        } else if (mapProgress && request.tool === "navigation.status") {
+          mapProgress({ announce: true, reason: "status_requested" });
+        }
+        window.setTimeout(() => sendToolResult(request, mapRequestRef.current, latestNavigationProgressRef.current), 140);
         return;
       }
       if (nextMapRequest) {
@@ -463,6 +499,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     turns,
     baseUrl,
     runtimeSettings,
+    sendNavigationProgress,
     connect,
     disconnect,
     toggleMic,

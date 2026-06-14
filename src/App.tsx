@@ -6,7 +6,7 @@ import { ChatView } from "./features/chat/ChatView";
 import { ExpertView } from "./features/expert/ExpertView";
 import { MapShell } from "./features/map3d/MapShell";
 import { StandbyView } from "./features/standby/StandbyView";
-import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
+import type { AppState, BackendDirective, MapDirectRequest, NavigationProgressPayload } from "./shared/appTypes";
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 import { postMiniProgramMessage } from "./shared/miniProgramBridge";
 import { useDuplexKitRealtime } from "./duplexkit/useDuplexKitRealtime";
@@ -339,6 +339,17 @@ export function App() {
       window.removeEventListener("jingong:directive", onDirective);
     };
   }, []);
+
+  const sendNavigationProgress = duplexKit.sendNavigationProgress;
+
+  useEffect(() => {
+    const onProgress = (event: Event) => {
+      const progress = (event as CustomEvent<NavigationProgressPayload>).detail;
+      if (progress?.type === "navigation_progress") sendNavigationProgress(progress);
+    };
+    window.addEventListener("jingong:navigation-progress", onProgress);
+    return () => window.removeEventListener("jingong:navigation-progress", onProgress);
+  }, [sendNavigationProgress]);
 
   const title = useMemo(() => {
     if (appState.mode === "standby") return appState.phase === "listening" ? "正在聆听" : "待机展示";

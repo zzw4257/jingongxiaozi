@@ -3,7 +3,10 @@ export type DuplexKitToolName =
   | "map.close"
   | "map.set_origin"
   | "map.set_destination"
-  | "navigation.start";
+  | "navigation.start"
+  | "navigation.next"
+  | "navigation.previous"
+  | "navigation.status";
 
 export type DuplexKitToolRequest = {
   toolCallId: string;
@@ -30,6 +33,24 @@ export type DuplexKitRealtimeMessage =
   | { type: "tool_request"; request?: DuplexKitToolRequest }
   | { type: "tool"; status?: string; tool?: string; summary?: string; visibleResult?: string }
   | { type: "raw_event"; event?: number; eventName?: string };
+
+export type DuplexKitNavigationProgress = {
+  type: "navigation_progress";
+  routeId: string;
+  activeLegIndex: number;
+  totalLegs: number;
+  routeSummary: string;
+  fromLabel: string;
+  checkpointLabel: string;
+  checkpointKind: string;
+  instruction: string;
+  distanceMeters: number;
+  remainingMeters: number;
+  remainingSeconds: number;
+  completed: boolean;
+  announce: boolean;
+  reason: string;
+};
 
 export type DuplexKitConnectionState = "idle" | "connecting" | "connected" | "error";
 

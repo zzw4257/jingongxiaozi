@@ -11,7 +11,7 @@
     "check:geometry": "node scripts/verify-geometry.mjs",
     "check:model": "node scripts/verify-model-assets.mjs",
     "check:alignment": "node scripts/verify-alignment.mjs",
-    "check:miniprogram": "node scripts/verify-miniprogram.mjs",
+    "check:miniprogram": "node scripts/verify-miniprogram.mjs && node scripts/verify-miniprogram-backend-bridge.mjs",
     "check:miniprogram:release": "node scripts/verify-miniprogram.mjs --release",
     "check:miniprogram:parity": "node scripts/verify-miniprogram.mjs --parity",
     "build:miniprogram:vendor": "node scripts/build-miniprogram-three-vendor.mjs",

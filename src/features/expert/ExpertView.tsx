@@ -12,10 +12,7 @@ type Props = {
 export function ExpertView({ answer, keywords, citations, audio }: Props) {
   return (
     <div className="response-screen expert-screen">
-      <img className="expert-asset" src={robotExpert} alt="" draggable={false} />
       <article className="response-card expert-answer-card">
-        <span className="eyebrow">专家问答</span>
-        <h2>工程训练知识回答</h2>
         <p className="spoken-answer">{answer}</p>
         <div className="keyword-row">
           {keywords.map((keyword) => (
@@ -24,6 +21,7 @@ export function ExpertView({ answer, keywords, citations, audio }: Props) {
         </div>
         <AudioStatus audio={audio} compact />
       </article>
+      <img className="expert-asset response-companion" src={robotExpert} alt="" draggable={false} />
       <div className="citation-list">
         {citations.map((citation) => (
           <article key={`${citation.title}-${citation.source}`} className="citation-card">

@@ -244,6 +244,7 @@ export function App() {
   const activeRail = appState.mode === "standby" && appState.phase === "listening" ? "listening" : activeMode;
   const immersive = displayMode === "kiosk";
   const qaHotspotEnabled = import.meta.env.VITE_QA_HOTSPOT === "1";
+  const debugControlsEnabled = import.meta.env.VITE_SHOW_BACKEND_MOCKS === "1";
 
   const handleDirective = useCallback((directive: BackendDirective) => {
     setAppState((current) => {
@@ -511,20 +512,22 @@ export function App() {
             <PlugZap size={22} />
             <span>后端连接</span>
           </button>
-          <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
-            <Bug size={22} />
-            <span>后端调试</span>
-          </button>
+          {debugControlsEnabled && (
+            <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
+              <Bug size={22} />
+              <span>后端调试</span>
+            </button>
+          )}
         </aside>
       )}
 
-      {displayMode === "desktop" && (
+      {debugControlsEnabled && displayMode === "desktop" && (
         <button className={debugOpen ? "debug-fab active" : "debug-fab"} onClick={() => setDebugOpen((open) => !open)} title="后端指令模拟">
           {debugOpen ? <X size={24} /> : <Bug size={24} />}
         </button>
       )}
 
-      {debugOpen && (
+      {debugControlsEnabled && debugOpen && (
         <aside className="directive-panel floating" aria-label="后端指令调试">
           <div className="panel-title">
             <span>后端指令模拟</span>

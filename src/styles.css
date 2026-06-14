@@ -1122,6 +1122,39 @@ button {
   font-size: 28px;
   font-weight: 800;
   line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.spoken-answer-medium {
+  font-size: 24px;
+  line-height: 1.46;
+}
+
+.spoken-answer-dense {
+  font-size: 20px;
+  line-height: 1.38;
+}
+
+.spoken-token {
+  display: inline-block;
+  margin: 0 0.02em;
+  border-radius: 0.42em;
+  transition:
+    background 140ms ease,
+    color 140ms ease,
+    box-shadow 140ms ease,
+    transform 140ms ease;
+}
+
+.spoken-token.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #0b6cff, #10a7c8);
+  box-shadow: 0 8px 20px rgba(11, 108, 255, 0.28);
+  transform: translateY(-1px);
+}
+
+.spoken-token.punctuation {
+  margin: 0;
 }
 
 .expert-answer-card {
@@ -5219,6 +5252,23 @@ button {
   paint-order: stroke;
   stroke: rgba(255, 255, 255, 0.65);
   stroke-width: 5px;
+}
+
+.kiosk-shell.immersive-mode .spoken-answer-medium {
+  font-size: clamp(26px, 6.8vh, 58px);
+  line-height: 1.22;
+  -webkit-line-clamp: 6;
+}
+
+.kiosk-shell.immersive-mode .spoken-answer-dense {
+  font-size: clamp(21px, 5.2vh, 42px);
+  line-height: 1.18;
+  -webkit-line-clamp: 8;
+}
+
+.kiosk-shell.immersive-mode .spoken-token.active {
+  padding: 0 0.14em 0.04em;
+  box-shadow: 0 12px 34px rgba(11, 108, 255, 0.3);
 }
 
 .kiosk-shell.immersive-mode .spoken-card .eyebrow,

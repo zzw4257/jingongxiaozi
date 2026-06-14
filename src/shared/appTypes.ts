@@ -8,6 +8,7 @@ export type AudioChainState = {
   source: "none" | "touch" | "backend" | "mock";
   level?: number;
   message?: string;
+  speechStartedAt?: number;
 };
 
 export type Citation = {

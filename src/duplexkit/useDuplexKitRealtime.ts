@@ -146,6 +146,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
   const runningRef = useRef(false);
   const mapRequestRef = useRef<MapDirectRequest>({});
   const preserveDirectiveUntilRef = useRef(0);
+  const speechStartedAtRef = useRef(0);
 
   const baseUrl = useMemo(() => {
     try {
@@ -261,7 +262,17 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
         case "assistant_text":
           setTurns((current) => appendOrReplaceTurn(current, "assistant", message.text || "", false, Boolean(message.append)));
           if (message.text && Date.now() > preserveDirectiveUntilRef.current) {
-            onDirective({ type: "chat", answer: message.text, keywords: ["实时语音"], audio: { source: "backend", output: "speaking", message: "后端实时回复" } });
+            onDirective({
+              type: "chat",
+              answer: message.text,
+              keywords: ["实时语音"],
+              audio: {
+                source: "backend",
+                output: "speaking",
+                message: "后端实时回复",
+                speechStartedAt: speechStartedAtRef.current || Date.now(),
+              },
+            });
           }
           break;
         case "message_end":
@@ -274,10 +285,14 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
           onDirective({ type: "processing", hint: "正在理解你的需求" });
           break;
         case "tts_start":
-          if (!message.suppressed) setServiceState("speaking");
+          if (!message.suppressed) {
+            speechStartedAtRef.current = Date.now();
+            setServiceState("speaking");
+          }
           break;
         case "tts_end":
         case "llm_end":
+          if (message.type === "tts_end") speechStartedAtRef.current = 0;
           setServiceState("listening");
           setTurns((current) => finalizeLast(current, "assistant"));
           break;

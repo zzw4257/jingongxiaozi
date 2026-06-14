@@ -126,6 +126,11 @@ type Options = {
   onDirective: (directive: BackendDirective) => void;
 };
 
+type RuntimeSettingsState = {
+  speaker?: string;
+  voiceLabel?: string;
+};
+
 export function useDuplexKitRealtime({ onDirective }: Options) {
   const [host, setHostValue] = useState(initialHost);
   const [port, setPortValue] = useState(initialPort);
@@ -135,6 +140,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
   const [level, setLevel] = useState(0);
   const [error, setError] = useState("");
   const [turns, setTurns] = useState<DuplexKitTurn[]>([]);
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettingsState>({});
 
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -171,6 +177,26 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     if (socket?.readyState !== WebSocket.OPEN) return;
     socket.send(JSON.stringify({ type: "client_debug", level: levelName, event, message, data, at: new Date().toISOString() }));
   }, []);
+
+  const refreshRuntimeSettings = useCallback(async () => {
+    if (!baseUrl) return;
+    try {
+      const response = await fetch(`${baseUrl}/api/runtime-settings`);
+      if (!response.ok) throw new Error(`runtime settings ${response.status}`);
+      const data = (await response.json()) as {
+        settings?: { speaker?: string };
+        speakerPresets?: Array<{ id: string; label?: string; description?: string }>;
+      };
+      const speaker = data.settings?.speaker;
+      const preset = data.speakerPresets?.find((candidate) => candidate.id === speaker);
+      setRuntimeSettings({
+        speaker,
+        voiceLabel: preset ? `${preset.label ?? preset.id} · ${preset.description ?? "实时音色"}` : speaker,
+      });
+    } catch (settingsError) {
+      sendClientDebug("warn", "runtime_settings_fetch_failed", errorMessage(settingsError));
+    }
+  }, [baseUrl, sendClientDebug]);
 
   const stopMic = useCallback(() => {
     runningRef.current = false;
@@ -271,6 +297,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
                 output: "speaking",
                 message: "后端实时回复",
                 speechStartedAt: speechStartedAtRef.current || Date.now(),
+                voiceLabel: runtimeSettings.voiceLabel,
               },
             });
           }
@@ -304,7 +331,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
           break;
       }
     },
-    [handleToolRequest, level, onDirective],
+    [handleToolRequest, level, onDirective, runtimeSettings.voiceLabel],
   );
 
   const connect = useCallback(() => {
@@ -323,6 +350,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
       socket.addEventListener("open", () => {
         setConnectionState("connected");
         setServiceState("connected");
+        void refreshRuntimeSettings();
         sendClientDebug("info", "socket_open", wsUrl, {
           secureContext: window.isSecureContext,
           hasGetUserMedia: Boolean(navigator.mediaDevices?.getUserMedia),
@@ -356,7 +384,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
       setError(errorMessage(connectError));
       setConnectionState("error");
     }
-  }, [baseUrl, handleJsonMessage, sendClientDebug, stopMic]);
+  }, [baseUrl, handleJsonMessage, refreshRuntimeSettings, sendClientDebug, stopMic]);
 
   const startMic = useCallback(async () => {
     if (connectionState !== "connected" || socketRef.current?.readyState !== WebSocket.OPEN) {
@@ -434,6 +462,7 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     error,
     turns,
     baseUrl,
+    runtimeSettings,
     connect,
     disconnect,
     toggleMic,

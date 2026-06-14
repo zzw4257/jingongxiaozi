@@ -9,6 +9,7 @@ export type AudioChainState = {
   level?: number;
   message?: string;
   speechStartedAt?: number;
+  voiceLabel?: string;
 };
 
 export type Citation = {

@@ -410,6 +410,7 @@ export function App() {
         </div>
         <div className="header-status">
           <span>{title} · {realtimeStatus}</span>
+          {duplexKit.runtimeSettings.voiceLabel ? <small>{duplexKit.runtimeSettings.voiceLabel}</small> : null}
         </div>
         <button
           className="display-mode-toggle"

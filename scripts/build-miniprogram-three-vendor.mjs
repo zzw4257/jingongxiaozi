@@ -34,7 +34,15 @@ bundle = bundle.replace(
 );
 bundle = bundle.replace(
   'let i=wx.getSystemInfoSync(),s=i.platform==="android";',
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():{},a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{windowWidth:o.windowWidth||0,windowHeight:o.windowHeight||0,pixelRatio:o.pixelRatio||1,platform:a.platform||"devtools"}})(),s=i.platform==="android";',
+);
+bundle = bundle.replace(
   'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync(),a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{...o,platform:a.platform||o.platform}})(),s=i.platform==="android";',
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():{},a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{windowWidth:o.windowWidth||0,windowHeight:o.windowHeight||0,pixelRatio:o.pixelRatio||1,platform:a.platform||"devtools"}})(),s=i.platform==="android";',
+);
+bundle = bundle.replace(
+  'var{platform:K_}=wx.getSystemInfoSync(),zt=class r extends Zi',
+  'var K_=(wx.getDeviceInfo?wx.getDeviceInfo():{}).platform||"devtools",zt=class r extends Zi',
 );
 fs.writeFileSync(outfile, bundle);
 

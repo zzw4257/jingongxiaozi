@@ -7,21 +7,26 @@ page {
 
 .home {
   position: fixed;
-  inset: 0;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 25% 24%, rgba(8, 110, 255, 0.08), transparent 30%),
-    linear-gradient(145deg, #f7fbff 0%, #eef5fb 100%);
+  background: #eef5fb;
 }
 
 .standby-stage {
   position: absolute;
-  inset: 0;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
-  padding: 20rpx;
+  padding: 18rpx 76rpx 24rpx;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -32,10 +37,10 @@ page {
 }
 
 .robot-expression-image {
-  width: 88vw;
-  height: 88vh;
+  width: 74vw;
+  height: 82vh;
   filter: drop-shadow(0 32rpx 56rpx rgba(20, 53, 94, 0.22));
-  transform: scale(1.1);
+  transform: scale(1);
   animation: robotFloat 5.4s ease-in-out infinite;
 }
 
@@ -43,9 +48,9 @@ page {
   position: fixed;
   left: 0;
   top: 50%;
-  z-index: 50;
-  width: 52rpx;
-  height: 96rpx;
+  z-index: 20;
+  width: 46rpx;
+  height: 112rpx;
   display: grid;
   place-items: center;
   transform: translateY(-50%);
@@ -70,28 +75,30 @@ page {
   position: fixed;
   right: 18rpx;
   bottom: 18rpx;
-  z-index: 60;
-  width: 116rpx;
-  height: 116rpx;
+  z-index: 30;
+  min-width: 142rpx;
+  height: 74rpx;
   display: grid;
+  grid-template-columns: auto auto;
   place-items: center;
+  justify-content: center;
   align-content: center;
-  gap: 2rpx;
+  gap: 8rpx;
   color: #ffffff;
-  border-radius: 32rpx;
+  border-radius: 999rpx;
   background: #0b6cff;
   box-shadow: 0 14rpx 34rpx rgba(7, 91, 212, 0.28);
   -webkit-tap-highlight-color: transparent;
 }
 
 .fab-icon {
-  font-size: 38rpx;
+  font-size: 30rpx;
   line-height: 1;
   font-weight: 950;
 }
 
 .fab-label {
-  font-size: 20rpx;
+  font-size: 23rpx;
   line-height: 1;
   font-weight: 950;
 }
@@ -295,21 +302,20 @@ page {
 }
 
 @keyframes robotFloat {
-  0%, 100% { transform: scale(1.1) translateY(0) rotate(-0.4deg); }
-  50% { transform: scale(1.1) translateY(-12rpx) rotate(0.4deg); }
+  0%, 100% { transform: scale(1) translateY(0) rotate(-0.4deg); }
+  50% { transform: scale(1) translateY(-12rpx) rotate(0.4deg); }
 }
 
 @media (max-width: 700px) and (orientation: landscape) {
   .robot-expression-image {
-    width: 84vw;
+    width: 76vw;
     height: 84vh;
-    transform: scale(1.02);
+    transform: scale(1);
   }
 
   .map-fab {
-    width: 104rpx;
-    height: 104rpx;
-    border-radius: 30rpx;
+    min-width: 132rpx;
+    height: 68rpx;
   }
 
   .app-drawer {

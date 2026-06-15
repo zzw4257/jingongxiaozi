@@ -1055,6 +1055,9 @@ Page({
     this.pendingTouchEvents = [];
     this.routeStartedAnnouncementId = "";
     this.lastNavigationProgressSignature = "";
+    this.pageReady = false;
+    this.canvasInitInFlight = false;
+    this.canvasInitRequested = false;
     this.backendBridge = createMiniProgramBackendBridge({
       getMapState: () => ({
         route: this.data.route,
@@ -1068,7 +1071,12 @@ Page({
         if (status.state === "error" || status.state === "missing-endpoint" || status.state === "closed") this.setData({ sensorHint: "后端未连接" }, () => this.drawMap());
       },
     });
-    if (this.backendBridge.endpoint().baseUrl) this.backendBridge.connect();
+    const shouldAutoConnectBackend = options.backend === "1" || options.backend === "true";
+    if (shouldAutoConnectBackend && this.backendBridge.endpoint().baseUrl) {
+      this.backendBridge.connect();
+    } else {
+      this.setData({ sensorHint: this.backendBridge.endpoint().baseUrl ? "后端待连接" : "后端未连接" });
+    }
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
@@ -1092,22 +1100,26 @@ Page({
       layersButtonClass: "",
       roomButtonClass: ""
     }, { skipDraw: true });
-    this.initCanvas();
+    this.requestCanvasInit(0, true);
   },
 
   onReady() {
-    this.initCanvas();
-    setTimeout(() => this.initCanvas(), 180);
+    this.pageReady = true;
+    this.requestCanvasInit(80);
   },
 
   onResize() {
-    this.initCanvas();
+    this.requestCanvasInit(120);
   },
 
   onUnload() {
     if (this.threeInitTimer) {
       clearTimeout(this.threeInitTimer);
       this.threeInitTimer = null;
+    }
+    if (this.canvasInitTimer) {
+      clearTimeout(this.canvasInitTimer);
+      this.canvasInitTimer = null;
     }
     if (this.threeMap) {
       this.threeMap.dispose();
@@ -1119,7 +1131,25 @@ Page({
     }
   },
 
-  initCanvas() {
+  requestCanvasInit(delay = 0, allowBeforeReady = false) {
+    if (!this.pageReady && !allowBeforeReady) {
+      this.canvasInitRequested = true;
+      return;
+    }
+    if (this.canvasInitTimer) clearTimeout(this.canvasInitTimer);
+    this.canvasInitTimer = setTimeout(() => {
+      this.canvasInitTimer = null;
+      this.initCanvas(allowBeforeReady);
+    }, Math.max(0, delay));
+  },
+
+  initCanvas(allowBeforeReady = false) {
+    if ((!this.pageReady && !allowBeforeReady) || this.canvasInitInFlight) {
+      this.canvasInitRequested = true;
+      return;
+    }
+    this.canvasInitInFlight = true;
+    this.canvasInitRequested = false;
     const fallback = fallbackCanvasSize();
     viewportBox = {
       width: Math.max(1, fallback.width),
@@ -1216,13 +1246,16 @@ Page({
 
     if (!wx.createSelectorQuery) {
       publishVisualState(false);
+      this.canvasInitInFlight = false;
       return;
     }
     const query = wx.createSelectorQuery().in ? wx.createSelectorQuery().in(this) : wx.createSelectorQuery();
     query.select("#mapCanvas").fields({ node: true, size: true, rect: true }).exec((result) => {
+      this.canvasInitInFlight = false;
       const canvasNode = result && result[0] && result[0].node;
       if (!canvasNode || !canvasNode.getContext) {
         publishVisualState(false);
+        if (!this.canvasInitRequested) this.requestCanvasInit(160);
         return;
       }
       const width = Math.max(1, Math.floor(result[0].width || fallback.width));
@@ -1256,7 +1289,8 @@ Page({
       this.threeInitTimer = setTimeout(() => {
         this.threeInitTimer = null;
         initializeThreeScene(canvasNode, width, height);
-      }, 0);
+      }, 96);
+      if (this.canvasInitRequested) this.requestCanvasInit(160);
     });
   },
 

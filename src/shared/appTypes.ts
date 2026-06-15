@@ -23,7 +23,12 @@ export type BackendDirective =
   | { type: "processing"; hint?: string }
   | { type: "chat"; answer: string; keywords?: string[]; audio?: Partial<AudioChainState> }
   | { type: "expert"; answer: string; citations?: Citation[]; keywords?: string[]; audio?: Partial<AudioChainState> }
-  | { type: "map"; request: MapDirectRequest; audio?: Partial<AudioChainState> };
+  | { type: "map"; request: MapDirectRequest; audio?: Partial<AudioChainState> }
+  | { type: "navigation.next"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.previous"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.status"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.focus"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.calibrate_heading"; routeId?: string; audio?: Partial<AudioChainState> };
 
 export type MapDirectRequest = {
   startRoomId?: string;

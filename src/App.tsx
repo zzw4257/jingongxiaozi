@@ -9,6 +9,16 @@ import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appT
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 import { postMiniProgramMessage } from "./shared/miniProgramBridge";
 
+function isNavigationDirective(directive: BackendDirective): directive is Extract<BackendDirective, { type: `navigation.${string}` }> {
+  return (
+    directive.type === "navigation.next" ||
+    directive.type === "navigation.previous" ||
+    directive.type === "navigation.status" ||
+    directive.type === "navigation.focus" ||
+    directive.type === "navigation.calibrate_heading"
+  );
+}
+
 export function App() {
   const [appState, setAppState] = useState<AppState>(DEFAULT_APP_STATE);
   const [debugOpen, setDebugOpen] = useState(false);
@@ -53,6 +63,23 @@ export function App() {
   }, [activeRail]);
 
   const handleDirective = (directive: BackendDirective) => {
+    if (isNavigationDirective(directive)) {
+      window.dispatchEvent(new CustomEvent("jingong:navigation-command", { detail: { type: directive.type, routeId: directive.routeId } }));
+      setAppState((current) =>
+        current.mode === "map"
+          ? {
+              ...current,
+              audio: {
+                ...DEFAULT_AUDIO_STATE,
+                source: "backend",
+                output: directive.audio?.output ?? "speaking",
+                message: directive.audio?.message ?? "导航进度已更新",
+              },
+            }
+          : current,
+      );
+      return;
+    }
     setAppState(applyBackendDirective(directive));
   };
 

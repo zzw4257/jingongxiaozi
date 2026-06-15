@@ -90,6 +90,20 @@ export function applyBackendDirective(directive: BackendDirective): AppState {
           ...directive.audio,
         }),
       };
+    case "navigation.next":
+    case "navigation.previous":
+    case "navigation.status":
+    case "navigation.focus":
+    case "navigation.calibrate_heading":
+      return {
+        mode: "map",
+        audio: audioState({
+          source: "backend",
+          output: directive.audio?.output ?? "speaking",
+          message: directive.audio?.message ?? "导航进度已更新",
+          ...directive.audio,
+        }),
+      };
   }
 }
 

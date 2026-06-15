@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const entry = path.join(root, "src/miniprogram/three-vendor-entry.js");
-const outfile = path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js");
+const outfile = path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js");
 
 fs.mkdirSync(path.dirname(outfile), { recursive: true });
 
@@ -17,7 +17,7 @@ await esbuild.build({
   target: ["es2018"],
   legalComments: "none",
   logLevel: "info",
-  minify: false,
+  minify: true,
   define: {
     global: "globalThis",
   },

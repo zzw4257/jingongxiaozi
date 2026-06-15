@@ -7,6 +7,7 @@
       id="mapCanvas"
       type="webgl"
       class="map-canvas native-map-visual native-webgl-map"
+      style="{{canvasStyle}}"
       catchtap="handleCanvasTap"
       catchtouchstart="handleTouchStart"
       catchtouchmove="handleTouchMove"
@@ -14,5 +15,6 @@
       catchtouchcancel="handleTouchEnd"
     >
     </canvas>
+    <cover-view class="renderer-issue {{rendererIssueClass}}">{{threeRendererStatus}}</cover-view>
   </view>
 </view>

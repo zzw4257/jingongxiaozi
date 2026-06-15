@@ -8,8 +8,8 @@
     <view class="audio-pill">
       <text class="audio-dot"></text>
       <view>
-        <text>扬声器输出</text>
-        <text>等待后端音频链路</text>
+        <text>语音播报</text>
+        <text>已准备</text>
       </view>
     </view>
   </view>

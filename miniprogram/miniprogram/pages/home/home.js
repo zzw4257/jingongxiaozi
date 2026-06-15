@@ -89,7 +89,7 @@ Page({
     if (this.data.navigating) return;
     this.setData({ navigating: true });
     app.globalData.lastMapDirective = { source: "manual" };
-    launchPage(`/pages/map/map${buildMapQuery()}`, () => this.setData({ navigating: false }));
+    launchPage(`/packages/map/pages/map/map${buildMapQuery()}`, () => this.setData({ navigating: false }));
   },
 
   openMapDirect(event) {
@@ -104,7 +104,7 @@ Page({
       announce
     };
     app.globalData.lastMapDirective = { source: "miniprogram", request };
-    launchPage(`/pages/map/map${buildMapQuery(request)}`, () => this.setData({ navigating: false }));
+    launchPage(`/packages/map/pages/map/map${buildMapQuery(request)}`, () => this.setData({ navigating: false }));
   },
 
   openChat() {

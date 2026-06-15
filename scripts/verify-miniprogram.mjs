@@ -5,6 +5,12 @@ import vm from "node:vm";
 const root = process.cwd();
 const releaseMode = process.argv.includes("--release") || process.env.MINIPROGRAM_RELEASE_CHECK === "1";
 const parityMode = process.argv.includes("--parity") || releaseMode || process.env.MINIPROGRAM_PARITY_CHECK === "1";
+const mapSubpackageRoot = "packages/map";
+const mapPageRoute = "packages/map/pages/map/map";
+const mainPackagePages = ["pages/home/home", "pages/chat/chat", "pages/expert/expert"];
+const maxMainPackageBytes = 2 * 1024 * 1024;
+const maxSingleSubpackageBytes = 2 * 1024 * 1024;
+const maxPackageBytes = 8 * 1024 * 1024;
 const requiredFiles = [
   "miniprogram/project.config.json",
   "miniprogram/miniprogram/app.json",
@@ -12,13 +18,13 @@ const requiredFiles = [
   "miniprogram/miniprogram/pages/home/home.json",
   "miniprogram/miniprogram/pages/home/home.wxml",
   "miniprogram/miniprogram/pages/home/home.js",
-  "miniprogram/miniprogram/pages/map/map.json",
-  "miniprogram/miniprogram/pages/map/map.wxml",
-  "miniprogram/miniprogram/pages/map/map.js",
-  "miniprogram/miniprogram/pages/map/map.wxss",
-  "miniprogram/miniprogram/data/map-data.js",
-  "miniprogram/miniprogram/data/map-data.json",
-  "miniprogram/miniprogram/data/map-runtime.js",
+  "miniprogram/miniprogram/packages/map/pages/map/map.json",
+  "miniprogram/miniprogram/packages/map/pages/map/map.wxml",
+  "miniprogram/miniprogram/packages/map/pages/map/map.js",
+  "miniprogram/miniprogram/packages/map/pages/map/map.wxss",
+  "miniprogram/miniprogram/packages/map/data/map-data.js",
+  "miniprogram/miniprogram/packages/map/data/map-data.json",
+  "miniprogram/miniprogram/packages/map/data/map-runtime.js",
   "miniprogram/miniprogram/pages/chat/chat.json",
   "miniprogram/miniprogram/pages/chat/chat.wxml",
   "miniprogram/miniprogram/pages/chat/chat.js",
@@ -46,10 +52,71 @@ const projectConfig = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/pr
 if (projectConfig.miniprogramRoot !== "miniprogram/") {
   throw new Error("project.config.json miniprogramRoot must be miniprogram/");
 }
+const packIgnore = projectConfig.packOptions?.ignore || [];
+const hasIgnore = (type, value) => packIgnore.some((entry) => entry.type === type && entry.value === value);
+for (const [type, value] of [
+  ["glob", "**/.DS_Store"],
+  ["folder", "assets/ui/generated-icons"],
+  ["file", "assets/ui/jingong-xiaozi-icon-1024.png"],
+  ["file", "packages/map/data/map-data.json"],
+  ["file", "packages/map/map-models/jingong.glb"],
+  ["folder", "packages/map/map-models/textures"],
+]) {
+  if (!hasIgnore(type, value)) {
+    throw new Error(`project.config.json packOptions.ignore must exclude upload-only artifact: ${type}:${value}`);
+  }
+}
+const miniRoot = path.join(root, "miniprogram/miniprogram");
+const ignoredByPackOptions = (relativePath) => {
+  if (relativePath.endsWith(".DS_Store")) return true;
+  if (relativePath === "assets/ui/jingong-xiaozi-icon-1024.png") return true;
+  if (relativePath.startsWith("assets/ui/generated-icons/")) return true;
+  if (relativePath === "packages/map/data/map-data.json") return true;
+  if (relativePath === "packages/map/map-models/jingong.glb") return true;
+  if (relativePath.startsWith("packages/map/map-models/textures/")) return true;
+  return false;
+};
+const walkFiles = (directory, prefix = "") => {
+  const files = [];
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const relativePath = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const absolutePath = path.join(directory, entry.name);
+    if (entry.isDirectory()) files.push(...walkFiles(absolutePath, relativePath));
+    else files.push({ relativePath, absolutePath, bytes: fs.statSync(absolutePath).size });
+  }
+  return files;
+};
+const packageFiles = walkFiles(miniRoot).filter((file) => !ignoredByPackOptions(file.relativePath));
+const packageBytes = packageFiles.reduce((sum, file) => sum + file.bytes, 0);
+const mainPackageBytes = packageFiles
+  .filter((file) => !file.relativePath.startsWith(`${mapSubpackageRoot}/`))
+  .reduce((sum, file) => sum + file.bytes, 0);
+const mapSubpackageBytes = packageFiles
+  .filter((file) => file.relativePath.startsWith(`${mapSubpackageRoot}/`))
+  .reduce((sum, file) => sum + file.bytes, 0);
+if (packageBytes > maxPackageBytes) {
+  throw new Error(`mini program effective package is too large: ${(packageBytes / 1024 / 1024).toFixed(2)} MiB > 8.00 MiB`);
+}
+if (mainPackageBytes > maxMainPackageBytes) {
+  throw new Error(`mini program main package is too large: ${(mainPackageBytes / 1024 / 1024).toFixed(2)} MiB > 2.00 MiB`);
+}
+if (mapSubpackageBytes > maxSingleSubpackageBytes) {
+  throw new Error(`mini program map subpackage is too large: ${(mapSubpackageBytes / 1024 / 1024).toFixed(2)} MiB > 2.00 MiB`);
+}
+for (const file of packageFiles) {
+if (file.relativePath.includes("generated-icons") || file.relativePath.endsWith(".DS_Store") || file.relativePath === "assets/ui/jingong-xiaozi-icon-1024.png" || file.relativePath === "packages/map/data/map-data.json" || file.relativePath === "packages/map/map-models/jingong.glb" || file.relativePath.startsWith("packages/map/map-models/textures/")) {
+    throw new Error(`packOptions.ignore did not exclude upload-only artifact: ${file.relativePath}`);
+  }
+}
 if (releaseMode && (!projectConfig.appid || projectConfig.appid === "touristappid")) {
   throw new Error("release check requires a real WeChat AppID in miniprogram/project.config.json");
 }
 const conditionList = projectConfig.condition?.miniprogram?.list || [];
+const homeCondition = conditionList.find((item) => item.name === "首页-待机入口");
+if (!homeCondition) throw new Error("project.config.json must keep DevTools condition: 首页-待机入口");
+if (homeCondition.pathName !== "pages/home/home" || homeCondition.query) {
+  throw new Error("DevTools condition 首页-待机入口 must open the standby shell without route query");
+}
 const expectedConditions = new Map([
   ["地图页-默认总览", "source=miniprogram&ui=mobile"],
   ["地图页-104路线", "targetRoomId=104-2F01"],
@@ -60,7 +127,7 @@ const expectedConditions = new Map([
 for (const [name, queryToken] of expectedConditions) {
   const condition = conditionList.find((item) => item.name === name);
   if (!condition) throw new Error(`project.config.json must keep DevTools condition: ${name}`);
-  if (condition.pathName !== "pages/map/map") {
+  if (condition.pathName !== mapPageRoute) {
     throw new Error(`DevTools condition ${name} must open the native map page`);
   }
   if (!condition.query?.includes("source=miniprogram") || !condition.query?.includes("ui=mobile") || !condition.query?.includes(queryToken)) {
@@ -78,11 +145,21 @@ if (appJs.includes("webBaseUrl") || appJs.includes("127.0.0.1") || appJs.include
 
 const appJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprogram/app.json"), "utf8"));
 const pages = new Set(appJson.pages || []);
-for (const page of ["pages/home/home", "pages/map/map", "pages/chat/chat", "pages/expert/expert"]) {
+for (const page of mainPackagePages) {
   if (!pages.has(page)) throw new Error(`app.json does not declare page: ${page}`);
 }
-if (appJson.pages?.[0] !== "pages/map/map") {
-  throw new Error("mini program must launch directly into the usable native map page");
+if (pages.has(mapPageRoute)) {
+  throw new Error("app.json must keep the native map page in the map subpackage, not the main package");
+}
+const mapSubpackage = (appJson.subpackages || appJson.subPackages || []).find((pkg) => pkg.root === mapSubpackageRoot);
+if (!mapSubpackage) {
+  throw new Error("app.json must declare the map subpackage at packages/map");
+}
+if (!Array.isArray(mapSubpackage.pages) || !mapSubpackage.pages.includes("pages/map/map")) {
+  throw new Error("app.json map subpackage must declare pages/map/map");
+}
+if (appJson.pages?.[0] !== "pages/home/home") {
+  throw new Error("mini program must launch into the mobile-aligned standby shell page, not directly into the map");
 }
 if (appJson.window?.navigationStyle !== "custom") {
   throw new Error("app.json must use custom navigation style");
@@ -99,7 +176,7 @@ if (homeJson.pageOrientation !== "landscape") {
   throw new Error("home.json must default to landscape");
 }
 
-const webMapJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.json"), "utf8"));
+const webMapJson = JSON.parse(fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/pages/map/map.json"), "utf8"));
 if (webMapJson.navigationStyle !== "custom") {
   throw new Error("map.json must use custom navigation style");
 }
@@ -137,6 +214,12 @@ for (const token of ["../../assets/ui/robot-standby.png", "../../assets/ui/robot
 if (homeWxml.includes("WebView") || homeWxml.includes("业务域名") || homeWxml.includes("地图服务未连接") || homeWxml.includes("src=\"/assets/")) {
   throw new Error("home.wxml must not expose web-service fallback UI");
 }
+const homeVisibleCopy = homeWxml.replace(/<[^>]*>/g, " ");
+for (const token of ["MapDirect", "mock 指令", "发布版隐藏", "2.5D 分层", "后端调试", "联调入口"]) {
+  if (homeVisibleCopy.includes(token)) {
+    throw new Error(`home.wxml must not expose implementation/debug copy in the product shell: ${token}`);
+  }
+}
 
 const homeWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/home/home.wxss"), "utf8");
 for (const token of ["height: 100vh", ".robot-expression-image", ".map-fab", ".drawer-handle", ".app-drawer", ".route-grid", "@media (orientation: portrait)"]) {
@@ -145,7 +228,94 @@ for (const token of ["height: 100vh", ".robot-expression-image", ".map-fab", ".d
   }
 }
 
-const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxml"), "utf8");
+function smokeLoadHomePage() {
+  let pageDef;
+  const launched = [];
+  const appMock = { globalData: {} };
+  const wxMock = {
+    reLaunch({ url, complete, fail }) {
+      if (!url) {
+        fail?.();
+        return;
+      }
+      launched.push(url);
+      complete?.();
+    },
+    showToast() {},
+  };
+  const context = {
+    console,
+    wx: wxMock,
+    getApp: () => appMock,
+    Page: (definition) => { pageDef = definition; },
+  };
+  const homePagePath = path.join(root, "miniprogram/miniprogram/pages/home/home.js");
+  vm.createContext(context);
+  vm.runInContext(home, context, { filename: homePagePath });
+  if (!pageDef) throw new Error("home page smoke test did not register Page definition");
+  const instance = {
+    data: JSON.parse(JSON.stringify(pageDef.data)),
+    setData(next, callback) {
+      this.data = { ...this.data, ...next };
+      if (callback) callback();
+    },
+    ...pageDef,
+  };
+
+  if (!Array.isArray(instance.data.primaryMapDirects) || instance.data.primaryMapDirects.length !== 3) {
+    throw new Error("home page must keep three primary route entries for landscape layout");
+  }
+  if (!Array.isArray(instance.data.secondaryMapDirects) || instance.data.secondaryMapDirects.length < 1) {
+    throw new Error("home page must keep secondary route entries");
+  }
+  instance.openAppDrawer.call(instance);
+  if (!instance.data.showAppDrawer || instance.data.showMoreRoutes) {
+    throw new Error("home page drawer did not open as the app shell entry");
+  }
+  instance.closeAppDrawer.call(instance);
+  if (instance.data.showAppDrawer) {
+    throw new Error("home page drawer did not close");
+  }
+  instance.showMoreRoutes.call(instance);
+  if (!instance.data.showMoreRoutes || instance.data.showAppDrawer) {
+    throw new Error("home page route sheet did not open independently");
+  }
+  instance.closeMoreRoutes.call(instance);
+  if (instance.data.showMoreRoutes) {
+    throw new Error("home page route sheet did not close");
+  }
+
+  instance.openMap.call(instance);
+  const mapUrl = launched.at(-1) || "";
+  if (!mapUrl.startsWith("/packages/map/pages/map/map?") || !mapUrl.includes("source=miniprogram") || !mapUrl.includes("ui=mobile")) {
+    throw new Error("home page map FAB must open the native map with synchronized mobile query params");
+  }
+  if (appMock.globalData.lastMapDirective?.source !== "manual") {
+    throw new Error("home page map FAB must seed the manual map directive");
+  }
+
+  instance.openMapDirect.call(instance, { currentTarget: { dataset: { index: 1 } } });
+  const routeUrl = launched.at(-1) || "";
+  if (!routeUrl.startsWith("/packages/map/pages/map/map?") || !routeUrl.includes("targetRoomId=202-5") || !routeUrl.includes("announce=summary%2Cdistance%2Cdirection%2CfloorChange")) {
+    throw new Error("home page quick route must pass MapDirect route query params to the native map");
+  }
+  if (appMock.globalData.lastMapDirective?.request?.targetRoomId !== "202-5") {
+    throw new Error("home page quick route must store the same MapDirect request for runtime bridge use");
+  }
+
+  instance.openChat.call(instance);
+  if (launched.at(-1) !== "/pages/chat/chat") {
+    throw new Error("home page chat entry must open the chat shell page");
+  }
+  instance.openExpert.call(instance);
+  if (launched.at(-1) !== "/pages/expert/expert") {
+    throw new Error("home page expert entry must open the expert shell page");
+  }
+}
+
+smokeLoadHomePage();
+
+const webMap = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/pages/map/map.wxml"), "utf8");
 if (webMap.includes("<web-view") || webMap.includes("src=\"{{src}}\"") || webMap.includes("src='{{src}}'")) {
   throw new Error("map page must be native and must not use web-view");
 }
@@ -165,9 +335,14 @@ for (const token of ["native-cover-ui", "native-shell-ui", "map-rail native-hot-
     throw new Error(`map page must not render duplicate native shell UI; remove token: ${token}`);
   }
 }
-for (const token of ["mp-map-rail", "mp-map-north", "mp-rail-button", "data-panel=\"route\"", "data-panel=\"layers\"", "data-panel=\"view\"", "data-view=\"reset\""]) {
+for (const token of ["mp-map-rail", "mp-map-north", "mp-rail-button"]) {
   if (webMap.includes(token)) {
-    throw new Error(`map page must not render duplicate WXML map controls; WebGL HUD owns token: ${token}`);
+    throw new Error(`map page must not render stale WXML map controls; remove token: ${token}`);
+  }
+}
+for (const token of ["mini-map-rail", "mini-route-guidance", "mini-map-panel", "data-panel=\"route\"", "data-panel=\"layers\"", "data-panel=\"view\"", "data-view=\"reset\"", "three-map-label-layer"]) {
+  if (webMap.includes(token)) {
+    throw new Error(`map page must not render duplicate native WXML HUD over WebGL canvas: ${token}`);
   }
 }
 for (const duplicatedLabel of [
@@ -193,11 +368,11 @@ for (const token of ["nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors
   }
 }
 
-const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
-const webMapRuntimeJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-runtime.js"), "utf8");
-const miniThreeScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/three-map-scene.js"), "utf8");
-const miniThreeVendor = fs.existsSync(path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js"))
-  ? fs.readFileSync(path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js"), "utf8")
+const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/pages/map/map.js"), "utf8");
+const webMapRuntimeJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/data/map-runtime.js"), "utf8");
+const miniThreeScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/lib/three-map-scene.js"), "utf8");
+const miniThreeVendor = fs.existsSync(path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js"))
+  ? fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js"), "utf8")
   : "";
 for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "createMiniProgramThreeMap", "calculateRoute", "handleCanvasTap", "handlePageTap", "handleTouchMove", "handleRailOverlayTap", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!(webMapJs + webMapRuntimeJs).includes(token)) {
@@ -207,6 +382,15 @@ for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/m
 for (const token of ["three-platformize-runtime", "WechatPlatform", "GLTFLoader", "OrbitControls", "CanvasTexture", "jingong.glb", "map-models", "semantic-room", "semantic-space", "stair-tread", "pickRoom", "dispatchTouchEvent"]) {
   if (!(webMapJs + miniThreeScene + miniThreeVendor).includes(token)) {
     throw new Error(`mini program must use shared Three/GLB scene token: ${token}`);
+  }
+}
+const embeddedGlbModule = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/map-models/jingong-glb-data.js"), "utf8");
+if (!embeddedGlbModule.includes("textureless: true")) {
+  throw new Error("embedded mini program GLB must be textureless to avoid runtime texture fetch failures");
+}
+for (const token of ["ThomTh10.jpg", "ThomTh11.jpg", "Plaster_.png", "__L1.jpg", "____.jpg", "\"images\"", "\"textures\""]) {
+  if (embeddedGlbModule.includes(token)) {
+    throw new Error(`embedded mini program GLB must not reference external texture data: ${token}`);
   }
 }
 for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill", "hudReservedBoxes", "boxesOverlap", "isCompactHud"]) {
@@ -233,6 +417,11 @@ if (webMapJs.includes("webBaseUrl") || webMapJs.includes("127.0.0.1") || webMapJ
 if (webMapJs.includes("wx.createCanvasContext")) {
   throw new Error("mini program map must not use legacy canvas contexts");
 }
+for (const token of ["debugProbe", "debugClearColor", "debugSnapshot"]) {
+  if (webMapJs.includes(token)) {
+    throw new Error(`map.js must not ship temporary WebGL diagnostics: ${token}`);
+  }
+}
 for (const token of ["mapImageSrc", "mapImageTransformStyle", "miniprogram-map-", "createWebglTextureProgram", "drawWebglBaselineTexture", "ensureWebglMapTexture", "texImage2D", "createImage"]) {
   if (webMapJs.includes(token)) {
     throw new Error(`mini program map must not use packaged screenshot texture path: ${token}`);
@@ -242,10 +431,11 @@ if (!webMapJs.includes("select(\"#mapCanvas\")") || !webMapJs.includes("createMi
   throw new Error("mini program map must mount the native WebGL canvas into the shared Three scene");
 }
 for (const file of [
-  "miniprogram/miniprogram/vendor/three-platformize-runtime.js",
-  "miniprogram/miniprogram/map-models/jingong.glb",
-  "miniprogram/miniprogram/map-models/jingong-fallback.glb",
-  "miniprogram/miniprogram/map-models/model-manifest.json",
+  "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js",
+  "miniprogram/miniprogram/packages/map/map-models/jingong.glb",
+  "miniprogram/miniprogram/packages/map/map-models/jingong-glb-data.js",
+  "miniprogram/miniprogram/packages/map/map-models/jingong-fallback.glb",
+  "miniprogram/miniprogram/packages/map/map-models/model-manifest.json",
 ]) {
   if (!fs.existsSync(path.join(root, file))) {
     throw new Error(`mini program must package runtime Three/model asset: ${file}`);
@@ -277,10 +467,11 @@ if (webMap.includes("nativeRooms") || webMap.includes("nativeSpaces") || webMap.
 
 function smokeLoadMapPage() {
   let pageDef;
-  const mapPagePath = path.join(root, "miniprogram/miniprogram/pages/map/map.js");
+  const mapPagePath = path.join(root, "miniprogram/miniprogram/packages/map/pages/map/map.js");
   const wxMock = {
     getWindowInfo: () => ({ windowWidth: 844, windowHeight: 390 }),
     getDeviceInfo: () => ({}),
+    getStorageSync: () => "",
     nextTick: (fn) => { if (typeof fn === "function") fn(); },
     reLaunch: () => {},
     navigateBack: () => {},
@@ -348,6 +539,15 @@ function smokeLoadMapPage() {
         },
       };
     }
+    if (resolved.endsWith("lib/backend-bridge")) {
+      const module = { exports: {} };
+      vm.runInNewContext(
+        fs.readFileSync(`${resolved}.js`, "utf8"),
+        { module, exports: module.exports, wx: wxMock, console },
+        { filename: `${resolved}.js` },
+      );
+      return module.exports;
+    }
     throw new Error(`Unexpected map page require in smoke test: ${specifier}`);
   };
   const context = {
@@ -407,6 +607,22 @@ function smokeLoadMapPage() {
       throw new Error(`${reason}: route path did not reach the target room center`);
     }
   };
+  const assertProgress = (reason) => {
+    const progress = instance.emitNavigationProgress.call(instance, "status_requested", true);
+    if (!progress || progress.type !== "navigation_progress") {
+      throw new Error(`${reason}: map page did not emit navigation_progress`);
+    }
+    if (!progress.current?.nodeId || !progress.next?.nodeId || !progress.destination?.roomId) {
+      throw new Error(`${reason}: navigation_progress missing structured route facts`);
+    }
+    if (!progress.guidance?.currentSegmentLabel || !progress.guidance?.canManualAdvance || !progress.guidance?.canVoiceAdvance) {
+      throw new Error(`${reason}: navigation_progress missing shared guidance facts`);
+    }
+    if (!progress.heading?.status) {
+      throw new Error(`${reason}: navigation_progress missing heading feedback`);
+    }
+    return progress;
+  };
 
   instance.onLoad.call(instance, {});
   assertThreeScene("manual map open");
@@ -424,6 +640,7 @@ function smokeLoadMapPage() {
     throw new Error("map page smoke test did not generate a route for 202-5");
   }
   assertRoute("202-5", "stair", "MapDirect 202-5");
+  assertProgress("MapDirect 202-5");
   if (!instance.data.route.nodeIds.includes("stair-public-upper") && !instance.data.route.nodeIds.includes("door-202-5")) {
     throw new Error("MapDirect 202-5 route must pass the public stair / 202 platform connector");
   }
@@ -455,16 +672,19 @@ function smokeLoadMapPage() {
   instance.setViewPreset.call(instance, { currentTarget: { dataset: { view: "rotateRight" } } });
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "104-2F01" } } });
   assertRoute("104-2F01", "internal-stair", "manual 104-2F01 target");
+  assertProgress("manual 104-2F01 target");
   if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("104") && nodeId.includes("stair"))) {
     throw new Error("manual 104-2F01 target must pass a 104 internal stair node");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "108-2F04" } } });
   assertRoute("108-2F04", "internal-stair", "manual 108-2F04 target");
+  assertProgress("manual 108-2F04 target");
   if (instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public") || nodeId === "stair-public-upper")) {
     throw new Error("manual 108-2F04 target must not use the public stair");
   }
   instance.selectQuickTarget.call(instance, { currentTarget: { dataset: { id: "208" } } });
   assertRoute("208", "stair", "manual 208 target");
+  assertProgress("manual 208 target");
   if (!instance.data.route.nodeIds.some((nodeId) => nodeId.includes("public"))) {
     throw new Error("manual 208 target must use the public stair connection");
   }
@@ -476,8 +696,8 @@ function smokeLoadMapPage() {
 
 smokeLoadMapPage();
 
-const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.wxss"), "utf8");
-const threeMapScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/three-map-scene.js"), "utf8");
+const webMapWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/pages/map/map.wxss"), "utf8");
+const threeMapScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/lib/three-map-scene.js"), "utf8");
 for (const token of ["SEMANTIC_RENDER_POLICY", "doorThresholdLift", "routeKeyPinLift", "wallOverviewScale"]) {
   if (!threeMapScene.includes(token)) {
     throw new Error(`mini program Three scene must keep mobile semantic render policy token: ${token}`);
@@ -495,7 +715,6 @@ for (const token of [
   ".mp-map-rail",
   ".mp-map-north",
   ".mp-rail-button",
-  ".mini-map-rail",
   ".mini-rail-button",
   ".mini-map-compass",
   ".native-map-hit-layer",
@@ -514,6 +733,11 @@ for (const token of [
 ]) {
   if (webMapWxss.includes(token)) {
     throw new Error(`map.wxss must not keep obsolete native overlay/control styling: ${token}`);
+  }
+}
+for (const token of ["drawFixedHudLocal", "drawPanel", "drawRailStackLocal", "drawGuidanceLocal", "drawLabelPill"]) {
+  if (!threeMapScene.includes(token)) {
+    throw new Error(`mini program Three scene must own runtime HUD rendering: ${token}`);
   }
 }
 for (const token of [".map-static-fallback", ".renderer-canvas-ready .map-static-fallback", ".native-screenshot-owned-ui"]) {
@@ -535,26 +759,25 @@ const mapStageCssBlock = webMapWxss.match(/\.map-stage\s*\{[^}]*\}/)?.[0] || "";
 if (!/right:\s*0/.test(mapStageCssBlock)) {
   throw new Error("map stage must keep the map surface pinned to the full viewport frame");
 }
-const labelLayerCssBlock = webMapWxss.match(/\.three-map-label-layer\s*\{[^}]*\}/)?.[0] || "";
-if (!labelLayerCssBlock || !/pointer-events:\s*none/.test(labelLayerCssBlock)) {
-  throw new Error("Three label overlay must not steal canvas touch gestures");
+if (webMap.includes("three-map-label")) {
+  throw new Error("Three labels must be rendered inside the WebGL HUD, not as WXML overlays");
 }
 if (webMap.includes("native-cover-ui") || webMap.includes("native-shell-ui") || webMap.includes("material-panel")) {
   throw new Error("map.wxml must not render duplicate native shell controls; Three HUD owns visible controls");
 }
 
-const miniMapDataJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.js"), "utf8");
+const miniMapDataJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/data/map-data.js"), "utf8");
 if (miniMapDataJs.includes("require(\"./map-data.json\")") || miniMapDataJs.includes("require('./map-data.json')")) {
   throw new Error("WeChat runtime cannot require JSON here; map-data.js must inline the generated object");
 }
-const miniMapData = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-data.json"), "utf8");
+const miniMapData = fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/data/map-data.json"), "utf8");
 for (const token of ["Generated by scripts/generate-miniprogram-map-data.mjs", "src/features/map/data/mapData.ts", "rooms", "spaces", "doors", "stairs", "walls", "centerlines", "nodes", "edges", "202-5", "104-2F01", "108-2F04"]) {
   if (!miniMapData.includes(token) && !miniMapDataJs.includes(token)) {
     throw new Error(`map-data.js must keep synchronized map token: ${token}`);
   }
 }
 const miniMapModule = { exports: {} };
-vm.runInNewContext(miniMapDataJs, { module: miniMapModule, exports: miniMapModule.exports }, { filename: "miniprogram/miniprogram/data/map-data.js" });
+vm.runInNewContext(miniMapDataJs, { module: miniMapModule, exports: miniMapModule.exports }, { filename: "miniprogram/miniprogram/packages/map/data/map-data.js" });
 const syncedMapData = miniMapModule.exports;
 for (const key of ["rooms", "spaces", "doors", "stairs", "walls", "centerlines", "nodes", "edges"]) {
   if (!Array.isArray(syncedMapData[key]) || syncedMapData[key].length === 0) {
@@ -595,6 +818,7 @@ for (const roomId of ["104-2F01", "108-2F04", "202-5", "208"]) {
 
 const chatWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.wxml"), "utf8");
 const chatWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.wxss"), "utf8");
+const chatJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.js"), "utf8");
 if (!chatWxml.includes("../../assets/ui/robot-speaking.png") || chatWxml.includes("src=\"/assets/")) {
   throw new Error("chat.wxml must use bundled relative assets");
 }
@@ -606,6 +830,7 @@ for (const token of ["robot-speaking.png", "response-page", "answer-zone", "keyw
 
 const expertWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/expert/expert.wxml"), "utf8");
 const expertWxss = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/expert/expert.wxss"), "utf8");
+const expertJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/expert/expert.js"), "utf8");
 if (!expertWxml.includes("../../assets/ui/robot-expert.png") || expertWxml.includes("src=\"/assets/")) {
   throw new Error("expert.wxml must use bundled relative assets");
 }
@@ -614,6 +839,58 @@ for (const token of ["robot-expert.png", "response-page", "answer-zone", "keywor
     throw new Error(`expert page must keep mobile app response token: ${token}`);
   }
 }
+
+function smokeResponsePage(pageName, source, expectations) {
+  let pageDef;
+  const launched = [];
+  const backed = [];
+  const wxMock = {
+    navigateBack({ delta, fail }) {
+      backed.push(delta);
+      fail?.();
+    },
+    reLaunch({ url }) {
+      launched.push(url);
+    },
+  };
+  const context = {
+    console,
+    wx: wxMock,
+    Page: (definition) => { pageDef = definition; },
+  };
+  vm.createContext(context);
+  vm.runInContext(source, context, { filename: `miniprogram/miniprogram/pages/${pageName}/${pageName}.js` });
+  if (!pageDef) throw new Error(`${pageName} page smoke test did not register Page definition`);
+  if (!pageDef.data?.answer || !Array.isArray(pageDef.data.keywords) || pageDef.data.keywords.length < 1) {
+    throw new Error(`${pageName} page must provide a non-empty app-style default response`);
+  }
+  const defaultCopy = JSON.stringify(pageDef.data);
+  for (const token of ["mock", "占位", "等待后端", "正式接入后", "用于验证"]) {
+    if (defaultCopy.includes(token)) {
+      throw new Error(`${pageName} page default copy must not expose unfinished implementation token: ${token}`);
+    }
+  }
+  const instance = { ...pageDef };
+  instance.goBack.call(instance);
+  if (backed.at(-1) !== 1 || launched.at(-1) !== "/pages/home/home") {
+    throw new Error(`${pageName} page back fallback must return to the standby shell`);
+  }
+  for (const [method, targetUrl] of Object.entries(expectations)) {
+    instance[method].call(instance);
+    if (launched.at(-1) !== targetUrl) {
+      throw new Error(`${pageName} page ${method} must reLaunch ${targetUrl}`);
+    }
+  }
+}
+
+smokeResponsePage("chat", chatJs, {
+  openMap: "/packages/map/pages/map/map?source=miniprogram&ui=mobile",
+  openExpert: "/pages/expert/expert",
+});
+smokeResponsePage("expert", expertJs, {
+  openMap: "/packages/map/pages/map/map?source=miniprogram&ui=mobile",
+  openChat: "/pages/chat/chat",
+});
 
 const miniProgramText = [
   appJs,
@@ -627,10 +904,17 @@ const miniProgramText = [
   chatWxss,
   expertWxml,
   expertWxss,
+  chatJs,
+  expertJs,
 ].join("\n");
 for (const token of ["5173", "127.0.0.1", "localhost", "webBaseUrl", "<web-view", "业务域名"]) {
   if (miniProgramText.includes(token)) {
     throw new Error(`mini program self-contained release must not include token: ${token}`);
+  }
+}
+for (const token of ["本地 mock", "引用占位", "等待后端", "正式接入后", "用于验证小程序端", "后端调试", "联调入口"]) {
+  if (miniProgramText.includes(token)) {
+    throw new Error(`mini program product shell must not expose unfinished implementation copy: ${token}`);
   }
 }
 

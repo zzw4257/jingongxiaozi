@@ -29,8 +29,8 @@ import type { CSSProperties, PointerEvent } from "react";
 import type { MapDirectRequest } from "../../shared/appTypes";
 import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
-import { calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
-import type { AreaType, ClosedSpace, DoorSegment, FloorGeometry, FloorId, MapProgressUpdate, MapRoom, MapSessionState, Point, RouteProgressState, RouteResult, StairGeometry } from "../map/types";
+import { buildNavigationProgressSnapshot, calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
+import type { AreaType, ClosedSpace, DoorSegment, FloorGeometry, FloorId, MapProgressUpdate, MapRoom, MapSessionState, NavigationCommand, NavigationProgressSnapshot, Point, RouteProgressState, RouteResult, StairGeometry } from "../map/types";
 import {
   floorBaseY,
   isPointInRaised202Space,
@@ -99,6 +99,37 @@ type NorthLayout = {
 
 const mapDebugEnabled = import.meta.env.VITE_MAP_DEBUG === "1";
 const TRUE_NORTH_VECTOR = new THREE.Vector3(0, 0, -1);
+const headingCalibrationStorageKey = "jingong.map.headingCalibration.v1";
+const navigationBroadcastEvent = "jingong:navigation-progress";
+const navigationCommandEvent = "jingong:navigation-command";
+
+function loadHeadingCalibration(): Pick<DeviceHeadingState, "calibrated" | "calibrationOffset"> {
+  if (typeof window === "undefined") return { calibrated: false, calibrationOffset: 0 };
+  try {
+    const raw = window.localStorage.getItem(headingCalibrationStorageKey);
+    if (!raw) return { calibrated: false, calibrationOffset: 0 };
+    const parsed = JSON.parse(raw) as { calibrated?: unknown; calibrationOffset?: unknown };
+    if (typeof parsed.calibrationOffset !== "number" || Number.isNaN(parsed.calibrationOffset)) return { calibrated: false, calibrationOffset: 0 };
+    return {
+      calibrated: parsed.calibrated === true,
+      calibrationOffset: normalizeRadians(parsed.calibrationOffset),
+    };
+  } catch {
+    return { calibrated: false, calibrationOffset: 0 };
+  }
+}
+
+function saveHeadingCalibration(calibrationOffset: number) {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(
+    headingCalibrationStorageKey,
+    JSON.stringify({
+      calibrated: true,
+      calibrationOffset: normalizeRadians(calibrationOffset),
+      updatedAt: Date.now(),
+    }),
+  );
+}
 
 function activeLegUi(route?: RouteResult, leg?: RouteResult["guidanceLegs"][number]) {
   if (!route || !leg) {
@@ -1521,12 +1552,15 @@ function useDeviceHeading(): DeviceHeadingState & {
   requestPermission: () => Promise<void>;
 } {
   const missingSensorTimerRef = useRef<number | undefined>();
-  const [state, setState] = useState<DeviceHeadingState>({
-    supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
-    calibrated: false,
-    calibrationOffset: 0,
-    permissionState: "idle",
-    statusMessage: "使用真实南北方向作为地图基准",
+  const [state, setState] = useState<DeviceHeadingState>(() => {
+    const stored = loadHeadingCalibration();
+    return {
+      supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
+      calibrated: stored.calibrated,
+      calibrationOffset: stored.calibrationOffset,
+      permissionState: "idle",
+      statusMessage: stored.calibrated ? "已恢复上次朝向校准；可随时重校。" : "使用真实南北方向作为地图基准",
+    };
   });
 
   const attachOrientationListener = useCallback(() => {
@@ -1559,7 +1593,9 @@ function useDeviceHeading(): DeviceHeadingState & {
   useEffect(() => attachOrientationListener(), [attachOrientationListener]);
 
   const setCalibrationOffset = useCallback((offset: number) => {
-    setState((current) => ({ ...current, calibrated: true, calibrationOffset: offset }));
+    const normalized = normalizeRadians(offset);
+    saveHeadingCalibration(normalized);
+    setState((current) => ({ ...current, calibrated: true, calibrationOffset: normalized, statusMessage: "朝向已校准，并会在下次打开地图时恢复。" }));
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -1785,6 +1821,24 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     headingAnchorRef.current = headingAnchor;
   }, [headingAnchor]);
 
+  const headingSnapshot = useMemo<NavigationProgressSnapshot["heading"]>(
+    () => ({
+      calibrated: headingState.calibrated,
+      available: headingState.heading !== undefined,
+      bearingDegrees: headingBearing === undefined ? undefined : Math.round(THREE.MathUtils.radToDeg(headingBearing)),
+      status:
+        headingState.statusMessage ??
+        (headingState.heading === undefined
+          ? headingState.permissionState === "denied"
+            ? "方向传感器不可用，地图按真实北向显示。"
+            : "方向传感器尚未启用。"
+          : headingState.calibrated
+            ? "朝向已校准。"
+            : "方向可用，尚未校准到当前行走方向。"),
+    }),
+    [headingBearing, headingState.calibrated, headingState.heading, headingState.permissionState, headingState.statusMessage],
+  );
+
   useEffect(() => {
     postMiniProgramMessage({
       type: "map-state",
@@ -1795,6 +1849,15 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       routeStep: activeLeg?.instruction,
     });
   }, [activeLeg?.instruction, panel, route, session.activeFloor, session.layerMode, session.targetRoomId, startRoom?.roomNo, targetRoom?.roomNo]);
+
+  useEffect(() => {
+    if (!route || !activeLeg) return;
+    const snapshot = buildNavigationProgressSnapshot(route, routeProgress, routeProgress?.source ?? "manual", headingSnapshot);
+    postMiniProgramMessage(snapshot);
+    if (typeof window === "undefined") return;
+    const host = window as Window & { jingongApplyDirective?: (directive: { type: string; [key: string]: unknown }) => void };
+    host.dispatchEvent(new CustomEvent(navigationBroadcastEvent, { detail: snapshot }));
+  }, [activeLeg?.index, headingSnapshot, route, routeProgress]);
 
   useEffect(() => {
     if (!route) {
@@ -3841,6 +3904,50 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     }
     headingState.setCalibrationOffset(normalizeRadians(targetBearing - currentHeading));
   };
+
+  useEffect(() => {
+    if (typeof window === "undefined") return undefined;
+    const host = window as Window & {
+      __jingongNavigationCommand?: (command: NavigationCommand) => void;
+      __jingongNavigationStatus?: () => NavigationProgressSnapshot | undefined;
+    };
+    const runCommand = (command: NavigationCommand) => {
+      if (!command || !route) return;
+      if (command.routeId && command.routeId !== route.id) return;
+      if (command.type === "navigation.next") {
+        stepRouteProgress(1);
+        window.setTimeout(() => focusActiveLeg(), 60);
+        return;
+      }
+      if (command.type === "navigation.previous") {
+        stepRouteProgress(-1);
+        window.setTimeout(() => focusActiveLeg(), 60);
+        return;
+      }
+      if (command.type === "navigation.focus") {
+        focusActiveLeg();
+        return;
+      }
+      if (command.type === "navigation.calibrate_heading") {
+        calibrateHeading();
+        return;
+      }
+      if (command.type === "navigation.status") {
+        const snapshot = buildNavigationProgressSnapshot(route, routeProgress, routeProgress?.source ?? "manual", headingSnapshot);
+        postMiniProgramMessage(snapshot);
+        window.dispatchEvent(new CustomEvent(navigationBroadcastEvent, { detail: snapshot }));
+      }
+    };
+    const handleCommand = (event: Event) => runCommand((event as CustomEvent<NavigationCommand>).detail);
+    host.__jingongNavigationCommand = runCommand;
+    host.__jingongNavigationStatus = () => (route ? buildNavigationProgressSnapshot(route, routeProgress, routeProgress?.source ?? "manual", headingSnapshot) : undefined);
+    window.addEventListener(navigationCommandEvent, handleCommand);
+    return () => {
+      if (host.__jingongNavigationCommand === runCommand) delete host.__jingongNavigationCommand;
+      delete host.__jingongNavigationStatus;
+      window.removeEventListener(navigationCommandEvent, handleCommand);
+    };
+  }, [focusActiveLeg, route, routeProgress, headingSnapshot, headingState.heading, headingState.calibrationOffset]);
 
   const openPanel = (next: PanelId) => {
     if (panel === next) {

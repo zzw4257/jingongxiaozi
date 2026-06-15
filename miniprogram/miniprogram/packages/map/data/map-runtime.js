@@ -12,6 +12,8 @@ exports.stepInstruction = stepInstruction;
 exports.buildGraph = buildGraph;
 exports.compactRouteSteps = compactRouteSteps;
 exports.formatSeconds = formatSeconds;
+exports.navigationTtsPrompt = navigationTtsPrompt;
+exports.buildNavigationProgressSnapshot = buildNavigationProgressSnapshot;
 exports.calculateRoute = calculateRoute;
 exports.cloneTransform = cloneTransform;
 exports.normalizeTransform = normalizeTransform;
@@ -306,6 +308,85 @@ function formatSeconds(seconds) {
     if (remain === 0)
         return `${minutes}分钟`;
     return `${minutes}分${remain}秒`;
+}
+function navigationTtsPrompt(snapshot) {
+    const prefix = snapshot.isFinalLeg ? "最后一段" : `第 ${snapshot.activeLegIndex + 1} 段`;
+    const remaining = snapshot.isFinalLeg
+        ? "到达后点击完成，或说已到达。"
+        : `之后还剩 ${snapshot.remainingLegs} 段，约 ${snapshot.remainingMeters} 米。`;
+    return `${prefix}，从 ${snapshot.current.label} 出发，${snapshot.next.instruction}，到 ${snapshot.next.label}，约 ${snapshot.next.distanceMeters} 米。${remaining}`;
+}
+function buildNavigationProgressSnapshot(route, progress, source = progress?.source ?? "manual", heading) {
+    const activeLegIndex = Math.min(Math.max(0, progress?.routeId === route.id ? progress.activeLegIndex : 0), Math.max(0, route.guidanceLegs.length - 1));
+    const leg = route.guidanceLegs[activeLegIndex] ?? route.guidanceLegs[0];
+    const previousLeg = activeLegIndex > 0 ? route.guidanceLegs[activeLegIndex - 1] : undefined;
+    const currentPoint = route.points.find((point) => point.nodeId === leg.fromNodeId);
+    const nextPoint = route.points.find((point) => point.nodeId === leg.toNodeId);
+    const destinationPoint = route.points[route.points.length - 1];
+    const completedMeters = route.guidanceLegs
+        .slice(0, activeLegIndex)
+        .reduce((sum, item) => sum + item.distanceMeters, 0);
+    const remainingMeters = Math.max(0, route.totalMeters - completedMeters);
+    const remainingSeconds = Math.max(0, Math.round(route.estimatedSeconds * (remainingMeters / Math.max(1, route.totalMeters))));
+    const isFinalLeg = activeLegIndex >= route.guidanceLegs.length - 1;
+    const phase = isFinalLeg ? "arrive" : leg.checkpointKind === "stair" ? "transition" : activeLegIndex === 0 ? "depart" : "walk";
+    const currentSegmentLabel = `${leg.fromLabel} → ${leg.checkpointLabel}`;
+    const nextActionLabel = isFinalLeg ? "到达终点后确认完成" : "到达该节点后点下一步，或说下一步";
+    const snapshot = {
+        type: "navigation_progress",
+        routeId: route.id,
+        startRoomId: route.startRoomId,
+        targetRoomId: route.targetRoomId,
+        activeLegIndex,
+        totalLegs: route.guidanceLegs.length,
+        completedLegs: activeLegIndex,
+        remainingLegs: Math.max(0, route.guidanceLegs.length - activeLegIndex - 1),
+        totalMeters: route.totalMeters,
+        estimatedSeconds: route.estimatedSeconds,
+        remainingMeters,
+        remainingSeconds,
+        current: {
+            nodeId: leg.fromNodeId,
+            label: leg.fromLabel,
+            floor: currentPoint?.floor ?? leg.floor,
+        },
+        next: {
+            nodeId: leg.toNodeId,
+            label: leg.checkpointLabel,
+            floor: nextPoint?.floor ?? leg.floor,
+            kind: leg.checkpointKind,
+            distanceMeters: leg.distanceMeters,
+            instruction: leg.instruction,
+        },
+        previous: previousLeg
+            ? {
+                nodeId: previousLeg.fromNodeId,
+                label: previousLeg.fromLabel,
+                floor: route.points.find((point) => point.nodeId === previousLeg.fromNodeId)?.floor ?? previousLeg.floor,
+            }
+            : undefined,
+        destination: {
+            roomId: route.targetRoomId,
+            label: route.summary.split("→").pop()?.trim() || route.targetRoomId,
+            floor: destinationPoint?.floor ?? leg.floor,
+        },
+        guidance: {
+            phase,
+            userAction: isFinalLeg ? "confirm_arrival" : "confirm_next",
+            currentSegmentLabel,
+            nextActionLabel,
+            canManualAdvance: true,
+            canVoiceAdvance: true,
+        },
+        heading,
+        canGoPrevious: activeLegIndex > 0,
+        canGoNext: !isFinalLeg,
+        isFinalLeg,
+        ttsPrompt: "",
+        source,
+    };
+    snapshot.ttsPrompt = navigationTtsPrompt(snapshot);
+    return snapshot;
 }
 function calculateRoute(data, startRoomId, targetRoomId) {
     if (startRoomId === targetRoomId)

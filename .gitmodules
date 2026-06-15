@@ -1,0 +1,6 @@
+[submodule "ZJU-live-better"]
+	path = ZJU-live-better
+	url = https://github.com/5dbwat4/ZJU-live-better.git
+[submodule "vendor/DuplexKit"]
+	path = vendor/DuplexKit
+	url = https://github.com/ElysiaFollower/DuplexKit.git

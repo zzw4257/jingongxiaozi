@@ -6,9 +6,10 @@ import ts from "typescript";
 const root = process.cwd();
 const sourceFile = path.join(root, "src/features/map/data/mapData.ts");
 const runtimeSourceFile = path.join(root, "src/features/map/runtime.ts");
-const outputFile = path.join(root, "miniprogram/miniprogram/data/map-data.js");
-const outputJsonFile = path.join(root, "miniprogram/miniprogram/data/map-data.json");
-const outputRuntimeFile = path.join(root, "miniprogram/miniprogram/data/map-runtime.js");
+const mapSubpackageDataDir = path.join(root, "miniprogram/miniprogram/packages/map/data");
+const outputFile = path.join(mapSubpackageDataDir, "map-data.js");
+const outputJsonFile = path.join(mapSubpackageDataDir, "map-data.json");
+const outputRuntimeFile = path.join(mapSubpackageDataDir, "map-runtime.js");
 
 function loadTsModule(file) {
   const source = fs.readFileSync(file, "utf8");

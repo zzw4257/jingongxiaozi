@@ -1,5 +1,6 @@
 const mapDataModule = require("../../data/map-data");
 const mapRuntimeModule = require("../../data/map-runtime");
+const { createMiniProgramBackendBridge } = require("../../lib/backend-bridge");
 const mapData = mapDataModule.default || mapDataModule;
 const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 
@@ -18,6 +19,7 @@ let canvasRef = null;
 let ctxRef = null;
 let dprRef = 1;
 let canvasBox = { width: 0, height: 0 };
+let canvasOffset = { left: 0, top: 0 };
 let viewportBox = { width: 0, height: 0 };
 let legacyCanvas = false;
 let webglRef = null;
@@ -263,6 +265,17 @@ function roomLabel(roomId) {
   return mapRuntime.roomLabel(mapData, roomId);
 }
 
+function resolveMiniRoomId(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const normalized = text.toUpperCase().replace(/\s+/g, "");
+  const exact = mapData.rooms.find((room) => room.id.toUpperCase() === normalized || room.roomNo.toUpperCase() === normalized);
+  if (exact) return exact.id;
+  const compact = normalized.replace(/房间|实验室|教室|办公室|号/g, "");
+  const byToken = mapData.rooms.find((room) => compact.includes(room.roomNo.toUpperCase()) || compact.includes(room.id.toUpperCase()));
+  return byToken?.id || "";
+}
+
 function imageTransformStyle(transform) {
   return mapRuntime.imageTransformStyle(transform);
 }
@@ -413,17 +426,35 @@ function panelTapAction(tap, panel, route, box = canvasBox) {
   return null;
 }
 
+function localCanvasPoint(raw = {}) {
+  const rawX = Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0);
+  const rawY = Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0);
+  const hasLocalXY = Number.isFinite(raw.x) && Number.isFinite(raw.y);
+  const x = hasLocalXY ? rawX : rawX - Number(canvasOffset.left || 0);
+  const y = hasLocalXY ? rawY : rawY - Number(canvasOffset.top || 0);
+  return {
+    x: Math.max(0, Math.min(Number(canvasBox.width || 1), x)),
+    y: Math.max(0, Math.min(Number(canvasBox.height || 1), y)),
+  };
+}
+
+function pagePoint(raw = {}) {
+  return {
+    x: Number(raw.clientX ?? raw.pageX ?? raw.x ?? 0),
+    y: Number(raw.clientY ?? raw.pageY ?? raw.y ?? 0),
+  };
+}
+
 function normalizeTouchPoint(touch = {}, index = 0) {
-  const x = Number(touch.x ?? touch.clientX ?? touch.pageX ?? 0);
-  const y = Number(touch.y ?? touch.clientY ?? touch.pageY ?? 0);
+  const local = localCanvasPoint(touch);
   return {
     identifier: Number(touch.identifier ?? touch.id ?? index),
-    x,
-    y,
-    clientX: Number(touch.clientX ?? touch.x ?? touch.pageX ?? x),
-    clientY: Number(touch.clientY ?? touch.y ?? touch.pageY ?? y),
-    pageX: Number(touch.pageX ?? touch.x ?? touch.clientX ?? x),
-    pageY: Number(touch.pageY ?? touch.y ?? touch.clientY ?? y),
+    x: local.x,
+    y: local.y,
+    clientX: local.x,
+    clientY: local.y,
+    pageX: local.x,
+    pageY: local.y,
   };
 }
 
@@ -512,6 +543,10 @@ function renderWebglBackdrop(gl, width, height, hasRoute = false) {
   gl.clearColor(tint[0], tint[1], tint[2], tint[3]);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   return true;
+}
+
+function usesThreeRenderer() {
+  return Boolean(createMiniProgramThreeMap);
 }
 
 function colorToRgba(value, fallback = [1, 1, 1, 1]) {
@@ -662,6 +697,36 @@ function routeStepCardForLeg(leg) {
       leg.checkpointKind === "stair" ? "stair" : "",
       leg.checkpointKind === "destination" ? "target" : ""
     ].filter(Boolean).join(" ")
+  };
+}
+
+function navigationProgressPayload(route, activeStepIndex = 0, reason = "step_changed", announce = false) {
+  if (!route || !(route.guidanceLegs || []).length) return null;
+  const snapshot = mapRuntime.buildNavigationProgressSnapshot?.(
+    route,
+    { routeId: route.id, activeLegIndex: Number(activeStepIndex || 0), source: "backend" },
+    "backend",
+    {
+      calibrated: false,
+      available: false,
+      status: "小程序宿主暂未提供方向传感器数据；地图按真实北向显示。"
+    }
+  );
+  if (!snapshot) return null;
+  const leg = (route.guidanceLegs || [])[snapshot.activeLegIndex];
+  const completed = Boolean(snapshot.isFinalLeg && (reason === "manual_next" || reason === "route_completed"));
+  return {
+    ...snapshot,
+    source: "backend",
+    reason,
+    announce,
+    routeSummary: route.summary,
+    fromLabel: snapshot.current.label,
+    checkpointLabel: snapshot.next.label,
+    checkpointKind: snapshot.next.kind,
+    instruction: snapshot.next.instruction,
+    distanceMeters: Math.max(1, Math.round(snapshot.next.distanceMeters || 0)),
+    completed,
   };
 }
 
@@ -967,6 +1032,7 @@ Page({
     layerOptions,
     viewOptions,
     mapTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
+    canvasStyle: "",
     rendererReadyClass: "",
     nativeFloors: [],
     nativeSpaces: [],
@@ -987,6 +1053,22 @@ Page({
     this.threeMap = null;
     this.lastThreeLabelsSignature = "";
     this.pendingTouchEvents = [];
+    this.routeStartedAnnouncementId = "";
+    this.lastNavigationProgressSignature = "";
+    this.backendBridge = createMiniProgramBackendBridge({
+      getMapState: () => ({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+        activeStepIndex: this.data.activeStepIndex || 0
+      }),
+      onToolRequest: (request) => this.handleBackendToolRequest(request),
+      onStatus: (status) => {
+        if (status.state === "connected") this.setData({ sensorHint: "后端已连接" }, () => this.drawMap());
+        if (status.state === "error" || status.state === "missing-endpoint" || status.state === "closed") this.setData({ sensorHint: "后端未连接" }, () => this.drawMap());
+      },
+    });
+    if (this.backendBridge.endpoint().baseUrl) this.backendBridge.connect();
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
@@ -1031,6 +1113,10 @@ Page({
       this.threeMap.dispose();
       this.threeMap = null;
     }
+    if (this.backendBridge) {
+      this.backendBridge.disconnect();
+      this.backendBridge = null;
+    }
   },
 
   initCanvas() {
@@ -1057,6 +1143,7 @@ Page({
     const publishVisualState = (rendererReady) => this.setData({
       ...buildNativeMapVisual(this.data.route, this.data.activeStepIndex || 0, this.data.layerMode),
       mapTransformStyle: userImageTransformStyle(this.transform),
+      canvasStyle: `width:${canvasBox.width}px;height:${canvasBox.height}px;`,
       rendererReadyClass: rendererReady ? "renderer-canvas-ready" : ""
     }, () => this.drawMap());
 
@@ -1076,16 +1163,23 @@ Page({
       try {
         publishRendererStatus(false, "正在加载 3D 地图…");
         const factory = loadThreeMapFactory();
+        const context = canvasNode && canvasNode.getContext ? canvasNode.getContext("webgl") : null;
+        if (!canvasNode || !context) {
+          publishRendererStatus(false, "WebGL canvas 暂不可用，正在等待刷新");
+          return;
+        }
         this.threeMap = factory(canvasNode, {
           width,
           height,
           pixelRatio: dprRef,
-          context: canvasNode.getContext ? canvasNode.getContext("webgl") || canvasNode.getContext("experimental-webgl") : null,
+          context,
           route: this.data.route,
           layerMode: this.data.layerMode,
           activeStepIndex: this.data.activeStepIndex || 0,
           viewPreset: this.data.viewPreset === "reset" ? "overview" : this.data.viewPreset,
           panel: this.data.panel,
+          disableHud: false,
+          disableFixedHud: false,
           preserveCamera: Boolean(this.preserveCameraOnce),
           sensorHint: this.data.sensorHint,
           activeStepLabel: this.data.activeStepLabel,
@@ -1125,7 +1219,7 @@ Page({
       return;
     }
     const query = wx.createSelectorQuery().in ? wx.createSelectorQuery().in(this) : wx.createSelectorQuery();
-    query.select("#mapCanvas").fields({ node: true, size: true }).exec((result) => {
+    query.select("#mapCanvas").fields({ node: true, size: true, rect: true }).exec((result) => {
       const canvasNode = result && result[0] && result[0].node;
       if (!canvasNode || !canvasNode.getContext) {
         publishVisualState(false);
@@ -1134,6 +1228,11 @@ Page({
       const width = Math.max(1, Math.floor(result[0].width || fallback.width));
       const height = Math.max(1, Math.floor(result[0].height || fallback.height));
       canvasBox = { width, height };
+      canvasOffset = {
+        left: Number(result[0].left || 0),
+        top: Number(result[0].top || 0),
+      };
+      this.setData({ canvasStyle: `width:${width}px;height:${height}px;` });
       if (this.data.viewPreset === "route") {
         this.transform = normalizeTransform(this.defaultTransform(this.data.layerMode, "route"));
       } else if (this.data.viewPreset === "overview") {
@@ -1142,8 +1241,10 @@ Page({
       canvasRef = canvasNode;
       canvasRef.width = Math.floor(width * dprRef);
       canvasRef.height = Math.floor(height * dprRef);
-      const gl = canvasRef.getContext("webgl") || canvasRef.getContext("experimental-webgl");
-      if (gl && typeof gl.viewport === "function") renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+      const gl = canvasRef.getContext("webgl");
+      if (gl && typeof gl.viewport === "function" && !usesThreeRenderer()) {
+        renderWebglBackdrop(gl, canvasRef.width, canvasRef.height, this.data.hasRoute);
+      }
       if (this.threeInitTimer) {
         clearTimeout(this.threeInitTimer);
         this.threeInitTimer = null;
@@ -1154,7 +1255,7 @@ Page({
       publishVisualState(Boolean(this.threeMap));
       this.threeInitTimer = setTimeout(() => {
         this.threeInitTimer = null;
-        initializeThreeScene(canvasRef, width, height);
+        initializeThreeScene(canvasNode, width, height);
       }, 0);
     });
   },
@@ -1193,7 +1294,71 @@ Page({
       ...hostRailStyles(next.panel || this.data.panel || "none", Boolean(route))
     }, () => {
       if (!options.skipDraw) this.drawMap();
+      if (route && !options.skipProgress) {
+        const routeStart = activeStepIndex === 0 && this.routeStartedAnnouncementId !== route.id;
+        if (routeStart) this.routeStartedAnnouncementId = route.id;
+        this.emitNavigationProgress(routeStart ? "route_started" : "step_changed", routeStart, activeStepIndex);
+      }
     });
+  },
+
+  emitNavigationProgress(reason = "step_changed", announce = false, activeStepIndex = this.data.activeStepIndex || 0) {
+    const payload = navigationProgressPayload(this.data.route, activeStepIndex, reason, announce);
+    if (!payload) return null;
+    const signature = `${payload.routeId}:${payload.activeLegIndex}:${payload.reason}:${payload.announce ? 1 : 0}:${payload.completed ? 1 : 0}`;
+    if (!payload.announce && signature === this.lastNavigationProgressSignature) return payload;
+    this.lastNavigationProgressSignature = signature;
+    if (this.backendBridge) this.backendBridge.sendNavigationProgress(payload);
+    return payload;
+  },
+
+  handleBackendToolRequest(request) {
+    if (!request?.tool) return this.emitNavigationProgress("status_requested", true);
+    if (request.tool === "map.close") {
+      this.clearRoute();
+      return this.emitNavigationProgress("map_closed", true);
+    }
+    if (request.tool === "map.set_destination" || request.tool === "navigation.start" || request.tool === "map.open") {
+      const targetRoomId = resolveMiniRoomId(request.args?.place || request.args?.targetRoomId || request.args?.target) || this.data.targetRoomId;
+      if (targetRoomId) {
+        const route = calculateRoute(this.data.startRoomId || defaultStartRoomId, targetRoomId);
+        this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
+        this.setRouteState({
+          layerMode: "allFloors",
+          layerHint: layerHints.allFloors,
+          targetRoomId,
+          route,
+          viewPreset: "route",
+          activeStepIndex: 0,
+          panel: "none",
+          routeButtonClass: "active",
+        }, { skipProgress: true });
+        return this.emitNavigationProgress("route_started", true, 0);
+      }
+    }
+    if (!this.data.route) return this.emitNavigationProgress("status_requested", true);
+    if (request.tool === "navigation.next") {
+      const nextIndex = Math.min((this.data.activeStepIndex || 0) + 1, Math.max(0, (this.data.route.guidanceLegs || []).length - 1));
+      this.setRouteState({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+        activeStepIndex: nextIndex,
+      }, { skipProgress: true });
+      return this.emitNavigationProgress("manual_next", true, nextIndex);
+    }
+    if (request.tool === "navigation.previous") {
+      const nextIndex = Math.max(0, (this.data.activeStepIndex || 0) - 1);
+      this.setRouteState({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+        activeStepIndex: nextIndex,
+      }, { skipProgress: true });
+      return this.emitNavigationProgress("manual_previous", true, nextIndex);
+    }
+    if (request.tool === "navigation.status") return this.emitNavigationProgress("status_requested", true);
+    return this.emitNavigationProgress("tool_request", true);
   },
 
   visibleFloorIds(layerMode = this.data.layerMode) {
@@ -1229,7 +1394,7 @@ Page({
       this.preserveCameraOnce = false;
       return;
     }
-    if (webglRef && canvasRef) {
+    if (webglRef && canvasRef && !usesThreeRenderer()) {
       this.drawWebglMap();
       return;
     }
@@ -2101,10 +2266,11 @@ Page({
   handleCanvasTap(event) {
     const touch = event.changedTouches && event.changedTouches[0];
     const raw = touch || event.detail || {};
-    const tap = {
-      x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
-      y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
-    };
+    const tap = localCanvasPoint(raw);
+    this.handleCanvasPointTap(tap);
+  },
+
+  handleCanvasPointTap(tap) {
     const panelAction = panelTapAction(tap, this.data.panel, this.data.route, canvasBox);
     if (panelAction) {
       this.applyCanvasAction(panelAction);
@@ -2152,10 +2318,7 @@ Page({
   handlePageTap(event) {
     const touch = event.changedTouches && event.changedTouches[0];
     const raw = touch || event.detail || {};
-    const tap = {
-      x: Number(raw.x ?? raw.clientX ?? raw.pageX ?? 0),
-      y: Number(raw.y ?? raw.clientY ?? raw.pageY ?? 0)
-    };
+    const tap = pagePoint(raw);
     const hostBox = pageBox();
     const panelAction = panelTapAction(tap, this.data.panel, this.data.route, hostBox);
     if (panelAction) {
@@ -2198,6 +2361,9 @@ Page({
   },
 
   applyCanvasAction(action) {
+    if (action?.currentTarget?.dataset?.type === "room-route") {
+      action = { type: "room-route" };
+    }
     if (!action) return;
     if (action.type === "close") {
       this.closePanel();
@@ -2241,6 +2407,11 @@ Page({
   },
 
   handleTouchStart(event) {
+    const touches = event.touches || [];
+    const firstTouch = touches[0] ? localCanvasPoint(touches[0]) : null;
+    this.threeTapCandidate = firstTouch
+      ? { x: firstTouch.x, y: firstTouch.y, time: Date.now(), moved: false }
+      : null;
     if (this.threeMap) {
       try {
         this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchstart"));
@@ -2249,7 +2420,6 @@ Page({
       }
       return;
     }
-    const touches = event.touches || [];
     if (touches.length === 1) {
       this.touchState = {
         mode: "pan",
@@ -2270,6 +2440,12 @@ Page({
   },
 
   handleTouchMove(event) {
+    if (this.threeTapCandidate) {
+      const first = event.touches && event.touches[0] ? localCanvasPoint(event.touches[0]) : null;
+      if (first && Math.hypot(first.x - this.threeTapCandidate.x, first.y - this.threeTapCandidate.y) > 8) {
+        this.threeTapCandidate.moved = true;
+      }
+    }
     if (this.threeMap) {
       try {
         this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event, "touchmove"));
@@ -2300,15 +2476,28 @@ Page({
   },
 
   handleTouchEnd(event) {
+    const candidate = this.threeTapCandidate;
+    this.threeTapCandidate = null;
     if (this.threeMap) {
       try {
         this.threeMap.dispatchTouchEvent(normalizeThreeTouchEvent(event || {}, "touchend"));
       } catch (error) {
         console.error("[mini-three] touchend failed", error);
       }
+      const rawTouch = event?.changedTouches && event.changedTouches[0];
+      const endPoint = rawTouch ? localCanvasPoint(rawTouch) : null;
+      if (candidate && endPoint) {
+        const distance = Math.hypot(endPoint.x - candidate.x, endPoint.y - candidate.y);
+        const elapsed = Date.now() - candidate.time;
+        if (!candidate.moved && distance <= 10 && elapsed <= 520) {
+          this.handleCanvasPointTap(endPoint);
+        }
+      }
     }
     this.touchState = null;
   },
+
+  noop() {},
 
   setLayer(event) {
     const layerMode = event.currentTarget.dataset.layer;

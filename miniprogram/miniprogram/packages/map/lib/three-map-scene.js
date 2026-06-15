@@ -1,6 +1,7 @@
 const { THREE, WechatPlatform, GLTFLoader, OrbitControls } = require("../vendor/three-platformize-runtime");
 const mapDataModule = require("../data/map-data");
 const mapRuntimeModule = require("../data/map-runtime");
+const jingongGlbData = require("../map-models/jingong-glb-data");
 
 const mapData = mapDataModule.default || mapDataModule;
 const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
@@ -171,28 +172,28 @@ const floorShellColor = {
 };
 const miniCameraPresets = {
   overview: {
-    compactPosition: [6.62, 5.02, 7.35],
-    compactTarget: [0.02, 0.82, 0.1],
-    regularPosition: [6.45, 5.95, 8.55],
-    regularTarget: [-0.02, 0.7, 0.16],
-    compactFov: 32,
-    regularFov: 34,
+    compactPosition: [4.75, 4.2, 5.05],
+    compactTarget: [0.02, 0.72, 0.08],
+    regularPosition: [5.15, 4.75, 5.7],
+    regularTarget: [-0.02, 0.72, 0.12],
+    compactFov: 28,
+    regularFov: 30,
   },
   near: {
-    compactPosition: [7.85, 7.35, 8.95],
-    compactTarget: [0.06, 1.28, 0.08],
-    regularPosition: [7.6, 7.0, 8.4],
-    regularTarget: [0.02, 1.5, 0.12],
-    compactFov: 37,
-    regularFov: 42,
+    compactPosition: [3.8, 3.5, 4.1],
+    compactTarget: [0.06, 1.18, 0.08],
+    regularPosition: [4.3, 4.0, 4.7],
+    regularTarget: [0.02, 1.2, 0.12],
+    compactFov: 31,
+    regularFov: 34,
   },
   route: {
-    compactPosition: [5.05, 6.05, 6.58],
-    compactTarget: [0.02, 1.24, -0.04],
-    regularPosition: [4.86, 5.62, 6.18],
-    regularTarget: [0.08, 1.28, 0.02],
-    compactFov: 35,
-    regularFov: 32,
+    compactPosition: [4.05, 4.25, 4.65],
+    compactTarget: [0.02, 1.0, -0.04],
+    regularPosition: [4.38, 4.55, 4.95],
+    regularTarget: [0.08, 1.08, 0.02],
+    compactFov: 30,
+    regularFov: 30,
   },
   top: {
     compactPosition: [0, 11.4, 0.001],
@@ -203,17 +204,18 @@ const miniCameraPresets = {
     regularFov: 32,
   },
   raised202: {
-    compactPosition: [5.9, 6.9, 6.3],
-    compactTarget: [2.42, 1.62, 1.0],
-    regularPosition: [5.45, 6.8, 5.8],
-    regularTarget: [2.82, 1.55, 1.1],
-    compactFov: 35,
-    regularFov: 34,
+    compactPosition: [4.1, 4.5, 4.3],
+    compactTarget: [2.42, 1.45, 1.0],
+    regularPosition: [4.35, 4.75, 4.5],
+    regularTarget: [2.82, 1.45, 1.1],
+    compactFov: 30,
+    regularFov: 30,
   },
 };
 const labelDensityRank = { far: 0, mid: 1, near: 2 };
 const hudPixelRatioLimit = 2;
 const hudLayoutRevision = "webgl-guidance-v11-reserved-label-zones";
+const HUD_CHROMA_KEY = "#ff00ff";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -742,6 +744,35 @@ function drawFixedHudLocal(ctx, hud, width, height) {
   ctx.translate(rail.x, rail.y);
   drawRailStackLocal(ctx, hud, width, height, rail);
   ctx.restore();
+}
+
+function addFixedHudWidgets(addWidget, hud, width, height) {
+  const safeLeft = Math.max(0, Number(hud.safeInsets?.left || 0));
+  const safeTop = Math.max(0, Number(hud.safeInsets?.top || 0));
+  const northX = Math.max(18, safeLeft + 14);
+  const northY = Math.max(18, safeTop + 10);
+  addWidget(
+    { x: northX, y: northY, width: 76, height: 38 },
+    (ctx) => drawNorthIndicatorLocal(ctx),
+    "hud-north-indicator",
+    117,
+  );
+  const guidance = guidanceMetrics(width, height, hud.hasRoute, hud.safeInsets);
+  if (guidance) {
+    addWidget(
+      guidance,
+      (ctx, w, h) => drawGuidanceLocal(ctx, hud, w, h, width, height),
+      "hud-route-guidance",
+      118,
+    );
+  }
+  const rail = railStackMetrics(width, height);
+  addWidget(
+    { x: rail.x, y: rail.y, width: rail.width, height: rail.height },
+    (ctx) => drawRailStackLocal(ctx, hud, width, height, rail),
+    "hud-rail-stack",
+    119,
+  );
 }
 
 function drawGuidance(ctx, hud, width, height) {
@@ -1325,6 +1356,12 @@ function disposeObject(object) {
 }
 
 function createMiniProgramThreeMap(canvas, options = {}) {
+  const status = (ready, text, extra = {}) => {
+    if (options.onStatus) options.onStatus({ ready, text, ...extra });
+    if (!ready || extra.debug) {
+      console.info("[mini-three]", text || "ready", extra);
+    }
+  };
   options.onStatus && options.onStatus({ ready: false, text: "初始化 Three 地图…" });
   let renderWidth = Math.max(1, Math.floor(options.width || canvas.width || 844));
   let renderHeight = Math.max(1, Math.floor(options.height || canvas.height || 390));
@@ -1335,6 +1372,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   const glContext = options.context || (canvas.getContext ? canvas.getContext("webgl") || canvas.getContext("experimental-webgl") : null);
   const renderer = new THREE.WebGLRenderer({ canvas, context: glContext, antialias: false, alpha: false });
   renderer.autoClear = false;
+  renderer.setClearColor(0xf7f9fc, 1);
   renderer.setPixelRatio(dpr);
   renderer.setSize(renderWidth, renderHeight, false);
   renderer.shadowMap.enabled = false;
@@ -1399,6 +1437,8 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     selectedRoomId: options.selectedRoomId || "",
     selectedFloorLabel: options.selectedFloorLabel || "点击地图房间",
     safeInsets: options.safeInsets || { left: 0, top: 0, right: 0, bottom: 0 },
+    disableHudForRecovery: Boolean(options.disableHud),
+    disableFixedHud: Boolean(options.disableFixedHud),
   };
   let frame = 0;
   let frameKind = "";
@@ -1414,11 +1454,6 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   let hudScene = new THREE.Scene();
   let hudCamera = new THREE.OrthographicCamera(0, hudWidth, hudHeight, 0, -10, 10);
   let hudWidgets = [];
-  let hudCanvas = null;
-  let hudCtx = null;
-  let hudTexture = null;
-  let hudSurface = null;
-  let hudCanvasSize = { width: 0, height: 0 };
   let lastHudSignature = "";
   let lastHudCameraSignature = "";
   let lastHudRebuildAt = 0;
@@ -1520,6 +1555,14 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     spherical.phi = clamp(spherical.phi, controls.minPolarAngle || 0.12, controls.maxPolarAngle || Math.PI * 0.62);
     spherical.radius = clamp(spherical.radius, controls.minDistance || 1.35, controls.maxDistance || 42);
     spherical.makeSafe();
+    if (semanticBounds && !semanticBounds.isEmpty()) {
+      const boundsSize = new THREE.Vector3();
+      semanticBounds.getSize(boundsSize);
+      const pad = Math.max(0.7, Math.max(boundsSize.x, boundsSize.z) * 0.18);
+      target.x = clamp(target.x, semanticBounds.min.x - pad, semanticBounds.max.x + pad);
+      target.y = clamp(target.y, semanticBounds.min.y - 0.42, semanticBounds.max.y + 1.2);
+      target.z = clamp(target.z, semanticBounds.min.z - pad, semanticBounds.max.z + pad);
+    }
     const nextPosition = new THREE.Vector3().setFromSpherical(spherical).add(target);
     if (!vectorIsFinite(nextPosition) || !vectorIsFinite(target)) return restoreSafeCamera("gesture-nan");
     controls.target.copy(target);
@@ -1567,117 +1610,92 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   }
 
   function clearHudWidgets() {
-    if (hudSurface) {
-      hudScene.remove(hudSurface);
-      disposeObject(hudSurface);
-    }
-    if (hudTexture && hudTexture.dispose) hudTexture.dispose();
+    hudWidgets.forEach((widget) => {
+      hudScene.remove(widget);
+      disposeObject(widget);
+      if (widget.userData?.texture?.dispose) widget.userData.texture.dispose();
+    });
     hudWidgets = [];
-    hudCanvas = null;
-    hudCtx = null;
-    hudTexture = null;
-    hudSurface = null;
-    hudCanvasSize = { width: 0, height: 0 };
   }
 
-  function ensureHudSurface() {
-    const width = Math.max(1, Math.round(hudWidth * hudCanvasScale));
-    const height = Math.max(1, Math.round(hudHeight * hudCanvasScale));
-    if (!hudCanvas || !hudCtx || width !== hudCanvasSize.width || height !== hudCanvasSize.height) {
-      const nextCanvas = createHudCanvas(width, height);
-      const nextCtx = nextCanvas && nextCanvas.getContext ? nextCanvas.getContext("2d") : null;
-      if (!nextCanvas || !nextCtx) {
-        return Boolean(hudSurface && hudTexture && hudCtx);
-      }
-      if (hudSurface) {
-        hudScene.remove(hudSurface);
-        disposeObject(hudSurface);
-      }
-      if (hudTexture && hudTexture.dispose) hudTexture.dispose();
-      hudCanvas = nextCanvas;
-      hudCtx = nextCtx;
-      hudCanvasSize = { width, height };
-      hudTexture = new THREE.CanvasTexture(hudCanvas);
-      hudTexture.minFilter = THREE.LinearFilter;
-      hudTexture.magFilter = THREE.LinearFilter;
-      hudTexture.generateMipmaps = false;
-      const material = new THREE.MeshBasicMaterial({
-        map: hudTexture,
-        transparent: true,
-        alphaTest: 0.01,
-        depthTest: false,
-        depthWrite: false,
-      });
-      hudSurface = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), material);
-      hudSurface.name = "hud-atlas-surface";
-      hudSurface.renderOrder = 10100;
-      hudScene.add(hudSurface);
-      hudWidgets = [hudSurface];
-    }
-    hudSurface.visible = true;
-    hudSurface.position.set(hudWidth / 2, hudHeight / 2, 0);
-    hudSurface.scale.set(hudWidth, hudHeight, 1);
-    return true;
+  function createHudMaterial(texture) {
+    return new THREE.ShaderMaterial({
+      uniforms: {
+        map: { value: texture },
+      },
+      vertexShader: `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D map;
+        varying vec2 vUv;
+        void main() {
+          vec4 color = texture2D(map, vUv);
+          if (color.a < 0.05) discard;
+          if (color.r > 0.92 && color.g < 0.16 && color.b > 0.92) discard;
+          gl_FragColor = color;
+        }
+      `,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+    });
   }
 
-  function beginHudFrame() {
-    if (!ensureHudSurface()) return false;
-    hudCtx.save();
-    hudCtx.setTransform(hudCanvasScale, 0, 0, hudCanvasScale, 0, 0);
-    hudCtx.clearRect(0, 0, hudWidth, hudHeight);
-    hudCtx.restore();
-    return true;
-  }
-
-  function finishHudFrame() {
-    if (hudTexture) hudTexture.needsUpdate = true;
-  }
-
-  function addHudWidget(bounds, draw, name, layer = 0) {
-    if (!hudCtx) return;
+  function addHudPlane(bounds, draw, name, layer = 0, local = false) {
     const x = Math.max(0, Math.floor(bounds.x));
     const y = Math.max(0, Math.floor(bounds.y));
     const w = Math.min(hudWidth - x, Math.ceil(bounds.width));
     const h = Math.min(hudHeight - y, Math.ceil(bounds.height));
     if (w <= 0 || h <= 0) return;
-    const ctx = hudCtx;
+    const canvasWidth = Math.max(1, Math.round(w * hudCanvasScale));
+    const canvasHeight = Math.max(1, Math.round(h * hudCanvasScale));
+    const canvas = createHudCanvas(canvasWidth, canvasHeight);
+    const ctx = canvas && canvas.getContext ? canvas.getContext("2d", { alpha: true }) : null;
+    if (!canvas || !ctx) return;
     ctx.save();
     ctx.setTransform(hudCanvasScale, 0, 0, hudCanvasScale, 0, 0);
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
+    if ("clearRect" in ctx) ctx.clearRect(0, 0, w, h);
+    if ("globalCompositeOperation" in ctx) {
+      ctx.globalCompositeOperation = "copy";
+      ctx.fillStyle = HUD_CHROMA_KEY;
+      ctx.fillRect(0, 0, w, h);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    if (!local) ctx.translate(-x, -y);
     try {
-      draw(ctx);
+      draw(ctx, w, h);
     } catch (error) {
       ctx.restore();
       console.error("[mini-three] HUD widget failed", name || "hud-widget", error);
       return;
     }
     ctx.restore();
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.needsUpdate = true;
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), createHudMaterial(texture));
+    mesh.name = name || "hud-widget";
+    mesh.position.set(x + w / 2, y + h / 2, 0);
+    mesh.scale.set(w, h, 1);
+    mesh.renderOrder = 10100 + layer;
+    mesh.userData.texture = texture;
+    hudScene.add(mesh);
+    hudWidgets.push(mesh);
+  }
+
+  function addHudWidget(bounds, draw, name, layer = 0) {
+    addHudPlane(bounds, draw, name, layer, false);
   }
 
   function addLocalHudWidget(bounds, draw, name, layer = 0) {
-    if (!hudCtx) return;
-    const x = Math.max(0, Math.floor(bounds.x));
-    const y = Math.max(0, Math.floor(bounds.y));
-    const w = Math.min(hudWidth - x, Math.ceil(bounds.width));
-    const h = Math.min(hudHeight - y, Math.ceil(bounds.height));
-    if (w <= 0 || h <= 0) return;
-    const ctx = hudCtx;
-    ctx.save();
-    ctx.setTransform(hudCanvasScale, 0, 0, hudCanvasScale, 0, 0);
-    ctx.beginPath();
-    ctx.rect(x, y, w, h);
-    ctx.clip();
-    ctx.translate(x, y);
-    try {
-      draw(ctx, w, h);
-    } catch (error) {
-      ctx.restore();
-      console.error("[mini-three] local HUD widget failed", name || "hud-widget", error);
-      return;
-    }
-    ctx.restore();
+    addHudPlane(bounds, draw, name, layer, true);
   }
 
   function hudState() {
@@ -1747,7 +1765,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         labels: labelSnapshot.map((label) => [label.id, label.text, label.variant, Math.round(label.x), Math.round(label.y)]),
       });
       if (!force && signature === lastHudSignature) return;
-      if (!beginHudFrame()) return;
+      clearHudWidgets();
       labelSnapshot.forEach((label, index) => {
         addHudWidget(
           labelMetrics(label),
@@ -1756,13 +1774,10 @@ function createMiniProgramThreeMap(canvas, options = {}) {
           90 + index * 0.001,
         );
       });
-      addLocalHudWidget(
-        { x: 0, y: 0, width: hudWidth, height: hudHeight },
-        (ctx, width, height) => drawFixedHudLocal(ctx, hud, width, height),
-        "hud-fixed-controls",
-        117,
-      );
-      if (hud.panel && hud.panel !== "none") {
+      if (!state.disableFixedHud) {
+        addFixedHudWidgets(addLocalHudWidget, hud, hudWidth, hudHeight);
+      }
+      if (!state.disableFixedHud && hud.panel && hud.panel !== "none") {
         addHudWidget(
           panelMetrics(hudWidth, hudHeight, hud.panel),
           (ctx) => drawPanel(ctx, hud, hudWidth, hudHeight),
@@ -1770,7 +1785,6 @@ function createMiniProgramThreeMap(canvas, options = {}) {
           118,
         );
       }
-      finishHudFrame();
       lastHudCameraSignature = cameraSignature;
       lastHudSignature = signature;
       lastHudRebuildAt = now;
@@ -1848,6 +1862,11 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         mat.transparent = true;
         mat.opacity = state.layerMode === "section" ? 0.28 : state.layerMode === "exploded" ? 0.12 : state.layerMode === "2F" || state.layerMode === "1F" ? 0.08 : 0.1;
         mat.depthWrite = false;
+        mat.map = null;
+        mat.normalMap = null;
+        mat.roughnessMap = null;
+        mat.metalnessMap = null;
+        mat.emissiveMap = null;
         if (mat.color) mat.color.offsetHSL(0, -0.08, 0.08);
         mat.needsUpdate = true;
       });
@@ -1856,19 +1875,96 @@ function createMiniProgramThreeMap(canvas, options = {}) {
 
   function loadModel() {
     const loader = new GLTFLoader();
-    loader.setResourcePath("map-models/textures/");
+    const modelPath = "packages/map/map-models/jingong.glb";
+    loader.setResourcePath("");
+    const bufferFromReadResult = (data) => {
+      if (data instanceof ArrayBuffer) return data;
+      if (data?.buffer?.slice && Number.isFinite(data.byteLength)) {
+        return data.buffer.slice(data.byteOffset || 0, (data.byteOffset || 0) + data.byteLength);
+      }
+      return null;
+    };
+    const isValidGlb = (arrayBuffer) => {
+      if (!(arrayBuffer instanceof ArrayBuffer) || arrayBuffer.byteLength < 20) return false;
+      const bytes = new Uint8Array(arrayBuffer, 0, 4);
+      const magic = String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]);
+      const version = new DataView(arrayBuffer, 4, 4).getUint32(0, true);
+      return magic === "glTF" && version >= 2;
+    };
+    const attachModel = (gltf) => {
+      modelGroup.clear();
+      prepareModel(gltf.scene, mapData.calibration?.runtimeFit?.centeredScale || 0.000010638787219624723);
+      modelGroup.visible = true;
+      modelGroup.add(gltf.scene);
+      status(true, "Three/GLB 地图已加载", { debug: "model-loaded" });
+    };
+    const loadViaFileSystem = () => {
+      if (typeof wx === "undefined" || !wx.getFileSystemManager || !loader.parse) return false;
+      const candidatePaths = [
+        modelPath,
+        `/${modelPath}`,
+        "miniprogram/packages/map/map-models/jingong.glb",
+      ];
+      try {
+        let arrayBuffer = null;
+        let resolvedPath = "";
+        const fs = wx.getFileSystemManager();
+        for (const candidate of candidatePaths) {
+          try {
+            const data = fs.readFileSync(candidate);
+            const maybeBuffer = bufferFromReadResult(data);
+            if (isValidGlb(maybeBuffer)) {
+              arrayBuffer = maybeBuffer;
+              resolvedPath = candidate;
+              break;
+            }
+            status(false, `GLB 文件头异常：${candidate}`, { debug: `invalid-glb:${maybeBuffer?.byteLength || 0}` });
+          } catch (error) {
+            status(false, `GLB 路径不可读：${candidate}`, { debug: error?.message || "read-failed" });
+          }
+        }
+        if (!arrayBuffer) return false;
+        loader.parse(
+          arrayBuffer,
+          "packages/map/map-models/",
+          attachModel,
+          (error) => status(false, `GLB 解析失败：${error?.message || "未知错误"}`, { debug: "parse-failed" }),
+        );
+        status(false, `正在解析 GLB：${resolvedPath}`, { debug: "parse-started" });
+        return true;
+      } catch (error) {
+        status(false, `GLB 读取失败：${error?.message || "未知错误"}`, { debug: "readFileSync-failed" });
+        return false;
+      }
+    };
+    const loadEmbeddedGlb = () => {
+      if (!loader.parse || !jingongGlbData?.base64) return false;
+      try {
+        const arrayBuffer = typeof wx !== "undefined" && wx.base64ToArrayBuffer
+          ? wx.base64ToArrayBuffer(jingongGlbData.base64)
+          : null;
+        if (!isValidGlb(arrayBuffer)) return false;
+        loader.parse(
+          arrayBuffer,
+          "",
+          attachModel,
+          (error) => status(false, `GLB 解析失败：${error?.message || "未知错误"}`, { debug: "embedded-parse-failed" }),
+        );
+        status(false, "正在解析内置 GLB", { debug: "embedded-parse-started" });
+        return true;
+      } catch (error) {
+        status(false, `内置 GLB 读取失败：${error?.message || "未知错误"}`, { debug: "embedded-read-failed" });
+        return false;
+      }
+    };
+    if (loadEmbeddedGlb()) return;
+    if (loadViaFileSystem()) return;
     loader.load(
-      "map-models/jingong.glb",
-      (gltf) => {
-        modelGroup.clear();
-        prepareModel(gltf.scene, mapData.calibration?.runtimeFit?.centeredScale || 0.000010638787219624723);
-        modelGroup.visible = true;
-        modelGroup.add(gltf.scene);
-        options.onStatus && options.onStatus({ ready: true, text: "Three/GLB 地图已加载" });
-      },
+      modelPath,
+      attachModel,
       undefined,
       (error) => {
-        options.onStatus && options.onStatus({ ready: false, text: `GLB 加载失败：${error?.message || "未知错误"}` });
+        status(false, `GLB 加载失败：${error?.message || "未知错误"}`, { debug: "loader-load-failed" });
       },
     );
   }
@@ -2263,7 +2359,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
         y: Math.round((-vector.y * 0.5 + 0.5) * renderHeight + nudge.y),
         visible: vector.z > -1 && vector.z < 1,
       };
-    }).sort((a, b) => b.priority - a.priority);
+    }).filter((label) => Number.isFinite(label.x) && Number.isFinite(label.y)).sort((a, b) => b.priority - a.priority);
     const occupied = hudReservedBoxes(renderWidth, renderHeight, hudState());
     return projected.map((label) => {
       const required = labelDensityRank[label.minDensity || "far"] || 0;

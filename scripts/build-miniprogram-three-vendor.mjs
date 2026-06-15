@@ -32,6 +32,10 @@ bundle = bundle.replace(
   'const contextNames = ["webgl2", "webgl", "experimental-webgl"];',
   'const contextNames = ["webgl", "experimental-webgl"];',
 );
+bundle = bundle.replace(
+  'let i=wx.getSystemInfoSync(),s=i.platform==="android";',
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync(),a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{...o,platform:a.platform||o.platform}})(),s=i.platform==="android";',
+);
 fs.writeFileSync(outfile, bundle);
 
 const stat = fs.statSync(outfile);

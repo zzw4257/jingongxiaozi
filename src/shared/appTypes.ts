@@ -1,4 +1,4 @@
-export type AppMode = "standby" | "chat" | "expert" | "map" | "duplex";
+export type AppMode = "standby" | "chat" | "expert" | "map";
 
 export type StandbyPhase = "idle" | "listening";
 
@@ -25,7 +25,12 @@ export type BackendDirective =
   | { type: "processing"; hint?: string }
   | { type: "chat"; answer: string; keywords?: string[]; audio?: Partial<AudioChainState> }
   | { type: "expert"; answer: string; citations?: Citation[]; keywords?: string[]; audio?: Partial<AudioChainState> }
-  | { type: "map"; request: MapDirectRequest; audio?: Partial<AudioChainState> };
+  | { type: "map"; request: MapDirectRequest; audio?: Partial<AudioChainState> }
+  | { type: "navigation.next"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.previous"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.status"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.focus"; routeId?: string; audio?: Partial<AudioChainState> }
+  | { type: "navigation.calibrate_heading"; routeId?: string; audio?: Partial<AudioChainState> };
 
 export type MapDirectRequest = {
   startRoomId?: string;
@@ -78,10 +83,6 @@ export type AppState =
       mode: "map";
       audio: AudioChainState;
       request?: MapDirectRequest;
-    }
-  | {
-      mode: "duplex";
-      audio: AudioChainState;
     };
 
 export const DEFAULT_AUDIO_STATE: AudioChainState = {

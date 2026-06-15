@@ -76,7 +76,7 @@ try {
     await page.waitForSelector(".map3d-canvas-host canvas");
     await page.waitForTimeout(1000);
     await assertVisibleInViewport(page, ".map3d-rail", viewport, "map-rail");
-    await assertVisibleInViewport(page, ".map3d-bottom-chip", viewport, "map-status");
+    await assertVisibleInViewport(page, ".map3d-north-indicator", viewport, "map-north-indicator");
     await assertCanvasNonBlank(page, viewport);
     await page.screenshot({ path: path.join(screenshotDir, `${viewport.name}-map.png`), fullPage: true });
 
@@ -88,7 +88,7 @@ try {
       await page.locator(".material-close").click();
     }
 
-    await page.locator('button[title="返回"]').click();
+    await page.locator('button[title="返回待机"]').click();
     await page.locator('button[aria-label="打开应用抽屉"]').click();
     await page.getByText("对话展示").click();
     await assertVisibleInViewport(page, ".response-card", viewport, "chat-response");
@@ -106,7 +106,7 @@ try {
     await directPage.waitForLoadState("networkidle");
     await directPage.waitForSelector(".map3d-canvas-host canvas");
     await assertVisibleInViewport(directPage, ".map3d-rail", viewport, "direct-map-rail");
-    await assertVisibleInViewport(directPage, ".map3d-bottom-chip.route-active", viewport, "direct-route-status");
+    await assertVisibleInViewport(directPage, ".map3d-guidance-strip", viewport, "direct-route-guidance");
     await assertCanvasNonBlank(directPage, viewport);
     await directPage.screenshot({ path: path.join(screenshotDir, `${viewport.name}-direct-map-route.png`), fullPage: true });
     await directPage.close();

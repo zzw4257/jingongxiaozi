@@ -1,235 +1,21 @@
-import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, PlugZap, RotateCcw, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import { BookOpenText, Bot, Bug, ChevronRight, MapPinned, MessageCircle, Mic2, MonitorSmartphone, RotateCcw, X } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
 import { applyBackendDirective, mockDirectives } from "./backend-bridge/directives";
 import { ChatView } from "./features/chat/ChatView";
 import { ExpertView } from "./features/expert/ExpertView";
 import { MapShell } from "./features/map3d/MapShell";
 import { StandbyView } from "./features/standby/StandbyView";
-import type { AppState, BackendDirective, MapDirectRequest, NavigationProgressPayload } from "./shared/appTypes";
+import type { AppState, BackendDirective, MapDirectRequest } from "./shared/appTypes";
 import { DEFAULT_APP_STATE, DEFAULT_AUDIO_STATE } from "./shared/appTypes";
 import { postMiniProgramMessage } from "./shared/miniProgramBridge";
-import { useDuplexKitRealtime } from "./duplexkit/useDuplexKitRealtime";
 
-const STATUS_DOT_STORAGE_KEY = "duplexkit.statusDot.position";
-
-function shouldKeepMapForVoiceDirective(directive: BackendDirective) {
-  return directive.type === "wake" || directive.type === "listening" || directive.type === "processing" || directive.type === "chat" || directive.type === "expert";
-}
-
-function clampStatusDotPosition(position: { x: number; y: number }) {
-  const margin = 10;
-  const size = 44;
-  const width = window.innerWidth || 1080;
-  const height = window.innerHeight || 720;
-  return {
-    x: Math.min(Math.max(position.x, margin), Math.max(margin, width - size - margin)),
-    y: Math.min(Math.max(position.y, margin), Math.max(margin, height - size - margin)),
-  };
-}
-
-function readStatusDotPosition() {
-  try {
-    const raw = window.localStorage.getItem(STATUS_DOT_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as { x?: unknown; y?: unknown };
-    if (typeof parsed.x !== "number" || typeof parsed.y !== "number") return null;
-    return clampStatusDotPosition({ x: parsed.x, y: parsed.y });
-  } catch {
-    return null;
-  }
-}
-
-function writeStatusDotPosition(position: { x: number; y: number }) {
-  try {
-    window.localStorage.setItem(STATUS_DOT_STORAGE_KEY, JSON.stringify(position));
-  } catch {
-    // The dot still drags in this session if WebView storage is unavailable.
-  }
-}
-
-function DraggableStatusDot({
-  recording,
-  realtimeStatus,
-  onOpen,
-}: {
-  recording: boolean;
-  realtimeStatus: string;
-  onOpen: () => void;
-}) {
-  const [position, setPosition] = useState<{ x: number; y: number } | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const latestPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const dragRef = useRef({
-    timer: 0,
-    pointerId: -1,
-    active: false,
-    moved: false,
-    startX: 0,
-    startY: 0,
-    initialX: 0,
-    initialY: 0,
-    suppressClick: false,
-  });
-
-  useEffect(() => {
-    const updateDefaultPosition = () => {
-      setPosition((current) => {
-        const next = current ?? readStatusDotPosition() ?? clampStatusDotPosition({ x: window.innerWidth - 112, y: 14 });
-        latestPositionRef.current = next;
-        return next;
-      });
-    };
-    updateDefaultPosition();
-    window.addEventListener("resize", updateDefaultPosition);
-    return () => window.removeEventListener("resize", updateDefaultPosition);
-  }, []);
-
-  const clearLongPress = () => {
-    if (dragRef.current.timer) {
-      window.clearTimeout(dragRef.current.timer);
-      dragRef.current.timer = 0;
-    }
-  };
-
-  const finishDrag = () => {
-    clearLongPress();
-    const latestPosition = latestPositionRef.current ?? position;
-    if (dragRef.current.active && latestPosition) {
-      writeStatusDotPosition(latestPosition);
-      dragRef.current.suppressClick = true;
-      window.setTimeout(() => {
-        dragRef.current.suppressClick = false;
-      }, 0);
-    }
-    dragRef.current.active = false;
-    setDragging(false);
-  };
-
+function isNavigationDirective(directive: BackendDirective): directive is Extract<BackendDirective, { type: `navigation.${string}` }> {
   return (
-    <button
-      className={`duplex-status-dot ${recording ? "recording" : ""} ${dragging ? "dragging" : ""}`}
-      style={position ? { left: `${position.x}px`, top: `${position.y}px` } : undefined}
-      onClick={(event) => {
-        if (dragRef.current.suppressClick) {
-          event.preventDefault();
-          return;
-        }
-        onOpen();
-      }}
-      onPointerDown={(event) => {
-        const current = position ?? clampStatusDotPosition({ x: window.innerWidth - 112, y: 14 });
-        latestPositionRef.current = current;
-        dragRef.current.pointerId = event.pointerId;
-        dragRef.current.active = false;
-        dragRef.current.moved = false;
-        dragRef.current.startX = event.clientX;
-        dragRef.current.startY = event.clientY;
-        dragRef.current.initialX = current.x;
-        dragRef.current.initialY = current.y;
-        clearLongPress();
-        dragRef.current.timer = window.setTimeout(() => {
-          dragRef.current.active = true;
-          setDragging(true);
-          event.currentTarget.setPointerCapture(event.pointerId);
-        }, 350);
-      }}
-      onPointerMove={(event) => {
-        if (event.pointerId !== dragRef.current.pointerId) return;
-        const dx = event.clientX - dragRef.current.startX;
-        const dy = event.clientY - dragRef.current.startY;
-        if (!dragRef.current.active && Math.hypot(dx, dy) > 8) {
-          clearLongPress();
-          return;
-        }
-        if (!dragRef.current.active) return;
-        dragRef.current.moved = true;
-        const nextPosition = clampStatusDotPosition({ x: dragRef.current.initialX + dx, y: dragRef.current.initialY + dy });
-        latestPositionRef.current = nextPosition;
-        setPosition(nextPosition);
-      }}
-      onPointerUp={finishDrag}
-      onPointerCancel={finishDrag}
-      aria-label={`${realtimeStatus}，长按拖动`}
-      title={`${realtimeStatus}，长按拖动`}
-    >
-      {recording ? <Mic2 size={19} /> : <PlugZap size={19} />}
-    </button>
-  );
-}
-
-function DuplexConnectionView({
-  duplexKit,
-  realtimeStatus,
-  voiceControls,
-}: {
-  duplexKit: ReturnType<typeof useDuplexKitRealtime>;
-  realtimeStatus: string;
-  voiceControls: ReactNode;
-}) {
-  return (
-    <section className="duplex-page">
-      <div className="duplex-connection-card">
-        <div className="duplex-page-heading">
-          <span className="duplex-page-icon">
-            <PlugZap size={28} />
-          </span>
-          <div>
-            <h2>后端连接</h2>
-            <p>DuplexKit Realtime WebSocket</p>
-          </div>
-        </div>
-
-        <div className="duplex-status-row">
-          <span>状态</span>
-          <strong>{realtimeStatus}</strong>
-        </div>
-        <div className="duplex-status-row">
-          <span>地址</span>
-          <strong>{duplexKit.baseUrl || "未配置"}</strong>
-        </div>
-
-        <div className="duplex-form-grid">
-          <label>
-            <span>Mac IP</span>
-            <input value={duplexKit.host} inputMode="decimal" placeholder="10.x.x.x" onChange={(event) => duplexKit.setHost(event.target.value)} />
-          </label>
-          <label>
-            <span>Port</span>
-            <input value={duplexKit.port} inputMode="numeric" placeholder="5177" onChange={(event) => duplexKit.setPort(event.target.value)} />
-          </label>
-        </div>
-
-        <div className="duplex-page-actions">
-          <button className="directive-button strong" onClick={duplexKit.connectionState === "connected" ? duplexKit.disconnect : duplexKit.connect}>
-            {duplexKit.connectionState === "connected" ? "断开后端" : "连接后端"}
-          </button>
-          <button className="directive-button" disabled={duplexKit.connectionState !== "connected"} onClick={duplexKit.toggleMic}>
-            {duplexKit.micOn ? "停止聆听" : "开始聆听"}
-          </button>
-        </div>
-
-        <div className="duplex-meter" aria-label="DuplexKit microphone level">
-          <span style={{ width: `${Math.round(duplexKit.level * 100)}%` }} />
-        </div>
-        <p className="duplex-connection-note">{duplexKit.connectionState} · {duplexKit.serviceState}</p>
-        {duplexKit.error ? <p className="duplex-error">{duplexKit.error}</p> : null}
-        <div className="duplex-page-voice">{voiceControls}</div>
-      </div>
-
-      <div className="duplex-turn-list" aria-label="最近对话">
-        {duplexKit.turns.length === 0 ? (
-          <p className="duplex-empty">暂无对话</p>
-        ) : (
-          duplexKit.turns.slice(-6).map((turn) => (
-            <article className="duplex-turn" key={turn.id}>
-              <strong>{turn.role === "user" ? "我" : "后端"}</strong>
-              <span>{turn.text}</span>
-            </article>
-          ))
-        )}
-      </div>
-    </section>
+    directive.type === "navigation.next" ||
+    directive.type === "navigation.previous" ||
+    directive.type === "navigation.status" ||
+    directive.type === "navigation.focus" ||
+    directive.type === "navigation.calibrate_heading"
   );
 }
 
@@ -244,18 +30,6 @@ export function App() {
   const activeRail = appState.mode === "standby" && appState.phase === "listening" ? "listening" : activeMode;
   const immersive = displayMode === "kiosk";
   const qaHotspotEnabled = import.meta.env.VITE_QA_HOTSPOT === "1";
-  const debugControlsEnabled = import.meta.env.VITE_SHOW_BACKEND_MOCKS === "1";
-
-  const handleDirective = useCallback((directive: BackendDirective) => {
-    setAppState((current) => {
-      if (current.mode === "map" && shouldKeepMapForVoiceDirective(directive)) {
-        return current;
-      }
-      return applyBackendDirective(directive);
-    });
-  }, []);
-
-  const duplexKit = useDuplexKitRealtime({ onDirective: handleDirective });
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -288,6 +62,27 @@ export function App() {
     setNavOpen(false);
   }, [activeRail]);
 
+  const handleDirective = (directive: BackendDirective) => {
+    if (isNavigationDirective(directive)) {
+      window.dispatchEvent(new CustomEvent("jingong:navigation-command", { detail: { type: directive.type, routeId: directive.routeId } }));
+      setAppState((current) =>
+        current.mode === "map"
+          ? {
+              ...current,
+              audio: {
+                ...DEFAULT_AUDIO_STATE,
+                source: "backend",
+                output: directive.audio?.output ?? "speaking",
+                message: directive.audio?.message ?? "导航进度已更新",
+              },
+            }
+          : current,
+      );
+      return;
+    }
+    setAppState(applyBackendDirective(directive));
+  };
+
   const openMapManual = () => {
     setAppState({ mode: "map", audio: { ...DEFAULT_AUDIO_STATE, source: "touch", message: "手动打开地图" } });
   };
@@ -315,10 +110,6 @@ export function App() {
     handleDirective({ type: "map", request });
   };
 
-  const openDuplexConnection = () => {
-    setAppState({ mode: "duplex", audio: { ...DEFAULT_AUDIO_STATE, source: "touch", message: "打开后端连接页面" } });
-  };
-
   useEffect(() => {
     const apiWindow = window as typeof window & {
       jingongOpenMap?: () => void;
@@ -340,77 +131,15 @@ export function App() {
     };
   }, []);
 
-  const sendNavigationProgress = duplexKit.sendNavigationProgress;
-
-  useEffect(() => {
-    const onProgress = (event: Event) => {
-      const progress = (event as CustomEvent<NavigationProgressPayload>).detail;
-      if (progress?.type === "navigation_progress") sendNavigationProgress(progress);
-    };
-    window.addEventListener("jingong:navigation-progress", onProgress);
-    return () => window.removeEventListener("jingong:navigation-progress", onProgress);
-  }, [sendNavigationProgress]);
-
   const title = useMemo(() => {
     if (appState.mode === "standby") return appState.phase === "listening" ? "正在聆听" : "待机展示";
     if (appState.mode === "chat") return "常态对话";
     if (appState.mode === "expert") return "专家问答";
-    if (appState.mode === "duplex") return "后端连接";
     return "地图导航";
   }, [appState]);
 
-  const realtimeStatus = useMemo(() => {
-    if (duplexKit.micOn) return "开麦中";
-    if (duplexKit.connectionState === "connected") return "已连接，未开麦";
-    if (duplexKit.connectionState === "connecting") return "连接中";
-    if (duplexKit.connectionState === "error") return "连接失败";
-    return "未连接";
-  }, [duplexKit.connectionState, duplexKit.micOn]);
-
-  const voiceControlLabel = useMemo(() => {
-    if (duplexKit.micOn) return "停止聆听";
-    if (duplexKit.connectionState === "connected") return "开始聆听";
-    if (duplexKit.connectionState === "connecting") return "连接中";
-    if (duplexKit.connectionState === "error") return "重新连接";
-    return "连接后端";
-  }, [duplexKit.connectionState, duplexKit.micOn]);
-
-  const handleVoiceControl = () => {
-    if (duplexKit.connectionState === "connected") {
-      duplexKit.toggleMic();
-      return;
-    }
-    if (duplexKit.connectionState !== "connecting") {
-      duplexKit.connect();
-    }
-  };
-
-  const voiceControls = (
-    <div className="duplex-control-group" aria-label="DuplexKit 语音控制">
-      <button
-        className={`duplex-voice-toggle ${duplexKit.micOn ? "recording" : ""}`}
-        onClick={handleVoiceControl}
-        disabled={duplexKit.connectionState === "connecting"}
-        title={duplexKit.connectionState === "connected" ? "开始或停止手机麦克风推流" : "连接 DuplexKit 后端"}
-      >
-        <Mic2 size={18} />
-        <span>{voiceControlLabel}</span>
-      </button>
-      {duplexKit.connectionState === "connected" && (
-        <button className="duplex-disconnect-toggle" onClick={duplexKit.disconnect} title="断开 DuplexKit 后端并停止麦克风">
-          <X size={17} />
-          <span>断开</span>
-        </button>
-      )}
-    </div>
-  );
-
   return (
     <main className={`app-shell ${displayMode === "kiosk" ? "kiosk-shell" : "desktop-shell"} mode-${activeRail} ${immersive ? "immersive-mode" : ""} ${navOpen ? "nav-open" : ""}`}>
-      {appState.mode !== "duplex" && duplexKit.connectionState !== "idle" && (
-        <DraggableStatusDot recording={duplexKit.micOn} realtimeStatus={realtimeStatus} onOpen={openDuplexConnection} />
-      )}
-
       <header className="app-header">
         <div className="brand-mark" aria-hidden="true">
           <Bot size={31} strokeWidth={2.4} />
@@ -420,8 +149,7 @@ export function App() {
           <p>机器人头顶展示终端 / 聆听状态 / 对话问答 / 金工中心地图导航</p>
         </div>
         <div className="header-status">
-          <span>{title} · {realtimeStatus}</span>
-          {duplexKit.runtimeSettings.voiceLabel ? <small>{duplexKit.runtimeSettings.voiceLabel}</small> : null}
+          <span>{title}</span>
         </div>
         <button
           className="display-mode-toggle"
@@ -440,7 +168,7 @@ export function App() {
         </button>
         <button className={activeRail === "listening" ? "rail-button active" : "rail-button"} onClick={() => handleDirective({ type: "listening", hint: "我在听，请说出需求" })}>
           <Mic2 size={20} />
-          <span>聆听展示</span>
+          <span>聆听</span>
         </button>
         <button className={activeMode === "map" ? "rail-button primary active" : "rail-button primary"} onClick={openMapManual}>
           <MapPinned size={20} />
@@ -454,10 +182,6 @@ export function App() {
           <BookOpenText size={20} />
           <span>专家</span>
         </button>
-        <button className={activeMode === "duplex" ? "rail-button active" : "rail-button"} onClick={openDuplexConnection}>
-          <PlugZap size={20} />
-          <span>后端</span>
-        </button>
       </section>
 
       <section className="app-content">
@@ -465,7 +189,6 @@ export function App() {
         {appState.mode === "chat" && <ChatView answer={appState.answer} keywords={appState.keywords} audio={appState.audio} />}
         {appState.mode === "expert" && <ExpertView answer={appState.answer} keywords={appState.keywords} citations={appState.citations} audio={appState.audio} />}
         {appState.mode === "map" && <MapShell initialRequest={appState.request} entrySource={appState.request ? "backend" : "manual"} onExit={() => setAppState(DEFAULT_APP_STATE)} />}
-        {appState.mode === "duplex" && <DuplexConnectionView duplexKit={duplexKit} realtimeStatus={realtimeStatus} voiceControls={voiceControls} />}
       </section>
 
       {immersive && appState.mode === "standby" && appState.phase === "idle" && (
@@ -506,7 +229,7 @@ export function App() {
           </button>
           <button className={activeRail === "listening" ? "drawer-item active" : "drawer-item"} onClick={() => { handleDirective({ type: "listening", hint: "我在听，请说出需求" }); setNavOpen(false); }}>
             <Mic2 size={22} />
-            <span>聆听展示</span>
+            <span>聆听状态</span>
           </button>
           <button className={activeMode === "map" ? "drawer-item primary active" : "drawer-item primary"} onClick={() => { openMapManual(); setNavOpen(false); }}>
             <MapPinned size={22} />
@@ -520,26 +243,20 @@ export function App() {
             <BookOpenText size={22} />
             <span>专家问答</span>
           </button>
-          <button className={activeMode === "duplex" ? "drawer-item active" : "drawer-item"} onClick={() => { openDuplexConnection(); setNavOpen(false); }}>
-            <PlugZap size={22} />
-            <span>后端连接</span>
+          <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
+            <Bug size={22} />
+            <span>后端调试</span>
           </button>
-          {debugControlsEnabled && (
-            <button className={debugOpen ? "drawer-item active" : "drawer-item"} onClick={() => { setDebugOpen((open) => !open); setNavOpen(false); }}>
-              <Bug size={22} />
-              <span>后端调试</span>
-            </button>
-          )}
         </aside>
       )}
 
-      {debugControlsEnabled && displayMode === "desktop" && (
+      {displayMode === "desktop" && (
         <button className={debugOpen ? "debug-fab active" : "debug-fab"} onClick={() => setDebugOpen((open) => !open)} title="后端指令模拟">
           {debugOpen ? <X size={24} /> : <Bug size={24} />}
         </button>
       )}
 
-      {debugControlsEnabled && debugOpen && (
+      {debugOpen && (
         <aside className="directive-panel floating" aria-label="后端指令调试">
           <div className="panel-title">
             <span>后端指令模拟</span>

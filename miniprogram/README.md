@@ -4,9 +4,9 @@
 
 - 移动端待机态首页。
 - 地图入口和快速路线入口。
-- 包内 Three/WebGL 地图页，加载打包的 `jingong.glb` 模型资产，支持楼层切换、房间点击、常用路线、触控视角和逐段引导。
+- `packages/map` 地图分包内的 Three/WebGL 地图页，加载打包的 `jingong.glb` 模型资产，支持楼层切换、房间点击、常用路线、触控视角和逐段引导。
 
-当前小程序地图使用 `three-platformize` + 微信 `canvas type="webgl"`，并加载包内 `map-models/jingong.glb`。它不允许回退到 WebView、外部 H5、localhost、本地 `5173`、全图 PNG 截图贴图或产品可见 WXML/native 多边形 overlay。小程序端通过生成脚本复用 `src/features/map/data/mapData.ts` 和 `src/features/map/runtime.ts` 的房间、走廊、门洞、楼梯、导航节点、路线和逐段导引数据。
+当前小程序地图使用 `three-platformize` + 微信 `canvas type="webgl"`，并加载地图分包内的 `map-models/jingong.glb`。它不允许回退到 WebView、外部 H5、localhost、本地 `5173`、全图 PNG 截图贴图或产品可见 WXML/native 多边形 overlay。小程序端通过生成脚本复用 `src/features/map/data/mapData.ts` 和 `src/features/map/runtime.ts` 的房间、走廊、门洞、楼梯、导航节点、路线和逐段导引数据。
 
 ## 导入方式
 
@@ -18,7 +18,7 @@
 ## 页面
 
 - `pages/home/home`：待机首页，默认只展示金工小子表情、右下地图入口、左侧应用抽屉。
-- `pages/map/map`：包内 Three/WebGL 地图页，不依赖 WebView、外部 H5 服务或全图 PNG 贴图 fallback；地图、标签、路线、导引和面板由 Three/WebGL 绘制，WXML 只保留全屏 WebGL canvas 以及微信原生 canvas 上方无法稳定覆盖时必须存在的右侧触控栏/真北兜底控件。
+- `packages/map/pages/map/map`：地图分包内的 Three/WebGL 地图页，不依赖 WebView、外部 H5 服务或全图 PNG 贴图 fallback；地图、标签、路线、导引和面板由 Three/WebGL 绘制，WXML 只保留全屏 WebGL canvas 以及微信原生 canvas 上方无法稳定覆盖时必须存在的右侧触控栏/真北兜底控件。
 - `pages/chat/chat`：包内常态对话展示页，对齐移动端的“表情 + 大字回答 + 核心词 + 音频状态”。
 - `pages/expert/expert`：包内专家问答展示页，对齐移动端的专家回答与引用卡片。
 
@@ -31,11 +31,14 @@ startRoomId=...&targetRoomId=...&announce=summary,distance,direction,floorChange
 
 `project.config.json` 已内置以下编译场景，导入后可直接在微信开发者工具顶部场景里切换检查：
 
+- 首页-待机入口
 - 地图页-默认总览
 - 地图页-104路线
 - 地图页-108路线
 - 地图页-202路线
 - 地图页-208路线
+
+上传包会通过 `packOptions.ignore` 排除 `.DS_Store`、`assets/ui/generated-icons/` 和 1024 源头像。1024 头像只用于微信后台资料和应用图标源图，不进入小程序运行包；运行态头像使用 `assets/ui/jingong-xiaozi-icon-144.png`。
 
 ## 开发者工具 CLI
 
@@ -70,4 +73,5 @@ npm run check:miniprogram:release
 - `miniprogram/project.config.json` 写入真实微信小程序 AppID。
 - 小程序地图必须通过 `three-platformize` 和包内 GLB 模型渲染真实 Three 场景。
 - 小程序地图不允许出现 `web-view`、localhost、`5173`、`mapImageSrc`、全图 PNG 截图贴图、旧 native 右栏或产品可见自绘 polygon overlay。
+- 主包只保留首页、对话、专家和轻量图片资产，必须小于 2MB；地图 Three runtime、GLB、纹理和地图数据必须在 `packages/map` 分包内，单分包必须小于 4MB。
 - 发布前必须用微信开发者工具重新截图检查待机、地图总览、路线、图层、视角和逐段导引。

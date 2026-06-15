@@ -15,10 +15,15 @@
     "check:miniprogram:release": "node scripts/verify-miniprogram.mjs --release",
     "check:miniprogram:parity": "node scripts/verify-miniprogram.mjs --parity",
     "build:miniprogram:vendor": "node scripts/build-miniprogram-three-vendor.mjs",
+    "build:miniprogram:glb": "node scripts/generate-miniprogram-glb-data.mjs",
     "sync:miniprogram:map": "node scripts/generate-miniprogram-map-data.mjs",
     "qa:map-report": "node scripts/generate-map-qa-report.mjs",
     "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-geometry.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs && node scripts/verify-alignment.mjs && node scripts/verify-duplex-room-catalog.mjs && node scripts/generate-map-qa-report.mjs",
     "check:duplex": "node scripts/verify-duplex-room-catalog.mjs",
+    "check:fullstack:contracts": "node scripts/verify-fullstack-contracts.mjs",
+    "check:backend": "npm --prefix vendor/DuplexKit run typecheck && npm --prefix vendor/DuplexKit test && npm --prefix vendor/DuplexKit run smoke:navigation-progress:local",
+    "check:fullstack": "npm run check:fullstack:contracts && npm run check:map && npm run check:miniprogram && npm run check:miniprogram:parity && npm run build && npm run check:backend",
+    "check:fullstack:release": "npm run check:fullstack && npm run check:miniprogram:release",
     "qa:mobile": "node scripts/qa-mobile-layout.mjs"
   },
   "dependencies": {
@@ -34,6 +39,7 @@
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.184.1",
     "@vitejs/plugin-react": "^4.3.4",
+    "playwright": "^1.60.0",
     "three-platformize": "^1.133.3",
     "typescript": "^5.7.2",
     "vite": "^6.0.1"

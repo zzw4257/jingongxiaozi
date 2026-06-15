@@ -26,7 +26,6 @@ export function AudioStatus({ audio, compact = false }: Props) {
       </div>
       <div className="audio-status-body">
         <span>{statusText(audio)}</span>
-        {audio.voiceLabel ? <small>{audio.voiceLabel}</small> : null}
         <div className="audio-meter" aria-hidden="true">
           {bars.map((_, index) => (
             <i

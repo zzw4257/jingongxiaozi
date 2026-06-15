@@ -4,7 +4,7 @@ import path from "node:path";
 
 const root = process.cwd();
 const entry = path.join(root, "src/miniprogram/three-vendor-entry.js");
-const outfile = path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js");
+const outfile = path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js");
 
 fs.mkdirSync(path.dirname(outfile), { recursive: true });
 
@@ -17,7 +17,7 @@ await esbuild.build({
   target: ["es2018"],
   legalComments: "none",
   logLevel: "info",
-  minify: false,
+  minify: true,
   define: {
     global: "globalThis",
   },
@@ -32,6 +32,19 @@ bundle = bundle.replace(
   'const contextNames = ["webgl2", "webgl", "experimental-webgl"];',
   'const contextNames = ["webgl", "experimental-webgl"];',
 );
+bundle = bundle.replace(
+  'let i=wx.getSystemInfoSync(),s=i.platform==="android";',
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():{},a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{windowWidth:o.windowWidth||0,windowHeight:o.windowHeight||0,pixelRatio:o.pixelRatio||1,platform:a.platform||"devtools"}})(),s=i.platform==="android";',
+);
+bundle = bundle.replace(
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():wx.getSystemInfoSync(),a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{...o,platform:a.platform||o.platform}})(),s=i.platform==="android";',
+  'let i=(()=>{let o=wx.getWindowInfo?wx.getWindowInfo():{},a=wx.getDeviceInfo?wx.getDeviceInfo():{};return{windowWidth:o.windowWidth||0,windowHeight:o.windowHeight||0,pixelRatio:o.pixelRatio||1,platform:a.platform||"devtools"}})(),s=i.platform==="android";',
+);
+bundle = bundle.replace(
+  'var{platform:K_}=wx.getSystemInfoSync(),zt=class r extends Zi',
+  'var K_=(wx.getDeviceInfo?wx.getDeviceInfo():{}).platform||"devtools",zt=class r extends Zi',
+);
+bundle = bundle.replace(/[ \t]+$/gm, "");
 fs.writeFileSync(outfile, bundle);
 
 const stat = fs.statSync(outfile);

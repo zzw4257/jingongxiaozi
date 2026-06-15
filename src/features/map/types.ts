@@ -224,8 +224,70 @@ export type MapProgressUpdate = {
   routeId?: string;
   activeLegIndex?: number;
   currentNodeId?: string;
-  announce?: boolean;
-  reason?: "manual_next" | "manual_previous" | "status_requested";
+};
+
+export type NavigationCommand =
+  | { type: "navigation.next"; routeId?: string }
+  | { type: "navigation.previous"; routeId?: string }
+  | { type: "navigation.status"; routeId?: string }
+  | { type: "navigation.focus"; routeId?: string }
+  | { type: "navigation.calibrate_heading"; routeId?: string };
+
+export type NavigationProgressSnapshot = {
+  type: "navigation_progress";
+  routeId: string;
+  startRoomId: string;
+  targetRoomId: string;
+  activeLegIndex: number;
+  totalLegs: number;
+  completedLegs: number;
+  remainingLegs: number;
+  totalMeters: number;
+  estimatedSeconds: number;
+  remainingMeters: number;
+  remainingSeconds: number;
+  current: {
+    nodeId: string;
+    label: string;
+    floor: FloorId;
+  };
+  next: {
+    nodeId: string;
+    label: string;
+    floor: FloorId;
+    kind: GuidanceLeg["checkpointKind"];
+    distanceMeters: number;
+    instruction: string;
+  };
+  previous?: {
+    nodeId: string;
+    label: string;
+    floor: FloorId;
+  };
+  destination: {
+    roomId: string;
+    label: string;
+    floor: FloorId;
+  };
+  guidance: {
+    phase: "depart" | "walk" | "transition" | "arrive";
+    userAction: "confirm_next" | "confirm_arrival";
+    currentSegmentLabel: string;
+    nextActionLabel: string;
+    canManualAdvance: boolean;
+    canVoiceAdvance: boolean;
+  };
+  heading?: {
+    calibrated: boolean;
+    available: boolean;
+    bearingDegrees?: number;
+    status: string;
+  };
+  canGoPrevious: boolean;
+  canGoNext: boolean;
+  isFinalLeg: boolean;
+  ttsPrompt: string;
+  source: RouteProgressState["source"];
 };
 
 export type RouteResult = {

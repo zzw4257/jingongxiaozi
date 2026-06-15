@@ -3,7 +3,7 @@ import path from "node:path";
 import vm from "node:vm";
 
 const root = process.cwd();
-const bridgePath = path.join(root, "miniprogram/miniprogram/lib/backend-bridge.js");
+const bridgePath = path.join(root, "miniprogram/miniprogram/packages/map/lib/backend-bridge.js");
 const source = fs.readFileSync(bridgePath, "utf8");
 
 function loadBridge(wxMock) {
@@ -26,6 +26,7 @@ async function verifyProbeTools() {
         data: {
           tools: [
             { name: "map.open" },
+            { name: "navigation.start" },
             { name: "navigation.next" },
             { name: "navigation.previous" },
             { name: "navigation.status" },
@@ -83,6 +84,18 @@ function verifyToolRequestFlow() {
         checkpointKind: "door",
         instruction: "出门进入走廊",
         distanceMeters: 1,
+        current: { nodeId: "door-101", label: "101 门口", floor: "1F" },
+        next: { nodeId: "c1-101", label: "走廊入口", floor: "1F", kind: "door", distanceMeters: 1, instruction: "出门进入走廊" },
+        destination: { roomId: "202-5", label: "202-5", floor: "2F" },
+        guidance: {
+          phase: "walk",
+          userAction: "confirm_next",
+          currentSegmentLabel: "101 门口 → 走廊入口",
+          nextActionLabel: "到达该节点后点下一步，或说下一步",
+          canManualAdvance: true,
+          canVoiceAdvance: true,
+        },
+        heading: { calibrated: false, available: false, status: "小程序宿主暂未提供方向传感器数据；地图按真实北向显示。" },
         remainingMeters: 74,
         remainingSeconds: 109,
         completed: false,
@@ -104,6 +117,18 @@ function verifyToolRequestFlow() {
     checkpointKind: "door",
     instruction: "从房间中心走到门口",
     distanceMeters: 5,
+    current: { nodeId: "center-101", label: "101 房间内", floor: "1F" },
+    next: { nodeId: "door-101", label: "101 门口", floor: "1F", kind: "door", distanceMeters: 5, instruction: "从房间中心走到门口" },
+    destination: { roomId: "202-5", label: "202-5", floor: "2F" },
+    guidance: {
+      phase: "depart",
+      userAction: "confirm_next",
+      currentSegmentLabel: "101 房间内 → 101 门口",
+      nextActionLabel: "到达该节点后点下一步，或说下一步",
+      canManualAdvance: true,
+      canVoiceAdvance: true,
+    },
+    heading: { calibrated: false, available: false, status: "小程序宿主暂未提供方向传感器数据；地图按真实北向显示。" },
     remainingMeters: 79,
     remainingSeconds: 117,
     completed: false,
@@ -111,11 +136,23 @@ function verifyToolRequestFlow() {
     reason: "route_started",
   });
   onMessage?.({ data: JSON.stringify({ type: "tool_request", request: { toolCallId: "tc-1", tool: "navigation.next", args: {} } }) });
-  if (!sent.some((item) => item.type === "navigation_progress" && item.reason === "route_started")) {
+  onMessage?.({ data: JSON.stringify({ type: "tool_request", request: { toolCallId: "tc-2", tool: "map.open", args: {} } }) });
+  onMessage?.({ data: JSON.stringify({ type: "tool_request", request: { toolCallId: "tc-3", tool: "navigation.start", args: { place: "202-5" } } }) });
+  const startedProgress = sent.find((item) => item.type === "navigation_progress" && item.reason === "route_started");
+  if (!startedProgress) {
     throw new Error("bridge did not send navigation_progress");
+  }
+  if (!startedProgress.guidance?.canVoiceAdvance || !startedProgress.heading?.status) {
+    throw new Error("bridge navigation_progress must preserve guidance and heading facts");
   }
   if (!sent.some((item) => item.type === "tool_result" && item.toolCallId === "tc-1" && item.tool === "navigation.next")) {
     throw new Error("bridge did not answer navigation.next with tool_result");
+  }
+  if (!sent.some((item) => item.type === "tool_result" && item.toolCallId === "tc-2" && item.tool === "map.open")) {
+    throw new Error("bridge did not answer map.open with tool_result");
+  }
+  if (!sent.some((item) => item.type === "tool_result" && item.toolCallId === "tc-3" && item.tool === "navigation.start")) {
+    throw new Error("bridge did not answer navigation.start with tool_result");
   }
 }
 

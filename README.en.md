@@ -24,8 +24,8 @@
   </p>
 
   <p>
-    <a href="https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.1.0-map-structure-20260607"><img src="https://img.shields.io/github/v/release/zzw4257/jingongxiaozi?label=release" alt="GitHub release"></a>
-    <a href="https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.1.0-map-structure-20260607"><img src="https://img.shields.io/badge/APK-arm64--v8a-3DDC84?logo=android&logoColor=white" alt="Android arm64 APK"></a>
+    <a href="https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.2.1-main-fullstack-miniprogram-20260615"><img src="https://img.shields.io/github/v/release/zzw4257/jingongxiaozi?label=release" alt="GitHub release"></a>
+    <a href="https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.2.1-main-fullstack-miniprogram-20260615"><img src="https://img.shields.io/badge/APK-arm64--v8a-3DDC84?logo=android&logoColor=white" alt="Android arm64 APK"></a>
     <img src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri&logoColor=white" alt="Tauri 2.x">
     <img src="https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=111111" alt="React 18">
     <img src="https://img.shields.io/badge/Three.js-0.184-000000?logo=threedotjs&logoColor=white" alt="Three.js 0.184">
@@ -218,8 +218,8 @@ npm run check:miniprogram:release
 
 Current GitHub Release:
 
-- [`v0.1.0-map-structure-20260607`](https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.1.0-map-structure-20260607)
-- APK: `jingong-xiaozi-v0.1.0-map-structure-20260607-arm64.apk`
+- [`v0.2.1-main-fullstack-miniprogram-20260615`](https://github.com/zzw4257/jingongxiaozi/releases/tag/v0.2.1-main-fullstack-miniprogram-20260615)
+- APK: distributed through GitHub Release assets, not committed to source history
 - ABI: `arm64-v8a`
 
 Android arm64 build command:
@@ -234,6 +234,7 @@ Release candidates should pass:
 npm run check:map
 npm run check:miniprogram
 npm run check:miniprogram:parity
+npm run check:fullstack:release
 npm run build
 cd src-tauri && cargo check
 npm run tauri -- android build --apk --target aarch64 --ci

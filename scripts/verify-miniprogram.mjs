@@ -19,6 +19,7 @@ const requiredFiles = [
   "miniprogram/miniprogram/data/map-data.js",
   "miniprogram/miniprogram/data/map-data.json",
   "miniprogram/miniprogram/data/map-runtime.js",
+  "miniprogram/miniprogram/lib/backend-bridge.js",
   "miniprogram/miniprogram/pages/chat/chat.json",
   "miniprogram/miniprogram/pages/chat/chat.wxml",
   "miniprogram/miniprogram/pages/chat/chat.js",
@@ -194,6 +195,7 @@ for (const token of ["nativeFloors", "nativeSpaces", "nativeRooms", "nativeDoors
 }
 
 const webMapJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/map/map.js"), "utf8");
+const miniBackendBridge = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/backend-bridge.js"), "utf8");
 const webMapRuntimeJs = fs.readFileSync(path.join(root, "miniprogram/miniprogram/data/map-runtime.js"), "utf8");
 const miniThreeScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/lib/three-map-scene.js"), "utf8");
 const miniThreeVendor = fs.existsSync(path.join(root, "miniprogram/miniprogram/vendor/three-platformize-runtime.js"))
@@ -217,6 +219,11 @@ for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill", "hudReserv
 for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStackLocal", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {
   if (!miniThreeScene.includes(token)) {
     throw new Error(`Three HUD must own mobile map controls, missing token: ${token}`);
+  }
+}
+for (const token of ["createMiniProgramBackendBridge", "navigation_progress", "navigation.next", "navigation.previous", "navigation.status", "tool_result", "/api/realtime", "/api/tools"]) {
+  if (!(webMapJs + miniBackendBridge).includes(token)) {
+    throw new Error(`mini program backend bridge must keep DuplexKit protocol token: ${token}`);
   }
 }
 if (!/const railTapActions = \[\s*\{ action: "back" \},\s*\{ panel: "route" \},\s*\{ panel: "layers" \},\s*\{ panel: "view" \},\s*\{ view: "reset" \}\s*\]/s.test(webMapJs)) {
@@ -281,6 +288,7 @@ function smokeLoadMapPage() {
   const wxMock = {
     getWindowInfo: () => ({ windowWidth: 844, windowHeight: 390 }),
     getDeviceInfo: () => ({}),
+    getStorageSync: () => "",
     nextTick: (fn) => { if (typeof fn === "function") fn(); },
     reLaunch: () => {},
     navigateBack: () => {},
@@ -323,6 +331,21 @@ function smokeLoadMapPage() {
         { filename: `${resolved}.js` },
       );
       return module.exports;
+    }
+    if (resolved.endsWith("lib/backend-bridge")) {
+      return {
+        createMiniProgramBackendBridge: (handlers = {}) => {
+          const sent = [];
+          return {
+            sent,
+            connect() { handlers.onStatus?.({ state: "connected", connected: true }); return true; },
+            disconnect() { handlers.onStatus?.({ state: "idle", connected: false }); },
+            endpoint() { return { baseUrl: "" }; },
+            sendNavigationProgress(progress) { sent.push(progress); return true; },
+            sendToolResult() { return true; },
+          };
+        },
+      };
     }
     if (resolved.endsWith("lib/three-map-scene")) {
       return {
@@ -427,6 +450,23 @@ function smokeLoadMapPage() {
   if (!instance.data.route.nodeIds.includes("stair-public-upper") && !instance.data.route.nodeIds.includes("door-202-5")) {
     throw new Error("MapDirect 202-5 route must pass the public stair / 202 platform connector");
   }
+  const statusProgress = instance.handleBackendToolRequest.call(instance, { toolCallId: "mini-status", tool: "navigation.status", args: {} });
+  if (!statusProgress || statusProgress.type !== "navigation_progress" || statusProgress.reason !== "status_requested" || !statusProgress.announce) {
+    throw new Error("mini program backend navigation.status must emit an announced navigation_progress payload");
+  }
+  const nextProgress = instance.handleBackendToolRequest.call(instance, { toolCallId: "mini-next", tool: "navigation.next", args: {} });
+  if (!nextProgress || nextProgress.reason !== "manual_next" || nextProgress.activeLegIndex !== 1) {
+    throw new Error("mini program backend navigation.next must advance to the next route leg");
+  }
+  const previousProgress = instance.handleBackendToolRequest.call(instance, { toolCallId: "mini-previous", tool: "navigation.previous", args: {} });
+  if (!previousProgress || previousProgress.reason !== "manual_previous" || previousProgress.activeLegIndex !== 0) {
+    throw new Error("mini program backend navigation.previous must return to the previous route leg");
+  }
+  const backendStartProgress = instance.handleBackendToolRequest.call(instance, { toolCallId: "mini-start", tool: "navigation.start", args: { place: "208" } });
+  if (!backendStartProgress || backendStartProgress.reason !== "route_started" || instance.data.route?.targetRoomId !== "208") {
+    throw new Error("mini program backend navigation.start must resolve room text and create a route");
+  }
+  instance.onLoad.call(instance, { targetRoomId: "202-5", announce: "summary,distance,direction,floorChange" });
   const railX = 844 - 12 - 28;
   instance.handlePageTap.call(instance, { detail: { x: railX, y: 195 } });
   if (instance.data.panel !== "layers") {

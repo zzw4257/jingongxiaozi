@@ -224,6 +224,8 @@ export type MapProgressUpdate = {
   routeId?: string;
   activeLegIndex?: number;
   currentNodeId?: string;
+  announce?: boolean;
+  reason?: "manual_next" | "manual_previous" | "status_requested";
 };
 
 export type RouteResult = {

@@ -1,5 +1,6 @@
 const mapDataModule = require("../../data/map-data");
 const mapRuntimeModule = require("../../data/map-runtime");
+const { createMiniProgramBackendBridge } = require("../../lib/backend-bridge");
 const mapData = mapDataModule.default || mapDataModule;
 const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 
@@ -261,6 +262,22 @@ function activeLayerClass(layerMode, id) {
 
 function roomLabel(roomId) {
   return mapRuntime.roomLabel(mapData, roomId);
+}
+
+function resolveMiniRoomId(place) {
+  const text = String(place || "").trim().toLowerCase();
+  if (!text) return "";
+  const compact = text.replace(/\s+/g, "").replace(/二楼/g, "2f").replace(/二层/g, "2f");
+  const exact = mapData.rooms.find((room) => {
+    const values = [room.id, room.roomNo, room.name, `${room.roomNo}${room.name}`].map((value) => String(value || "").toLowerCase().replace(/\s+/g, ""));
+    return values.includes(compact);
+  });
+  if (exact) return exact.id;
+  const fuzzy = mapData.rooms.find((room) => {
+    const values = [room.id, room.roomNo, room.name, `${room.roomNo}${room.name}`].map((value) => String(value || "").toLowerCase().replace(/\s+/g, ""));
+    return values.some((value) => value && (compact.includes(value) || value.includes(compact)));
+  });
+  return fuzzy?.id || "";
 }
 
 function imageTransformStyle(transform) {
@@ -665,6 +682,34 @@ function routeStepCardForLeg(leg) {
   };
 }
 
+function navigationProgressPayload(route, activeStepIndex, reason = "step_changed", announce = false) {
+  if (!route) return null;
+  const legs = route.guidanceLegs || [];
+  if (!legs.length) return null;
+  const index = Math.min(Math.max(0, activeStepIndex || 0), legs.length - 1);
+  const leg = legs[index];
+  const remainingMeters = Math.max(0, Math.round(legs.slice(index).reduce((sum, item) => sum + Number(item.distanceMeters || 0), 0)));
+  const totalMeters = Math.max(1, Number(route.totalMeters || remainingMeters || 1));
+  const remainingSeconds = Math.max(0, Math.round(Number(route.estimatedSeconds || 0) * (remainingMeters / totalMeters)));
+  return {
+    type: "navigation_progress",
+    routeId: route.id,
+    activeLegIndex: index,
+    totalLegs: legs.length,
+    routeSummary: route.summary,
+    fromLabel: leg.fromLabel,
+    checkpointLabel: leg.checkpointLabel,
+    checkpointKind: leg.checkpointKind,
+    instruction: leg.instruction,
+    distanceMeters: Number(leg.distanceMeters || 0),
+    remainingMeters,
+    remainingSeconds,
+    completed: index >= legs.length - 1 && reason === "completed",
+    announce: Boolean(announce),
+    reason,
+  };
+}
+
 const nativeVisual = {
   stageWidth: 330,
   stageHeight: 176,
@@ -987,6 +1032,21 @@ Page({
     this.threeMap = null;
     this.lastThreeLabelsSignature = "";
     this.pendingTouchEvents = [];
+    this.routeStartedAnnouncementId = "";
+    this.lastNavigationProgressSignature = "";
+    this.backendBridge = createMiniProgramBackendBridge({
+      getMapState: () => ({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+      }),
+      onToolRequest: (request) => this.handleBackendToolRequest(request),
+      onStatus: (status) => {
+        if (status.state === "connected") this.setData({ sensorHint: "后端已连接" }, () => this.drawMap());
+        if (status.state === "error" || status.state === "missing-endpoint") this.setData({ sensorHint: "后端未连接" }, () => this.drawMap());
+      },
+    });
+    if (this.backendBridge.endpoint().baseUrl) this.backendBridge.connect();
     const targetRoomId = options.targetRoomId || "";
     const startRoomId = options.startRoomId || defaultStartRoomId;
     const route = targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
@@ -1030,6 +1090,10 @@ Page({
     if (this.threeMap) {
       this.threeMap.dispose();
       this.threeMap = null;
+    }
+    if (this.backendBridge) {
+      this.backendBridge.disconnect();
+      this.backendBridge = null;
     }
   },
 
@@ -1193,7 +1257,71 @@ Page({
       ...hostRailStyles(next.panel || this.data.panel || "none", Boolean(route))
     }, () => {
       if (!options.skipDraw) this.drawMap();
+      if (route && !options.skipProgress) {
+        const routeStart = activeStepIndex === 0 && this.routeStartedAnnouncementId !== route.id;
+        if (routeStart) this.routeStartedAnnouncementId = route.id;
+        this.emitNavigationProgress(routeStart ? "route_started" : "step_changed", routeStart, activeStepIndex);
+      }
     });
+  },
+
+  emitNavigationProgress(reason = "step_changed", announce = false, activeStepIndex = this.data.activeStepIndex || 0) {
+    const payload = navigationProgressPayload(this.data.route, activeStepIndex, reason, announce);
+    if (!payload) return null;
+    const signature = `${payload.routeId}:${payload.activeLegIndex}:${payload.reason}:${payload.announce ? 1 : 0}:${payload.completed ? 1 : 0}`;
+    if (!payload.announce && signature === this.lastNavigationProgressSignature) return payload;
+    this.lastNavigationProgressSignature = signature;
+    if (this.backendBridge) this.backendBridge.sendNavigationProgress(payload);
+    return payload;
+  },
+
+  handleBackendToolRequest(request) {
+    if (!request) return null;
+    if (request.tool === "map.close") {
+      this.goBack();
+      return null;
+    }
+    if (request.tool === "navigation.start" || request.tool === "map.set_destination") {
+      const targetRoomId = resolveMiniRoomId(request.args?.place) || this.data.targetRoomId;
+      if (targetRoomId) {
+        const route = calculateRoute(this.data.startRoomId || defaultStartRoomId, targetRoomId);
+        this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
+        this.setRouteState({
+          layerMode: "allFloors",
+          layerHint: layerHints.allFloors,
+          targetRoomId,
+          route,
+          viewPreset: "route",
+          activeStepIndex: 0,
+          panel: "none",
+          routeButtonClass: "active",
+        }, { skipProgress: true });
+        return this.emitNavigationProgress("route_started", true, 0);
+      }
+    }
+    if (!this.data.route) return this.emitNavigationProgress("status_requested", true);
+    if (request.tool === "navigation.next") {
+      const nextIndex = Math.min((this.data.activeStepIndex || 0) + 1, Math.max(0, (this.data.route.guidanceLegs || []).length - 1));
+      this.setRouteState({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+        activeStepIndex: nextIndex,
+      }, { skipProgress: true });
+      return this.emitNavigationProgress("manual_next", true, nextIndex);
+    }
+    if (request.tool === "navigation.previous") {
+      const nextIndex = Math.max(0, (this.data.activeStepIndex || 0) - 1);
+      this.setRouteState({
+        route: this.data.route,
+        targetRoomId: this.data.targetRoomId,
+        startRoomId: this.data.startRoomId,
+        activeStepIndex: nextIndex,
+      }, { skipProgress: true });
+      return this.emitNavigationProgress("manual_previous", true, nextIndex);
+    }
+    if (request.tool === "navigation.status") return this.emitNavigationProgress("status_requested", true);
+    return this.emitNavigationProgress("step_changed", false);
   },
 
   visibleFloorIds(layerMode = this.data.layerMode) {
@@ -2414,17 +2542,20 @@ Page({
   stepRouteProgress(delta) {
     if (!this.data.route) return;
     if (delta && delta.currentTarget) delta = Number(delta.currentTarget.dataset.delta || 0);
+    const nextIndex = (this.data.activeStepIndex || 0) + delta;
     this.setRouteState({
       route: this.data.route,
       targetRoomId: this.data.targetRoomId,
       startRoomId: this.data.startRoomId,
-      activeStepIndex: (this.data.activeStepIndex || 0) + delta
-    });
+      activeStepIndex: nextIndex
+    }, { skipProgress: true });
+    this.emitNavigationProgress(delta > 0 ? "manual_next" : "manual_previous", true, nextIndex);
   },
 
   advanceRouteCheckpoint() {
     if (!this.data.route) return;
     if (!this.data.canNextStep) {
+      this.emitNavigationProgress("completed", true);
       this.clearRoute();
       return;
     }

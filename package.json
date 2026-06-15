@@ -11,13 +11,14 @@
     "check:geometry": "node scripts/verify-geometry.mjs",
     "check:model": "node scripts/verify-model-assets.mjs",
     "check:alignment": "node scripts/verify-alignment.mjs",
-    "check:miniprogram": "node scripts/verify-miniprogram.mjs",
+    "check:miniprogram": "node scripts/verify-miniprogram.mjs && node scripts/verify-miniprogram-backend-bridge.mjs",
     "check:miniprogram:release": "node scripts/verify-miniprogram.mjs --release",
     "check:miniprogram:parity": "node scripts/verify-miniprogram.mjs --parity",
     "build:miniprogram:vendor": "node scripts/build-miniprogram-three-vendor.mjs",
     "sync:miniprogram:map": "node scripts/generate-miniprogram-map-data.mjs",
     "qa:map-report": "node scripts/generate-map-qa-report.mjs",
-    "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-geometry.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs && node scripts/verify-alignment.mjs && node scripts/generate-map-qa-report.mjs",
+    "check:map": "node scripts/verify-map-data.mjs && node scripts/verify-geometry.mjs && node scripts/verify-routes.mjs && node scripts/verify-model-assets.mjs && node scripts/verify-alignment.mjs && node scripts/verify-duplex-room-catalog.mjs && node scripts/generate-map-qa-report.mjs",
+    "check:duplex": "node scripts/verify-duplex-room-catalog.mjs",
     "qa:mobile": "node scripts/qa-mobile-layout.mjs"
   },
   "dependencies": {

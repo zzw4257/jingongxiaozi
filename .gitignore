@@ -1,5 +1,6 @@
 node_modules/
 dist/
+ZJU-live-better/
 src-tauri/target/
 .DS_Store
 *.log

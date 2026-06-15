@@ -1,4 +1,4 @@
-export type AppMode = "standby" | "chat" | "expert" | "map";
+export type AppMode = "standby" | "chat" | "expert" | "map" | "duplex";
 
 export type StandbyPhase = "idle" | "listening";
 
@@ -8,6 +8,8 @@ export type AudioChainState = {
   source: "none" | "touch" | "backend" | "mock";
   level?: number;
   message?: string;
+  speechStartedAt?: number;
+  voiceLabel?: string;
 };
 
 export type Citation = {
@@ -31,6 +33,24 @@ export type MapDirectRequest = {
   layerMode?: "single" | "twoFloor" | "allFloors" | "exploded" | "section" | "raised202";
   activeFloor?: "1F" | "2F";
   announce?: Array<"summary" | "distance" | "direction" | "floorChange">;
+};
+
+export type NavigationProgressPayload = {
+  type: "navigation_progress";
+  routeId: string;
+  activeLegIndex: number;
+  totalLegs: number;
+  routeSummary: string;
+  fromLabel: string;
+  checkpointLabel: string;
+  checkpointKind: "door" | "corridor" | "turn" | "stair" | "room" | "destination";
+  instruction: string;
+  distanceMeters: number;
+  remainingMeters: number;
+  remainingSeconds: number;
+  completed: boolean;
+  announce: boolean;
+  reason: "route_started" | "step_changed" | "manual_next" | "manual_previous" | "status_requested" | "completed";
 };
 
 export type AppState =
@@ -58,6 +78,10 @@ export type AppState =
       mode: "map";
       audio: AudioChainState;
       request?: MapDirectRequest;
+    }
+  | {
+      mode: "duplex";
+      audio: AudioChainState;
     };
 
 export const DEFAULT_AUDIO_STATE: AudioChainState = {

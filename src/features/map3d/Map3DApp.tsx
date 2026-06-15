@@ -26,7 +26,7 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import type { CSSProperties, PointerEvent } from "react";
-import type { MapDirectRequest } from "../../shared/appTypes";
+import type { MapDirectRequest, NavigationProgressPayload } from "../../shared/appTypes";
 import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
 import { calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
@@ -99,6 +99,7 @@ type NorthLayout = {
 
 const mapDebugEnabled = import.meta.env.VITE_MAP_DEBUG === "1";
 const TRUE_NORTH_VECTOR = new THREE.Vector3(0, 0, -1);
+const HEADING_CALIBRATION_STORAGE_KEY = "jingong.map.headingCalibration";
 
 function activeLegUi(route?: RouteResult, leg?: RouteResult["guidanceLegs"][number]) {
   if (!route || !leg) {
@@ -942,8 +943,8 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
   const stepCount = options.publicAccess ? 14 : 10;
   const run = Math.max(0.13, horizontalDistance / stepCount);
   const rise = verticalDistance / stepCount;
-  const stairWidth = options.active ? (options.publicAccess ? 0.68 : 0.52) : options.publicAccess ? 0.44 : 0.34;
-  const passiveOpacity = options.active ? 1 : 0.74;
+  const stairWidth = options.active ? (options.publicAccess ? 0.72 : 0.56) : options.publicAccess ? 0.5 : 0.4;
+  const passiveOpacity = options.active ? 1 : 0.9;
   const pairMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0xffa000 : options.publicAccess ? 0x8a9bad : 0xb68b57,
     emissive: options.active ? 0xb85d00 : 0x000000,
@@ -970,7 +971,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.32,
     metalness: 0.08,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.66,
+    opacity: options.active ? 1 : 0.82,
   });
   const nosingMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0xfff0bd : options.publicAccess ? 0xf4f7fb : 0xf4dfbf,
@@ -979,7 +980,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.36,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.72,
+    opacity: options.active ? 1 : 0.88,
   });
   const haloMaterial = new THREE.MeshBasicMaterial({
     color: options.active ? 0xffd27a : options.publicAccess ? 0xd8e1ea : 0xe9d0ad,
@@ -993,7 +994,7 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.6,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.78,
+    opacity: options.active ? 1 : 0.9,
   });
   const undercarriageMaterial = new THREE.MeshStandardMaterial({
     color: options.active ? 0x9d5200 : options.publicAccess ? 0x748799 : 0x7d5b36,
@@ -1012,17 +1013,9 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
     roughness: 0.62,
     metalness: 0.02,
     transparent: !options.active,
-    opacity: options.active ? 1 : 0.82,
+    opacity: options.active ? 1 : 0.9,
   });
   const stringerCenter = a.clone().lerp(b, 0.5);
-  const shaftMaterial = new THREE.MeshStandardMaterial({
-    color: options.active ? 0x6b3900 : options.publicAccess ? 0x526173 : 0x6f4d2e,
-    roughness: 0.74,
-    metalness: 0.02,
-    transparent: !options.active,
-    opacity: options.active ? 0.82 : 0.38,
-  });
-  const shaftCenter = stringerCenter.clone().add(new THREE.Vector3(0, -verticalDistance * 0.18, 0));
   if (options.active) {
     root.add(orientedBox(stringerCenter.clone().add(new THREE.Vector3(0, -0.035, 0)), horizontalDistance * 0.98, 0.05, stairWidth * 0.34, angle, undercarriageMaterial.clone(), "stair-solid-undercarriage"));
   }
@@ -1067,6 +1060,59 @@ function addStairPairGeometry(root: THREE.Group, a: THREE.Vector3, b: THREE.Vect
 
   addDirectionalArrow(root, a, b, pairMaterial.clone(), options.active ? 1.18 : 0.9);
   if (options.active) addRouteStairGuide(root, a, b, pairMaterial.clone());
+}
+
+function addStairLandingPreview(
+  root: THREE.Group,
+  anchor: THREE.Vector3,
+  toward: THREE.Vector3,
+  options: { active: boolean; publicAccess: boolean; upper: boolean },
+) {
+  const { horizontal, side, angle } = stairBasis(anchor, toward);
+  const stepCount = options.publicAccess ? 6 : 5;
+  const stairWidth = options.active ? (options.publicAccess ? 0.66 : 0.54) : options.publicAccess ? 0.5 : 0.42;
+  const stepRun = options.publicAccess ? 0.15 : 0.13;
+  const stepRise = options.publicAccess ? 0.032 : 0.028;
+  const opacity = options.active ? 1 : 0.92;
+  const baseColor = options.active ? 0xffa000 : options.publicAccess ? 0x7e91a5 : 0xb48650;
+  const treadMaterial = new THREE.MeshStandardMaterial({
+    color: baseColor,
+    emissive: options.active ? 0x8b4400 : 0x000000,
+    emissiveIntensity: options.active ? 0.32 : 0,
+    roughness: 0.48,
+    metalness: 0.02,
+    transparent: !options.active,
+    opacity,
+  });
+  const railMaterial = new THREE.MeshStandardMaterial({
+    color: options.active ? 0xffc45a : options.publicAccess ? 0x53657a : 0x6d5135,
+    roughness: 0.36,
+    metalness: 0.06,
+    transparent: !options.active,
+    opacity: options.active ? 1 : 0.84,
+  });
+  const landingMaterial = treadMaterial.clone();
+  const direction = options.upper ? -1 : 1;
+  const runVector = horizontal.clone().multiplyScalar(direction);
+  root.add(makeBeaconRing(anchor.clone().add(new THREE.Vector3(0, 0.045, 0)), stairWidth * 0.62, baseColor, options.active ? 0.46 : 0.28));
+  root.add(orientedBox(anchor.clone().add(new THREE.Vector3(0, 0.035, 0)), stairWidth * 1.12, 0.06, stairWidth * 0.9, angle, landingMaterial, "stair-visible-landing"));
+
+  for (let index = 0; index < stepCount; index += 1) {
+    const ratio = index + 1;
+    const center = anchor
+      .clone()
+      .add(runVector.clone().multiplyScalar(stepRun * ratio))
+      .add(new THREE.Vector3(0, direction > 0 ? stepRise * ratio : -stepRise * ratio, 0));
+    const tread = orientedBox(center, stepRun * 0.9, 0.04, stairWidth, angle, treadMaterial.clone(), `stair-visible-tread-${index}`);
+    root.add(tread);
+  }
+
+  const railOffset = side.clone().multiplyScalar(stairWidth * 0.55);
+  const railStart = anchor.clone().add(runVector.clone().multiplyScalar(stepRun * 0.4)).add(new THREE.Vector3(0, 0.18, 0));
+  const railEnd = anchor.clone().add(runVector.clone().multiplyScalar(stepRun * (stepCount + 0.6))).add(new THREE.Vector3(0, 0.18 + direction * stepRise * stepCount, 0));
+  root.add(tubeBetween(railStart.clone().add(railOffset), railEnd.clone().add(railOffset), options.active ? 0.022 : 0.016, railMaterial.clone()));
+  root.add(tubeBetween(railStart.clone().sub(railOffset), railEnd.clone().sub(railOffset), options.active ? 0.022 : 0.016, railMaterial.clone()));
+  addDirectionalArrow(root, anchor.clone().add(new THREE.Vector3(0, 0.16, 0)), railEnd.clone().add(new THREE.Vector3(0, 0.05, 0)), treadMaterial.clone(), options.active ? 1 : 0.78);
 }
 
 function addStairPortalPairMarker(root: THREE.Group, a: THREE.Vector3, b: THREE.Vector3, options: { active: boolean; publicAccess: boolean }) {
@@ -1516,17 +1562,44 @@ function bearingBetween(a: THREE.Vector3, b: THREE.Vector3) {
   return normalizeRadians(Math.atan2(b.x - a.x, b.z - a.z));
 }
 
+function readStoredHeadingCalibration() {
+  if (typeof window === "undefined") return { calibrated: false, calibrationOffset: 0 };
+  try {
+    const raw = window.localStorage.getItem(HEADING_CALIBRATION_STORAGE_KEY);
+    if (!raw) return { calibrated: false, calibrationOffset: 0 };
+    const parsed = JSON.parse(raw) as { calibrated?: unknown; calibrationOffset?: unknown };
+    return {
+      calibrated: parsed.calibrated === true,
+      calibrationOffset: typeof parsed.calibrationOffset === "number" ? normalizeRadians(parsed.calibrationOffset) : 0,
+    };
+  } catch {
+    return { calibrated: false, calibrationOffset: 0 };
+  }
+}
+
+function writeStoredHeadingCalibration(offset: number) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(HEADING_CALIBRATION_STORAGE_KEY, JSON.stringify({ calibrated: true, calibrationOffset: normalizeRadians(offset) }));
+  } catch {
+    // Direction still works for the current session when WebView storage is unavailable.
+  }
+}
+
 function useDeviceHeading(): DeviceHeadingState & {
   setCalibrationOffset: (offset: number) => void;
   requestPermission: () => Promise<void>;
 } {
   const missingSensorTimerRef = useRef<number | undefined>();
-  const [state, setState] = useState<DeviceHeadingState>({
-    supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
-    calibrated: false,
-    calibrationOffset: 0,
-    permissionState: "idle",
-    statusMessage: "使用真实南北方向作为地图基准",
+  const [state, setState] = useState<DeviceHeadingState>(() => {
+    const stored = readStoredHeadingCalibration();
+    return {
+      supported: typeof window !== "undefined" && "DeviceOrientationEvent" in window,
+      calibrated: stored.calibrated,
+      calibrationOffset: stored.calibrationOffset,
+      permissionState: "idle",
+      statusMessage: stored.calibrated ? "已使用上次方向校准；可随时重新校准。" : "使用真实南北方向作为地图基准",
+    };
   });
 
   const attachOrientationListener = useCallback(() => {
@@ -1559,7 +1632,8 @@ function useDeviceHeading(): DeviceHeadingState & {
   useEffect(() => attachOrientationListener(), [attachOrientationListener]);
 
   const setCalibrationOffset = useCallback((offset: number) => {
-    setState((current) => ({ ...current, calibrated: true, calibrationOffset: offset }));
+    writeStoredHeadingCalibration(offset);
+    setState((current) => ({ ...current, calibrated: true, calibrationOffset: normalizeRadians(offset), statusMessage: undefined }));
   }, []);
 
   const requestPermission = useCallback(async () => {
@@ -1729,6 +1803,8 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
   const northLayoutSignatureRef = useRef("");
   const sessionLayerModeRef = useRef<MapSessionState["layerMode"]>(session.layerMode);
   const focusedLegSignatureRef = useRef("");
+  const navigationProgressSignatureRef = useRef("");
+  const routeStartedAnnouncementRef = useRef("");
   const panelDragStartRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
@@ -3334,16 +3410,26 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         lowerSemanticVisible &&
         upperSemanticVisible &&
         (onRoute || shouldDrawStairBody(session, false));
-      if (shouldShowStairConnection) {
-        const lowerPoint = stairCenter(stair.lowerLanding);
-        const upperPoint = stairCenter(stair.upperLanding);
+      const lowerPoint = stairCenter(stair.lowerLanding);
+      const upperPoint = stairCenter(stair.upperLanding);
       const stairLift = session.layerMode === "exploded" ? 0.16 : 0.1;
       const lowerVector = new THREE.Vector3(...mapPointToModel(lowerPoint, stair.lowerFloor, { ...modelOptions, semanticId: `${stair.id}-lower`, lift: stairLift }));
       const upperVector = new THREE.Vector3(...mapPointToModel(upperPoint, stair.upperFloor, { ...modelOptions, semanticId: `${stair.id}-upper`, lift: stairLift }));
+      if (shouldShowStairConnection) {
         if (!shouldDrawStairBody(session, onRoute)) {
           addStairPortalPairMarker(building, lowerVector, upperVector, { active: onRoute, publicAccess: stair.access === "public" });
         } else {
           addStairPairGeometry(building, lowerVector, upperVector, { active: onRoute, publicAccess: stair.access === "public" });
+        }
+      } else if ((lowerVisible && lowerSemanticVisible) || (upperVisible && upperSemanticVisible)) {
+        if (!modelFirstOverview || onRoute || session.layerMode === "single" || session.layerMode === "raised202" || session.layerMode === "exploded") {
+          const publicAccess = stair.access === "public";
+          if (lowerVisible && lowerSemanticVisible) {
+            addStairLandingPreview(building, lowerVector, upperVector, { active: onRoute, publicAccess, upper: false });
+          }
+          if (upperVisible && upperSemanticVisible) {
+            addStairLandingPreview(building, upperVector, lowerVector, { active: onRoute, publicAccess, upper: true });
+          }
         }
       }
       if (((onRoute && activeLeg?.kind?.includes("stair")) || !route) && (lowerSemanticVisible || upperSemanticVisible)) {
@@ -3796,26 +3882,91 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
     });
   }, [route]);
 
+  const navigationProgressPayload = useCallback(
+    (
+      leg: RouteResult["guidanceLegs"][number],
+      reason: NavigationProgressPayload["reason"],
+      announce: boolean,
+    ): NavigationProgressPayload | undefined => {
+      if (!route) return undefined;
+      const remainingMeters = Math.max(0, Math.round(route.guidanceLegs.slice(leg.index).reduce((sum, item) => sum + item.distanceMeters, 0)));
+      const remainingSeconds = Math.max(0, Math.round(route.estimatedSeconds * (remainingMeters / Math.max(1, route.totalMeters))));
+      const completed = leg.index >= route.guidanceLegs.length - 1 && reason === "completed";
+      return {
+        type: "navigation_progress",
+        routeId: route.id,
+        activeLegIndex: leg.index,
+        totalLegs: route.guidanceLegs.length,
+        routeSummary: route.summary,
+        fromLabel: leg.fromLabel,
+        checkpointLabel: leg.checkpointLabel,
+        checkpointKind: leg.checkpointKind,
+        instruction: leg.instruction,
+        distanceMeters: leg.distanceMeters,
+        remainingMeters,
+        remainingSeconds,
+        completed,
+        announce,
+        reason,
+      };
+    },
+    [route],
+  );
+
+  const emitNavigationProgress = useCallback(
+    (reason: NavigationProgressPayload["reason"], announce = false, leg = activeLeg) => {
+      if (typeof window === "undefined" || !leg) return;
+      const payload = navigationProgressPayload(leg, reason, announce);
+      if (!payload) return;
+      const signature = `${payload.routeId}:${payload.activeLegIndex}:${payload.reason}:${payload.announce ? 1 : 0}:${payload.completed ? 1 : 0}`;
+      if (!announce && navigationProgressSignatureRef.current === signature) return;
+      navigationProgressSignatureRef.current = signature;
+      window.dispatchEvent(new CustomEvent("jingong:navigation-progress", { detail: payload }));
+    },
+    [activeLeg, navigationProgressPayload],
+  );
+
+  useEffect(() => {
+    if (!route || !activeLeg) return;
+    const shouldAnnounceRouteStart = activeLeg.index === 0 && routeStartedAnnouncementRef.current !== route.id;
+    if (shouldAnnounceRouteStart) routeStartedAnnouncementRef.current = route.id;
+    emitNavigationProgress(shouldAnnounceRouteStart ? "route_started" : "step_changed", shouldAnnounceRouteStart);
+  }, [activeLeg?.index, emitNavigationProgress, route?.id]);
+
   useEffect(() => {
     if (typeof window === "undefined") return undefined;
     const host = window as Window & { __jingongMapProgress?: (update: MapProgressUpdate) => void };
-    const bridge = (update: MapProgressUpdate) => updateRouteProgress(update, "backend");
+    const bridge = (update: MapProgressUpdate) => {
+      if (!route) return;
+      const nodeIndex =
+        update.currentNodeId !== undefined
+          ? route.guidanceLegs.findIndex((leg) => leg.fromNodeId === update.currentNodeId || leg.toNodeId === update.currentNodeId)
+          : -1;
+      const requestedIndex = update.activeLegIndex ?? (nodeIndex >= 0 ? nodeIndex : routeProgress?.activeLegIndex ?? activeLeg?.index ?? 0);
+      const nextIndex = THREE.MathUtils.clamp(requestedIndex, 0, Math.max(0, route.guidanceLegs.length - 1));
+      const nextLeg = route.guidanceLegs[nextIndex];
+      updateRouteProgress(update, "backend");
+      if (update.announce && nextLeg) emitNavigationProgress(update.reason ?? "step_changed", true, nextLeg);
+    };
     host.__jingongMapProgress = bridge;
     return () => {
       if (host.__jingongMapProgress === bridge) delete host.__jingongMapProgress;
     };
-  }, [updateRouteProgress]);
+  }, [activeLeg?.index, emitNavigationProgress, route, routeProgress?.activeLegIndex, updateRouteProgress]);
 
   const stepRouteProgress = (delta: number) => {
     if (!route) return;
-    updateRouteProgress({
-      activeLegIndex: (routeProgress?.routeId === route.id ? routeProgress.activeLegIndex : 0) + delta,
-    });
+    const baseIndex = routeProgress?.routeId === route.id ? routeProgress.activeLegIndex : 0;
+    const nextIndex = THREE.MathUtils.clamp(baseIndex + delta, 0, Math.max(0, route.guidanceLegs.length - 1));
+    updateRouteProgress({ activeLegIndex: nextIndex });
+    const nextLeg = route.guidanceLegs[nextIndex];
+    if (nextLeg) emitNavigationProgress(delta > 0 ? "manual_next" : "manual_previous", true, nextLeg);
   };
 
   const advanceRouteCheckpoint = () => {
     if (!route || !activeLeg) return;
     if (activeLeg.index >= route.guidanceLegs.length - 1) {
+      emitNavigationProgress("completed", true, activeLeg);
       setPanel("none");
       return;
     }

@@ -35,6 +35,29 @@ export function App() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const mode = params.get("mode");
+    if (mode === "chat") {
+      handleDirective({
+        type: "chat",
+        answer: "我可以回答工程训练中心的课程、设备、安全规范和路线问题，也可以根据你的需求打开地图导航。",
+        keywords: ["课程咨询", "设备说明", "路线引导"],
+        audio: { source: "backend", output: "speaking", message: "对话回答" },
+      });
+      return;
+    }
+    if (mode === "expert") {
+      handleDirective({
+        type: "expert",
+        answer: "工程训练中心的学习安排通常需要结合课程任务、设备能力和安全要求判断；涉及具体位置时可继续打开地图定位。",
+        keywords: ["工程训练", "设备能力", "安全要求"],
+        citations: [{ title: "工程训练中心知识库", source: "本地课程资料", excerpt: "课程、设备与空间信息由项目知识库统一维护。" }],
+        audio: { source: "backend", output: "speaking", message: "专家回答" },
+      });
+      return;
+    }
+    if (mode === "listening") {
+      handleDirective({ type: "listening", hint: params.get("hint") || "我在听，请说出需求" });
+      return;
+    }
     const startRoomId = params.get("startRoomId") || undefined;
     const targetRoomId = params.get("targetRoomId") || undefined;
     const requestedLayerMode = params.get("layerMode") as MapDirectRequest["layerMode"] | null;

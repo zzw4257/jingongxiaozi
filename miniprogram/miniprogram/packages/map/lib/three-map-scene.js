@@ -28,7 +28,7 @@ const SEMANTIC_RENDER_POLICY = {
     disc: 0.018,
     ring: 0.045,
     marker: 0.095,
-    label: 0.28,
+    label: 0.14,
   },
 };
 const raised202Polygon = [
@@ -367,7 +367,9 @@ function panelMetrics(width, height, panelId = "route") {
   const panelHeight = compact
     ? panelId === "layers"
       ? Math.min(150, Math.max(132, height - 78))
-      : Math.min(166, Math.max(148, height - 16))
+      : panelId === "route"
+        ? Math.min(320, Math.max(260, height - 16))
+        : Math.min(166, Math.max(148, height - 16))
     : expandedHeight;
   return {
     x: compact
@@ -872,29 +874,72 @@ function drawPanel(ctx, hud, width, height) {
       drawText(ctx, "导航到这里", panel.x + panel.width / 2, panel.y + panel.height - 35, { color: "#ffffff", size: 13, weight: 950, align: "center" });
     }
   } else {
+    const inset = compact ? 12 : 16;
+    const gap = compact ? 6 : 8;
+    const endpointH = compact ? 32 : 40;
+    const endpointW = (panel.width - inset * 2 - gap) / 2;
+    const endpointY = contentY;
+    drawTile(ctx, panel.x + inset, endpointY, endpointW, endpointH, `起 ${hud.routeStartLabel || "101"}`, "点击改起点", hud.routeSelectMode === "start");
+    drawTile(ctx, panel.x + inset + endpointW + gap, endpointY, endpointW, endpointH, `终 ${hud.routeTargetLabel || "未选择"}`, "点击改终点", hud.routeSelectMode !== "start");
+
+    const groupY = endpointY + endpointH + (compact ? 6 : 8);
+    const groupH = compact ? 22 : 26;
+    const groupW = (panel.width - inset * 2 - gap * 3) / 4;
+    const groups = hud.routePickerGroups || [
+      { id: "common", label: "常用" },
+      { id: "1F", label: "一层" },
+      { id: "2F", label: "二层" },
+      { id: "raised202", label: "二层半" },
+    ];
+    groups.forEach((group, index) => {
+      const active = (hud.routePickerGroup || "common") === group.id;
+      fillRoundRect(ctx, panel.x + inset + index * (groupW + gap), groupY, groupW, groupH, 12, active ? "#0b6cff" : "#eef4fb");
+      drawText(ctx, group.label, panel.x + inset + index * (groupW + gap) + groupW / 2, groupY + (compact ? 14 : 17), {
+        color: active ? "#ffffff" : "#2a3f58",
+        size: compact ? 9 : 10,
+        weight: 950,
+        align: "center",
+        maxWidth: groupW - 6,
+      });
+    });
+
+    const infoY = groupY + groupH + (compact ? 5 : 8);
     if (hud.hasRoute) {
-      drawTile(ctx, panel.x + 16, contentY, panel.width - 32, 44, `${hud.routeStartLabel || "101"} → ${hud.routeTargetLabel || "终点"}`, hud.routeDistanceLabel || "路线", true);
-      drawTile(ctx, panel.x + 16, contentY + 52, panel.width - 32, 44, `${hud.currentStepTitle || "当前位置"} → ${hud.nextStepTitle || "下一处"}`, hud.activeStepDistanceLabel || "--", false);
-      const buttonY = contentY + 108;
-      const bw = (panel.width - 48) / 3;
+      drawTile(ctx, panel.x + inset, infoY, panel.width - inset * 2, compact ? 32 : 38, `${hud.currentStepTitle || "当前位置"} → ${hud.nextStepTitle || "下一处"}`, hud.activeStepDistanceLabel || hud.routeDistanceLabel || "--", true);
+      const controlY = infoY + (compact ? 36 : 42);
+      const bw = (panel.width - inset * 2 - gap * 2) / 3;
       [["上一步", "prev"], ["聚焦", "focus"], [hud.stepActionLabel || "到达", "next"]].forEach((item, index) => {
-        drawTile(ctx, panel.x + 16 + index * (bw + 8), buttonY, bw, 38, item[0], "", item[1] === "next");
+        drawTile(ctx, panel.x + inset + index * (bw + gap), controlY, bw, compact ? 30 : 34, item[0], "", item[1] === "next");
       });
     } else {
-      drawText(ctx, "选择终点后导引", panel.x + 16, contentY + 14, { color: "#17253a", size: 15, weight: 950, maxWidth: panel.width - 32 });
-      drawText(ctx, "默认从 101 出发，按门、走廊、楼梯逐段提示。", panel.x + 16, contentY + 38, { color: "#657990", size: 11, weight: 850, maxWidth: panel.width - 32 });
+      drawText(ctx, hud.routePickerModeLabel || "正在选择终点", panel.x + inset, infoY + 11, { color: "#17253a", size: 12, weight: 950, maxWidth: panel.width - inset * 2 });
+      drawText(ctx, "同移动端：选任意起点与终点后按拓扑寻路。", panel.x + inset, infoY + 28, { color: "#657990", size: 9, weight: 850, maxWidth: panel.width - inset * 2 });
     }
-    const targets = [
-      ["104", "104-2F01"],
-      ["202-5", "202-5"],
-      ["108", "108-2F04"],
-      ["208", "208"],
-    ];
-    const quickY = panel.y + panel.height - 54;
-    const tw = (panel.width - 40 - 18) / 4;
-    targets.forEach((item, index) => {
-      drawTile(ctx, panel.x + 16 + index * (tw + 6), quickY, tw, 38, item[0], "", hud.targetRoomId === item[1]);
+
+    const pickerItems = hud.routePickerItems || [];
+    const pickerY = compact ? infoY + (hud.hasRoute ? 76 : 42) : panel.y + panel.height - 96;
+    const itemH = compact ? 24 : 30;
+    const itemW = (panel.width - inset * 2 - gap * 3) / 4;
+    pickerItems.forEach((item, index) => {
+      const x = panel.x + inset + (index % 4) * (itemW + gap);
+      const y = pickerY + Math.floor(index / 4) * (itemH + gap);
+      const active = Boolean(item.active);
+      fillRoundRect(ctx, x, y, itemW, itemH, 10, active ? "#0b6cff" : item.endpoint === "start" ? "#dff7ec" : item.endpoint === "target" ? "#ffe5ed" : "#f4f8fc");
+      strokeRoundRect(ctx, x + 0.5, y + 0.5, itemW - 1, itemH - 1, 10, active ? "#0b6cff" : "rgba(199,216,236,0.92)", 1);
+      drawText(ctx, item.title || item.id, x + itemW / 2, y + (compact ? 15 : 18), {
+        color: active ? "#ffffff" : "#17253a",
+        size: compact ? 9 : 10,
+        weight: 950,
+        align: "center",
+        maxWidth: itemW - 6,
+      });
     });
+    const pageY = pickerY + itemH * 2 + gap + 4;
+    fillRoundRect(ctx, panel.x + inset, pageY, 58, compact ? 22 : 24, 12, hud.routePickerCanPrev ? "#eef4fb" : "#f6f8fb");
+    drawText(ctx, "上一页", panel.x + inset + 29, pageY + (compact ? 14 : 16), { color: hud.routePickerCanPrev ? "#2a3f58" : "#a0adba", size: 9, weight: 900, align: "center" });
+    drawText(ctx, hud.routePickerPageLabel || "1/1", panel.x + panel.width / 2, pageY + (compact ? 14 : 16), { color: "#657990", size: 10, weight: 900, align: "center" });
+    fillRoundRect(ctx, panel.x + panel.width - inset - 58, pageY, 58, compact ? 22 : 24, 12, hud.routePickerCanNext ? "#eef4fb" : "#f6f8fb");
+    drawText(ctx, "下一页", panel.x + panel.width - inset - 29, pageY + (compact ? 14 : 16), { color: hud.routePickerCanNext ? "#2a3f58" : "#a0adba", size: 9, weight: 900, align: "center" });
   }
 }
 
@@ -1243,14 +1288,15 @@ function raisedPlatformBoundaryWall(layerMode, mat) {
 
 function raisedPlatformLowerContext(layerMode) {
   const root = new THREE.Group();
-  const detailed = layerMode === "raised202" || layerMode === "exploded" || layerMode === "2F";
+  const detailed = layerMode === "2F";
+  const focus = layerMode === "raised202";
   const supportMat = material({ color: detailed ? 0xd5c6ad : 0xc8b89f, opacity: detailed ? 1 : 0.86 });
   const surface = extrudedPolygonMesh(
     raised202Polygon,
     "2F",
     layerMode,
-    detailed ? 0.052 : 0.042,
-    material({ color: detailed ? 0xe6dac4 : 0xdacdb8, opacity: detailed ? 1 : 0.86 }),
+    focus ? 0.034 : detailed ? 0.052 : 0.042,
+    material({ color: focus ? 0xeadcc5 : detailed ? 0xe6dac4 : 0xdacdb8, opacity: focus ? 0.78 : detailed ? 1 : 0.86 }),
     SLAB_THICKNESS + 0.006,
     "202-lower-context",
   );
@@ -1716,6 +1762,14 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       routeStartLabel: state.routeStartLabel || (state.route ? mapRuntime.roomLabel(mapData, state.route.startRoomId) : "101"),
       routeTargetLabel: state.routeTargetLabel || (state.route ? mapRuntime.roomLabel(mapData, state.route.targetRoomId) : "未选择"),
       targetRoomId: state.targetRoomId || state.route?.targetRoomId || "",
+      routeSelectMode: state.routeSelectMode || "target",
+      routePickerModeLabel: state.routePickerModeLabel || "正在选择终点",
+      routePickerItems: state.routePickerItems || [],
+      routePickerGroup: state.routePickerGroup || "common",
+      routePickerGroups: state.routePickerGroups || [],
+      routePickerPageLabel: state.routePickerPageLabel || "1/1",
+      routePickerCanPrev: Boolean(state.routePickerCanPrev),
+      routePickerCanNext: Boolean(state.routePickerCanNext),
       selectedFloorLabel: state.selectedFloorLabel || (selectedRoom ? `${selectedRoom.floor} · ${selectedRoom.roomNo}` : "点击地图房间"),
       selectedRoomId: state.selectedRoomId || "",
       selectedRoomTitle: selectedRoom ? `${selectedRoom.roomNo} · ${selectedRoom.name}` : "",
@@ -2059,7 +2113,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     });
     if (floorVisible("2F", layerMode) && (layerMode === "allFloors" || layerMode === "2F" || layerMode === "raised202" || layerMode === "exploded")) {
       semanticRoot.add(raisedPlatformLowerContext(layerMode));
-      if (layerMode === "raised202" || layerMode === "exploded" || layerMode === "2F") {
+      if (layerMode === "2F") {
         labels.push({
           id: "202-lower-context",
           text: "202 投影结构",
@@ -2078,6 +2132,22 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       if (layerMode === "raised202" || layerMode === "exploded" || state.route?.targetRoomId?.startsWith("202")) {
         semanticRoot.add(raisedPlatformRim(layerMode, raisedRimMat.clone()));
         semanticRoot.add(raisedPlatformBoundaryWall(layerMode, raisedRimMat.clone()));
+        if (layerMode === "raised202") {
+          labels.push({
+            id: "raised-202-focus",
+            text: "202 二层半",
+            compactText: "202",
+            fullText: "202 二层半平台",
+            variant: "floor",
+            minDensity: "far",
+            priority: 88,
+            position: mapPointToModel(polygonCenter(raised202Polygon), "2F", {
+              layerMode,
+              semanticId: "raised-202",
+              lift: SLAB_THICKNESS + RAISED_202_HEIGHT + 0.16,
+            }),
+          });
+        }
       }
     }
     mapData.spaces.forEach((space) => {
@@ -2202,7 +2272,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const doorMesh = tubeBetween(from, to, active ? 0.04 : door.source === "inferred" ? 0.018 : 0.022, material({ color: active ? 0x0b6cff : door.source === "inferred" ? 0xffc85a : 0xffffff, emissive: active ? 0x073c9b : 0x9ecfff, emissiveIntensity: active ? 0.28 : 0.16 }));
       doorMesh.name = `door-${door.nodeId}`;
       semanticRoot.add(doorMesh);
-      if (activeLegNodeIds.has(door.nodeId)) {
+      if (activeLegNodeIds.has(door.nodeId) && state.layerMode !== "raised202" && state.layerMode !== "exploded") {
         labels.push({
           id: `door-${door.nodeId}`,
           text: "门",

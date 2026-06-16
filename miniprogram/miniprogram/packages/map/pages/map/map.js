@@ -7,6 +7,15 @@ const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 const defaultStartRoomId = mapData.defaultStartRoomId || "101";
 const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, overviewLabelRoomIds, palette } = mapRuntime;
 const hostRailGutter = 0;
+const routePickerPageSize = 8;
+const routeTargetShortcutIds = ["104-2F01", "202-5", "108-2F04", "106-2F", "208", "210", "107-core", "104-1F01"];
+const routeStartShortcutIds = ["101", "108-lobby", "104-1F01", "106", "107-core", "208", "202-5", "104-2F01"];
+const routePickerGroups = [
+  { id: "common", label: "常用" },
+  { id: "1F", label: "一层" },
+  { id: "2F", label: "二层" },
+  { id: "raised202", label: "二层半" },
+];
 const railTapActions = [
   { action: "back" },
   { panel: "route" },
@@ -276,6 +285,112 @@ function resolveMiniRoomId(value) {
   return byToken?.id || "";
 }
 
+function routePickerRoomSource() {
+  const floorRank = { "1F": 1, "2F": 2 };
+  return mapData.rooms
+    .filter((room) => room && room.id && room.roomNo && room.doorNodeId)
+    .map((room) => ({
+      id: room.id,
+      title: room.roomNo,
+      subtitle: `${displayFloorForRoom(room)} · ${room.name.length > 5 ? `${room.name.slice(0, 5)}…` : room.name}`,
+      floor: displayFloorForRoom(room),
+      roomNo: room.roomNo,
+      name: room.name,
+    }))
+    .sort((a, b) => {
+      const floorDelta = (floorRank[a.floor] || 9) - (floorRank[b.floor] || 9);
+      if (floorDelta) return floorDelta;
+      return a.roomNo.localeCompare(b.roomNo, "zh-Hans-CN", { numeric: true, sensitivity: "base" });
+    });
+}
+
+const routePickerRooms = routePickerRoomSource();
+const routePickerRoomById = new Map(routePickerRooms.map((room) => [room.id, room]));
+
+function routePickerSourceFor(group = "common", mode = "target") {
+  if (group === "common") {
+    const ids = mode === "start" ? routeStartShortcutIds : routeTargetShortcutIds;
+    return ids.map((id) => routePickerRoomById.get(id)).filter(Boolean);
+  }
+  if (group === "raised202") return routePickerRooms.filter((room) => room.id.startsWith("202"));
+  if (group === "2F") return routePickerRooms.filter((room) => room.floor === "2F" && !room.id.startsWith("202"));
+  return routePickerRooms.filter((room) => room.floor === "1F");
+}
+
+function routePickerView(page = 0, mode = "target", startRoomId = defaultStartRoomId, targetRoomId = "", group = "common") {
+  const source = routePickerSourceFor(group, mode);
+  const pageCount = Math.max(1, Math.ceil(source.length / routePickerPageSize));
+  const safePage = Math.min(Math.max(0, Number(page) || 0), pageCount - 1);
+  const selectedId = mode === "start" ? startRoomId : targetRoomId;
+  const items = source.slice(safePage * routePickerPageSize, safePage * routePickerPageSize + routePickerPageSize).map((item) => ({
+    ...item,
+    active: item.id === selectedId,
+    endpoint: item.id === startRoomId ? "start" : item.id === targetRoomId ? "target" : "",
+  }));
+  return {
+    routePickerItems: items,
+    routePickerPage: safePage,
+    routePickerPageCount: pageCount,
+    routePickerPageLabel: `${safePage + 1}/${pageCount}`,
+    routePickerCanPrev: safePage > 0,
+    routePickerCanNext: safePage < pageCount - 1,
+    routePickerGroup: group,
+    routePickerGroups,
+    routePickerModeLabel: mode === "start" ? "正在选择起点" : "正在选择终点",
+  };
+}
+
+function routePanelLayout(bounds, route, pickerItems = []) {
+  const compact = bounds.height < 190 || bounds.width < 270;
+  const inset = compact ? 12 : 16;
+  const gap = compact ? 6 : 8;
+  const contentY = bounds.y + (compact ? 42 : 54);
+  const endpointH = compact ? 32 : 40;
+  const endpointY = contentY;
+  const endpointW = (bounds.width - inset * 2 - gap) / 2;
+  const groupY = endpointY + endpointH + (compact ? 6 : 8);
+  const groupH = compact ? 22 : 26;
+  const infoY = groupY + groupH + (compact ? 5 : 8);
+  const controlY = route ? infoY + (compact ? 36 : 42) : infoY + (compact ? 28 : 36);
+  const pickerY = compact ? controlY + 36 : bounds.y + bounds.height - 96;
+  const itemH = compact ? 24 : 30;
+  const pageY = pickerY + itemH * 2 + gap + 4;
+  const itemW = (bounds.width - inset * 2 - gap * 3) / 4;
+  const controls = route
+    ? ["prev", "focus", "next"].map((type, index) => ({
+        type,
+        x: bounds.x + inset + index * (((bounds.width - inset * 2 - gap * 2) / 3) + gap),
+        y: controlY,
+        width: (bounds.width - inset * 2 - gap * 2) / 3,
+        height: compact ? 30 : 34,
+      }))
+    : [];
+  const items = pickerItems.map((item, index) => ({
+    type: "route-room",
+    value: item.id,
+    x: bounds.x + inset + (index % 4) * (itemW + gap),
+    y: pickerY + Math.floor(index / 4) * (itemH + gap),
+    width: itemW,
+    height: itemH,
+  }));
+  return {
+    start: { type: "route-mode", value: "start", x: bounds.x + inset, y: endpointY, width: endpointW, height: endpointH },
+    target: { type: "route-mode", value: "target", x: bounds.x + inset + endpointW + gap, y: endpointY, width: endpointW, height: endpointH },
+    groups: routePickerGroups.map((group, index) => ({
+      type: "route-group",
+      value: group.id,
+      x: bounds.x + inset + index * ((bounds.width - inset * 2 - gap * 3) / 4 + gap),
+      y: groupY,
+      width: (bounds.width - inset * 2 - gap * 3) / 4,
+      height: groupH,
+    })),
+    controls,
+    items,
+    pagePrev: { type: "route-page", delta: -1, x: bounds.x + inset, y: pageY, width: 58, height: compact ? 22 : 24 },
+    pageNext: { type: "route-page", delta: 1, x: bounds.x + bounds.width - inset - 58, y: pageY, width: 58, height: compact ? 22 : 24 },
+  };
+}
+
 function imageTransformStyle(transform) {
   return mapRuntime.imageTransformStyle(transform);
 }
@@ -344,7 +459,9 @@ function panelBounds(box = canvasBox, panelId = "route") {
   const panelHeight = compact
     ? panelId === "layers"
       ? Math.min(150, Math.max(132, height - 78))
-      : Math.min(166, Math.max(148, height - 16))
+      : panelId === "route"
+        ? Math.min(320, Math.max(260, height - 16))
+        : Math.min(166, Math.max(148, height - 16))
     : expandedHeight;
   return {
     x: compact
@@ -358,7 +475,7 @@ function panelBounds(box = canvasBox, panelId = "route") {
   };
 }
 
-function panelTapAction(tap, panel, route, box = canvasBox) {
+function panelTapAction(tap, panel, route, box = canvasBox, picker = {}) {
   if (!panel || panel === "none") return null;
   const bounds = panelBounds(box, panel);
   if (tap.x < bounds.x || tap.x > bounds.x + bounds.width || tap.y < bounds.y || tap.y > bounds.y + bounds.height) {
@@ -406,22 +523,15 @@ function panelTapAction(tap, panel, route, box = canvasBox) {
     if (tap.y >= bounds.y + bounds.height - 60 && tap.y <= bounds.y + bounds.height - 10) return { type: "room-route" };
   }
   if (panel === "route") {
-    if (route) {
-      const bw = (bounds.width - 48) / 3;
-      const buttonY = contentY + 108;
-      const actions = ["prev", "focus", "next"];
-      for (let index = 0; index < actions.length; index += 1) {
-        const x = bounds.x + 16 + index * (bw + 8);
-        if (tap.x >= x && tap.x <= x + bw && tap.y >= buttonY && tap.y <= buttonY + 38) return { type: actions[index] };
-      }
-    }
-    const targetIds = ["104-2F01", "202-5", "108-2F04", "208"];
-    const quickY = bounds.y + bounds.height - 54;
-    const tw = (bounds.width - 40 - 18) / 4;
-    for (let index = 0; index < targetIds.length; index += 1) {
-      const x = bounds.x + 16 + index * (tw + 6);
-      if (tap.x >= x && tap.x <= x + tw && tap.y >= quickY && tap.y <= quickY + 38) return { type: "target", value: targetIds[index] };
-    }
+    const layout = routePanelLayout(bounds, route, picker.routePickerItems || []);
+    const hit = (rect) => tap.x >= rect.x && tap.x <= rect.x + rect.width && tap.y >= rect.y && tap.y <= rect.y + rect.height;
+    if (hit(layout.start)) return layout.start;
+    if (hit(layout.target)) return layout.target;
+    for (const group of layout.groups) if (hit(group)) return group;
+    for (const control of layout.controls) if (hit(control)) return { type: control.type };
+    for (const item of layout.items) if (hit(item)) return { type: "route-room", value: item.value };
+    if (hit(layout.pagePrev)) return { type: "route-page", delta: -1 };
+    if (hit(layout.pageNext)) return { type: "route-page", delta: 1 };
   }
   return null;
 }
@@ -1029,6 +1139,17 @@ Page({
     sensorHint: "模拟器无传感器",
     quickTargets,
     primaryQuickTargets: quickTargets.slice(0, 3),
+    routeSelectMode: "target",
+    routePickerRooms,
+    routePickerItems: routePickerView(0, "target", defaultStartRoomId, "").routePickerItems,
+    routePickerPage: 0,
+    routePickerGroup: "common",
+    routePickerGroups,
+    routePickerPageCount: routePickerView(0, "target", defaultStartRoomId, "").routePickerPageCount,
+    routePickerPageLabel: routePickerView(0, "target", defaultStartRoomId, "").routePickerPageLabel,
+    routePickerCanPrev: false,
+    routePickerCanNext: routePickerView(0, "target", defaultStartRoomId, "").routePickerCanNext,
+    routePickerModeLabel: "正在选择终点",
     layerOptions,
     viewOptions,
     mapTransformStyle: userImageTransformStyle({ imagePanX: 0, imagePanY: 0, imageZoom: 1, imageRotation: 0 }),
@@ -1221,6 +1342,14 @@ Page({
           routeDistanceLabel: this.data.routeDistanceLabel,
           routeStartLabel: this.data.routeStartLabel,
           routeTargetLabel: this.data.routeTargetLabel,
+          routeSelectMode: this.data.routeSelectMode,
+          routePickerModeLabel: this.data.routePickerModeLabel,
+          routePickerItems: this.data.routePickerItems,
+          routePickerGroup: this.data.routePickerGroup,
+          routePickerGroups: this.data.routePickerGroups,
+          routePickerPageLabel: this.data.routePickerPageLabel,
+          routePickerCanPrev: this.data.routePickerCanPrev,
+          routePickerCanNext: this.data.routePickerCanNext,
           selectedRoomId: this.data.selectedRoom?.id || "",
           selectedFloorLabel: this.data.selectedFloorLabel,
           safeInsets: currentSafeInsets(),
@@ -1297,6 +1426,16 @@ Page({
   setRouteState(next, options = {}) {
     const route = next.route || null;
     const layerMode = next.layerMode || this.data.layerMode || "allFloors";
+    const startRoomId = next.startRoomId || route?.startRoomId || this.data.startRoomId || defaultStartRoomId;
+    const targetRoomId = next.targetRoomId ?? route?.targetRoomId ?? this.data.targetRoomId ?? "";
+    const routeSelectMode = next.routeSelectMode || this.data.routeSelectMode || "target";
+    const routePickerState = routePickerView(
+      next.routePickerPage ?? this.data.routePickerPage ?? 0,
+      routeSelectMode,
+      startRoomId,
+      targetRoomId,
+      next.routePickerGroup || this.data.routePickerGroup || "common",
+    );
     const steps = route ? route.guidanceLegs || [] : [];
     const requestedIndex = Number.isFinite(next.activeStepIndex) ? next.activeStepIndex : this.data.activeStepIndex || 0;
     const activeStepIndex = route ? Math.min(Math.max(0, requestedIndex), Math.max(0, steps.length - 1)) : 0;
@@ -1313,8 +1452,12 @@ Page({
       visibleRouteSteps,
       activeStepIndex,
       routeDistanceLabel: route ? route.distance : "未选择终点",
-      routeStartLabel: route ? roomLabel(route.startRoomId) : roomLabel(this.data.startRoomId || defaultStartRoomId),
-      routeTargetLabel: route ? roomLabel(route.targetRoomId) : "未选择",
+      startRoomId,
+      targetRoomId,
+      routeSelectMode,
+      ...routePickerState,
+      routeStartLabel: route ? roomLabel(route.startRoomId) : roomLabel(startRoomId),
+      routeTargetLabel: targetRoomId ? roomLabel(targetRoomId) : "未选择",
       activeStepLabel: route ? `${activeStepIndex + 1}/${Math.max(1, steps.length)}` : "1/1",
       currentStepTitle: currentStep ? currentStep.fromLabel : "当前位置",
       nextStepTitle: currentStep ? currentStep.checkpointLabel || currentStep.toLabel : "选择终点",
@@ -1421,6 +1564,14 @@ Page({
         routeDistanceLabel: this.data.routeDistanceLabel,
         routeStartLabel: this.data.routeStartLabel,
         routeTargetLabel: this.data.routeTargetLabel,
+        routeSelectMode: this.data.routeSelectMode,
+        routePickerModeLabel: this.data.routePickerModeLabel,
+        routePickerItems: this.data.routePickerItems,
+        routePickerGroup: this.data.routePickerGroup,
+        routePickerGroups: this.data.routePickerGroups,
+        routePickerPageLabel: this.data.routePickerPageLabel,
+        routePickerCanPrev: this.data.routePickerCanPrev,
+        routePickerCanNext: this.data.routePickerCanNext,
         selectedRoomId: this.data.selectedRoom?.id || "",
         selectedFloorLabel: this.data.selectedFloorLabel,
         safeInsets: currentSafeInsets()
@@ -2305,7 +2456,7 @@ Page({
   },
 
   handleCanvasPointTap(tap) {
-    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, canvasBox);
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, canvasBox, this.data);
     if (panelAction) {
       this.applyCanvasAction(panelAction);
       return;
@@ -2354,7 +2505,7 @@ Page({
     const raw = touch || event.detail || {};
     const tap = pagePoint(raw);
     const hostBox = pageBox();
-    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, hostBox);
+    const panelAction = panelTapAction(tap, this.data.panel, this.data.route, hostBox, this.data);
     if (panelAction) {
       this.applyCanvasAction(panelAction);
       return;
@@ -2429,6 +2580,22 @@ Page({
     }
     if (action.type === "next") {
       this.advanceRouteCheckpoint();
+      return;
+    }
+    if (action.type === "route-mode") {
+      this.setRouteSelectMode(action.value);
+      return;
+    }
+    if (action.type === "route-page") {
+      this.setRoutePickerPage((this.data.routePickerPage || 0) + (action.delta || 0));
+      return;
+    }
+    if (action.type === "route-group") {
+      this.setRoutePickerGroup(action.value);
+      return;
+    }
+    if (action.type === "route-room") {
+      this.setRouteEndpoint(this.data.routeSelectMode || "target", action.value);
       return;
     }
     if (action.type === "target") {
@@ -2679,6 +2846,10 @@ Page({
 
   selectRoomById(id) {
     const selectedRoom = mapData.rooms.find((room) => room.id === id);
+    if (selectedRoom && this.data.panel === "route") {
+      this.setRouteEndpoint(this.data.routeSelectMode || "target", selectedRoom.id);
+      return;
+    }
     this.setData({
       selectedRoom,
       selectedFloorLabel: selectedRoom ? `${displayFloorForRoom(selectedRoom)} · ${selectedRoom.roomNo}` : "点击地图房间",
@@ -2698,16 +2869,48 @@ Page({
 
   selectQuickTarget(event) {
     const targetRoomId = event.currentTarget.dataset.id;
-    const route = calculateRoute(this.data.startRoomId, targetRoomId);
+    this.setRouteEndpoint("target", targetRoomId, { closePanel: true, focus: true });
+  },
+
+  setRouteSelectMode(mode) {
+    const routeSelectMode = mode === "start" ? "start" : "target";
+    const pickerState = routePickerView(0, routeSelectMode, this.data.startRoomId || defaultStartRoomId, this.data.targetRoomId || "", this.data.routePickerGroup || "common");
+    this.setData({
+      routeSelectMode,
+      ...pickerState,
+    }, () => this.drawMap());
+  },
+
+  setRoutePickerPage(page) {
+    const pickerState = routePickerView(page, this.data.routeSelectMode || "target", this.data.startRoomId || defaultStartRoomId, this.data.targetRoomId || "", this.data.routePickerGroup || "common");
+    this.setData(pickerState, () => this.drawMap());
+  },
+
+  setRoutePickerGroup(group) {
+    const safeGroup = routePickerGroups.some((item) => item.id === group) ? group : "common";
+    const pickerState = routePickerView(0, this.data.routeSelectMode || "target", this.data.startRoomId || defaultStartRoomId, this.data.targetRoomId || "", safeGroup);
+    this.setData(pickerState, () => this.drawMap());
+  },
+
+  setRouteEndpoint(kind, roomId, options = {}) {
+    if (!roomId || !mapData.rooms.some((room) => room.id === roomId)) return;
+    const startRoomId = kind === "start" ? roomId : (this.data.startRoomId || defaultStartRoomId);
+    const targetRoomId = kind === "target" ? roomId : (this.data.targetRoomId || "");
+    const route = targetRoomId && startRoomId !== targetRoomId ? calculateRoute(startRoomId, targetRoomId) : null;
+    const nextMode = kind === "start" ? "target" : this.data.routeSelectMode || "target";
     this.transform = normalizeTransform(this.defaultTransform("allFloors", "route"));
     this.setRouteState({
       layerMode: "allFloors",
       layerHint: layerHints.allFloors,
+      startRoomId,
       targetRoomId,
       route,
       viewPreset: "route",
       activeStepIndex: 0,
-      panel: "none",
+      panel: options.closePanel ? "none" : "route",
+      routeSelectMode: nextMode,
+      routePickerPage: this.data.routePickerPage || 0,
+      routePickerGroup: this.data.routePickerGroup || "common",
       allLayerClass: activeLayerClass("allFloors", "allFloors"),
       layer1FClass: "",
       layer2FClass: "",
@@ -2720,7 +2923,7 @@ Page({
       viewButtonClass: "",
       roomButtonClass: ""
     });
-    if (route) {
+    if (route && options.focus !== false) {
       wx.nextTick(() => this.focusActiveStep());
     }
   },

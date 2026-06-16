@@ -374,7 +374,7 @@ const miniThreeScene = fs.readFileSync(path.join(root, "miniprogram/miniprogram/
 const miniThreeVendor = fs.existsSync(path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js"))
   ? fs.readFileSync(path.join(root, "miniprogram/miniprogram/packages/map/vendor/three-platformize-runtime.js"), "utf8")
   : "";
-for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "createMiniProgramThreeMap", "calculateRoute", "handleCanvasTap", "handlePageTap", "handleTouchMove", "handleRailOverlayTap", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
+for (const token of ["require(\"../../data/map-data\")", "require(\"../../data/map-runtime\")", "createMiniProgramThreeMap", "calculateRoute", "handleCanvasTap", "handlePageTap", "handleTouchMove", "handleRailOverlayTap", "rendererReadyClass", "railTapAction", "railButtonTops", "focusActiveStep", "advanceRouteCheckpoint", "routePickerGroups", "setRouteEndpoint", "setRoutePickerGroup", "allFloors", "exploded", "section", "104-2F01", "202-5", "108-2F04", "wx.reLaunch"]) {
   if (!(webMapJs + webMapRuntimeJs).includes(token)) {
     throw new Error(`native map runtime must keep synchronized token: ${token}`);
   }
@@ -401,6 +401,11 @@ for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill", "hudReserv
 for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStackLocal", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {
   if (!miniThreeScene.includes(token)) {
     throw new Error(`Three HUD must own mobile map controls, missing token: ${token}`);
+  }
+}
+for (const token of ["routePickerItems", "routePickerGroups", "routeSelectMode", "上一页", "下一页", "正在选择终点"]) {
+  if (!(webMapJs + miniThreeScene).includes(token)) {
+    throw new Error(`Three route HUD must expose mobile-equivalent endpoint picker token: ${token}`);
   }
 }
 if (!/const railTapActions = \[\s*\{ action: "back" \},\s*\{ panel: "route" \},\s*\{ panel: "layers" \},\s*\{ panel: "view" \},\s*\{ view: "reset" \}\s*\]/s.test(webMapJs)) {
@@ -629,6 +634,26 @@ function smokeLoadMapPage() {
   if (instance.data.hasRoute || instance.data.route) {
     throw new Error("manual map open must start without a route");
   }
+  instance.openPanel.call(instance, { currentTarget: { dataset: { panel: "route" } } });
+  if (instance.data.panel !== "route") {
+    throw new Error("route rail must open the route endpoint picker panel");
+  }
+  for (const group of ["common", "1F", "2F", "raised202"]) {
+    instance.setRoutePickerGroup.call(instance, group);
+    if (instance.data.routePickerGroup !== group || !Array.isArray(instance.data.routePickerItems) || instance.data.routePickerItems.length < 1) {
+      throw new Error(`route picker group ${group} must expose selectable rooms`);
+    }
+  }
+  instance.setRouteSelectMode.call(instance, "start");
+  instance.setRouteEndpoint.call(instance, "start", "108-lobby", { focus: false });
+  instance.setRouteSelectMode.call(instance, "target");
+  instance.setRoutePickerGroup.call(instance, "raised202");
+  instance.setRouteEndpoint.call(instance, "target", "202-5", { focus: false });
+  if (!instance.data.route || instance.data.route.startRoomId !== "108-lobby" || instance.data.route.targetRoomId !== "202-5") {
+    throw new Error("route picker must support arbitrary start and target endpoints, not only fixed quick targets");
+  }
+  assertRoute("202-5", "stair", "route picker 108-lobby to 202-5");
+  instance.clearRoute.call(instance);
   setLayerAndAssert("2F");
   setLayerAndAssert("raised202");
   setLayerAndAssert("exploded");
@@ -814,6 +839,24 @@ for (const roomId of ["104-2F01", "108-2F04", "202-5", "208"]) {
   if (!hasRouteToRoom(roomId)) {
     throw new Error(`map-data.js route graph cannot reach ${roomId} from default start`);
   }
+}
+const miniMapRuntimeModule = { exports: {} };
+vm.runInNewContext(webMapRuntimeJs, { module: miniMapRuntimeModule, exports: miniMapRuntimeModule.exports }, { filename: "miniprogram/miniprogram/packages/map/data/map-runtime.js" });
+const syncedMapRuntime = miniMapRuntimeModule.exports;
+const routableRooms = syncedMapData.rooms.filter((room) => room.doorNodeId);
+let routePairCount = 0;
+for (const startRoom of routableRooms) {
+  for (const targetRoom of routableRooms) {
+    if (startRoom.id === targetRoom.id) continue;
+    routePairCount += 1;
+    const route = syncedMapRuntime.calculateRoute(syncedMapData, startRoom.id, targetRoom.id);
+    if (!route || route.startRoomId !== startRoom.id || route.targetRoomId !== targetRoom.id) {
+      throw new Error(`map runtime must calculate arbitrary endpoint route: ${startRoom.id}->${targetRoom.id}`);
+    }
+  }
+}
+if (routePairCount < 2500) {
+  throw new Error(`map runtime arbitrary endpoint coverage too small: ${routePairCount}`);
 }
 
 const chatWxml = fs.readFileSync(path.join(root, "miniprogram/miniprogram/pages/chat/chat.wxml"), "utf8");

@@ -17,7 +17,7 @@ android {
     compileSdk = 36
     namespace = "cn.edu.zju.jingongxiaozi"
     defaultConfig {
-        manifestPlaceholders["usesCleartextTraffic"] = "false"
+        manifestPlaceholders["usesCleartextTraffic"] = "true"
         applicationId = "cn.edu.zju.jingongxiaozi"
         minSdk = 24
         targetSdk = 36
@@ -37,6 +37,7 @@ android {
             }
         }
         getByName("release") {
+            manifestPlaceholders["usesCleartextTraffic"] = "true"
             isMinifyEnabled = true
             proguardFiles(
                 *fileTree(".") { include("**/*.pro") }

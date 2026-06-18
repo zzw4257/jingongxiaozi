@@ -36,6 +36,67 @@ sequenceDiagram
 
 这条链路支持两种推进方式：用户可以在地图上点击“下一步”，也可以用语音说“下一步”。两种方式都会更新同一个 `navigation_progress`，所以后端、移动端和小程序不会各自维护一套路线状态。
 
+## 实时全双工语音链路
+
+DuplexKit 当前采用原生实时全双工语音链路，而不是传统 `ASR -> LLM -> TTS` 三级串联。前端持续上传麦克风音频，后端桥接实时语音模型，模型在同一会话内返回转写、文本和音频。
+
+| 环节 | 代码位置 | 技术要点 |
+| --- | --- | --- |
+| 麦克风采集 | `src/duplexkit/useDuplexKitRealtime.ts` | `getUserMedia` 获取音频流，`ScriptProcessorNode` 持续读帧 |
+| 音量反馈 | `src/duplexkit/audio.ts` | RMS 计算音量，驱动聆听状态波形 |
+| 音频格式 | `src/duplexkit/audio.ts` | 下采样到 `24_000 Hz`，转 `Int16 PCM` |
+| 局域网传输 | `/api/realtime` | WebSocket 二进制帧，raw PCM，无 WAV header |
+| 后端桥接 | `vendor/DuplexKit/src/volcRealtime.ts` | `VolcRealtimeBridge` 连接火山实时语音上游 WebSocket |
+| 上游会话 | `startConnection` / `startSession` | 配置 speaker、system role、speaking style、PCM 输入输出 |
+| 下行音频 | WebSocket binary frame | 上游 TTS PCM 由后端转发给前端播放器 |
+| 前端播放 | `PcmFloat32Player` | 将 Float32 PCM 排队播放，`asr_start` 时清空旧音频以支持打断 |
+
+全双工的体验含义是：用户说话、模型思考、模型说话不是完全割裂的三个页面状态。前端会根据后端事件连续切换 `listening / processing / speaking`，并在用户再次说话时清掉旧播报，避免“机器人说完前用户不能打断”的半双工体验。
+
+后端会把上游事件转换成应用可理解的消息：
+
+| 上游事件 | 应用消息 | 前端用途 |
+| --- | --- | --- |
+| ASR start | `asr_start` | 进入聆听，清空旧播放 |
+| ASR response | `transcript` | 展示用户当前语音文本 |
+| ASR end | `asr_end` + `message_end(role=user)` | 收束用户话轮，进入理解中 |
+| LLM text | `assistant_text` | 增量展示模型回答 |
+| LLM end | `llm_end` + `message_end(role=assistant)` | 收束回答文本，触发工具规划 |
+| TTS start/end | `tts_start` / `tts_end` | 标记正在播报和播报完成 |
+| TTS audio | binary PCM | 前端播放器实时播放 |
+
+## 工具注入机制
+
+工具调用分三步：规划、应用端执行、结果注入。
+
+```mermaid
+flowchart LR
+  A[模型回复或用户语音] --> B[严格工具声明解析]
+  B -->|无声明| C[保守意图兜底]
+  B --> D[tool_request]
+  C --> D
+  D --> E[前端执行地图动作]
+  E --> F[tool_result]
+  E --> G[navigation_progress]
+  F --> H[ChatTTSText 注入结果]
+  G --> I[基于事实播报当前段]
+```
+
+关键实现：
+
+| 机制 | 说明 |
+| --- | --- |
+| 严格工具声明 | 后端优先解析模型输出中的固定声明，例如“调用导航工具：下一步” |
+| 用户意图兜底 | 当模型没有输出声明时，只对明确短语触发工具，如“打开地图”“导航到 208”“下一步”“还剩多远” |
+| 工具请求 | 后端发送 `tool_request`，包含 `toolCallId`、`tool`、`args`、`spoken` |
+| 前端执行 | 前端将 `map.open`、`navigation.start` 等转为 `BackendDirective` 或地图运行时动作 |
+| 工具结果 | 前端回传 `tool_result`，说明动作是否成功、可见结果是什么 |
+| 结果注入 | 后端通过 `ChatTTSText` 把工具结果注入实时模型上下文 |
+| 输出抑制 | 纯工具结果注入默认不转发给前端，防止生成重复播报；导航进度需要播报时才面向用户输出 |
+| 超时回退 | 后端等待应用端结果，超时后使用 fallback 结果并记录 trace |
+
+这一机制避免了两个风险：一是模型直接编造“我已经打开地图”，但前端实际没有执行；二是前端自己猜语音意图，导致后端和 UI 状态不一致。真正改变界面的动作必须经过 `tool_request -> tool_result`。
+
 ## 后端版本锁定
 
 当前后端以 DuplexKit 子模块接入，并由主仓库锁定版本：

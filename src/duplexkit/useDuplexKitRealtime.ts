@@ -8,6 +8,13 @@ import type { DuplexKitConnectionState, DuplexKitRealtimeMessage, DuplexKitToolR
 const DEFAULT_PORT = "5177";
 const HOST_STORAGE_KEY = "duplexkit.backend.host";
 const PORT_STORAGE_KEY = "duplexkit.backend.port";
+const DEFAULT_REALTIME_SPEAKER = "zh_female_vv_jupiter_bigtts";
+const FALLBACK_SPEAKER_PRESETS = [
+  { id: "zh_female_vv_jupiter_bigtts", label: "vivi / vv", description: "活泼灵动女声" },
+  { id: "zh_female_xiaohe_jupiter_bigtts", label: "小何 / xiaohe", description: "甜美活泼女声" },
+  { id: "zh_male_yunzhou_jupiter_bigtts", label: "云舟 / yunzhou", description: "清爽沉稳男声" },
+  { id: "zh_male_xiaotian_jupiter_bigtts", label: "小天 / xiaotian", description: "清爽磁性男声" },
+] as const;
 
 function readStoredValue(key: string): string {
   try {
@@ -141,6 +148,13 @@ type Options = {
 type RuntimeSettingsState = {
   speaker?: string;
   voiceLabel?: string;
+  speakerPresets?: Array<{ id: string; label?: string; description?: string }>;
+};
+
+const initialRuntimeSettings: RuntimeSettingsState = {
+  speaker: DEFAULT_REALTIME_SPEAKER,
+  speakerPresets: [...FALLBACK_SPEAKER_PRESETS],
+  voiceLabel: "vivi / vv · 活泼灵动女声",
 };
 
 export function useDuplexKitRealtime({ onDirective }: Options) {
@@ -152,7 +166,8 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
   const [level, setLevel] = useState(0);
   const [error, setError] = useState("");
   const [turns, setTurns] = useState<DuplexKitTurn[]>([]);
-  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettingsState>({});
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeSettingsState>(initialRuntimeSettings);
+  const [runtimeSettingsUpdating, setRuntimeSettingsUpdating] = useState(false);
 
   const socketRef = useRef<WebSocket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -200,16 +215,66 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
         settings?: { speaker?: string };
         speakerPresets?: Array<{ id: string; label?: string; description?: string }>;
       };
-      const speaker = data.settings?.speaker;
-      const preset = data.speakerPresets?.find((candidate) => candidate.id === speaker);
+      const speaker = data.settings?.speaker ?? DEFAULT_REALTIME_SPEAKER;
+      const speakerPresets = data.speakerPresets?.length ? data.speakerPresets : [...FALLBACK_SPEAKER_PRESETS];
+      const preset = speakerPresets.find((candidate) => candidate.id === speaker);
       setRuntimeSettings({
         speaker,
+        speakerPresets,
         voiceLabel: preset ? `${preset.label ?? preset.id} · ${preset.description ?? "实时音色"}` : speaker,
       });
     } catch (settingsError) {
       sendClientDebug("warn", "runtime_settings_fetch_failed", errorMessage(settingsError));
     }
   }, [baseUrl, sendClientDebug]);
+
+  const updateRuntimeSettings = useCallback(
+    async (patch: { speaker?: string }) => {
+      if (!baseUrl) {
+        setError("请先填写后端地址");
+        return;
+      }
+      const previousSettings = runtimeSettings;
+      setRuntimeSettingsUpdating(true);
+      if (patch.speaker) {
+        const preset = (runtimeSettings.speakerPresets?.length ? runtimeSettings.speakerPresets : FALLBACK_SPEAKER_PRESETS).find((candidate) => candidate.id === patch.speaker);
+        setRuntimeSettings((current) => ({
+          ...current,
+          speaker: patch.speaker,
+          speakerPresets: current.speakerPresets?.length ? current.speakerPresets : [...FALLBACK_SPEAKER_PRESETS],
+          voiceLabel: preset ? `${preset.label ?? preset.id} · ${preset.description ?? "实时音色"}` : patch.speaker,
+        }));
+      }
+      try {
+        const response = await fetch(`${baseUrl}/api/runtime-settings`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patch),
+        });
+        if (!response.ok) throw new Error(`runtime settings ${response.status}`);
+        const data = (await response.json()) as { settings?: { speaker?: string } };
+        const speaker = data.settings?.speaker ?? patch.speaker ?? previousSettings.speaker ?? DEFAULT_REALTIME_SPEAKER;
+        const speakerPresets = previousSettings.speakerPresets?.length ? previousSettings.speakerPresets : [...FALLBACK_SPEAKER_PRESETS];
+        const preset = speakerPresets.find((candidate) => candidate.id === speaker);
+        setRuntimeSettings({
+          speaker,
+          speakerPresets,
+          voiceLabel: preset ? `${preset.label ?? preset.id} · ${preset.description ?? "实时音色"}` : speaker,
+        });
+        void refreshRuntimeSettings();
+        setError("");
+        sendClientDebug("info", "runtime_settings_updated", undefined, patch);
+      } catch (settingsError) {
+        const message = errorMessage(settingsError);
+        setRuntimeSettings(previousSettings);
+        setError(`音色设置失败：${message}`);
+        sendClientDebug("error", "runtime_settings_update_failed", message, patch);
+      } finally {
+        setRuntimeSettingsUpdating(false);
+      }
+    },
+    [baseUrl, refreshRuntimeSettings, runtimeSettings, sendClientDebug],
+  );
 
   const stopMic = useCallback(() => {
     runningRef.current = false;
@@ -499,6 +564,9 @@ export function useDuplexKitRealtime({ onDirective }: Options) {
     turns,
     baseUrl,
     runtimeSettings,
+    runtimeSettingsUpdating,
+    refreshRuntimeSettings,
+    updateRuntimeSettings,
     sendNavigationProgress,
     connect,
     disconnect,

@@ -167,6 +167,13 @@ function DuplexConnectionView({
   realtimeStatus: string;
   voiceControls: ReactNode;
 }) {
+  const speakerPresets = duplexKit.runtimeSettings.speakerPresets?.length
+    ? duplexKit.runtimeSettings.speakerPresets
+    : duplexKit.runtimeSettings.speaker
+      ? [{ id: duplexKit.runtimeSettings.speaker, label: duplexKit.runtimeSettings.speaker, description: "当前音色" }]
+      : [];
+  const activeSpeaker = duplexKit.runtimeSettings.speaker ?? speakerPresets[0]?.id ?? "";
+
   return (
     <section className="duplex-page">
       <div className="duplex-connection-card">
@@ -208,6 +215,33 @@ function DuplexConnectionView({
             {duplexKit.micOn ? "停止聆听" : "开始聆听"}
           </button>
         </div>
+
+        <section className="duplex-voice-select" aria-label="音色选择">
+          <div className="duplex-voice-select-heading">
+            <span>音色</span>
+            <strong>{duplexKit.runtimeSettings.voiceLabel ?? "默认音色"}</strong>
+          </div>
+          <div className="duplex-voice-options" role="radiogroup" aria-label="后端实时音色">
+            {speakerPresets.map((preset) => {
+              const active = preset.id === activeSpeaker;
+              return (
+                <button
+                  type="button"
+                  key={preset.id}
+                  className={`duplex-voice-option ${active ? "active" : ""}`}
+                  role="radio"
+                  aria-checked={active}
+                  disabled={!duplexKit.baseUrl || duplexKit.connectionState === "connecting" || duplexKit.runtimeSettingsUpdating}
+                  onClick={() => duplexKit.updateRuntimeSettings({ speaker: preset.id })}
+                >
+                  <span>{preset.label ?? preset.id}</span>
+                  {preset.description ? <small>{preset.description}</small> : null}
+                </button>
+              );
+            })}
+          </div>
+          <small>音色会写入 DuplexKit 运行设置，并在下一轮实时会话生效。</small>
+        </section>
 
         <div className="duplex-meter" aria-label="DuplexKit microphone level">
           <span style={{ width: `${Math.round(duplexKit.level * 100)}%` }} />
@@ -282,6 +316,10 @@ export function App() {
     }
     if (mode === "listening") {
       handleDirective({ type: "listening", hint: params.get("hint") || "我在听，请说出需求" });
+      return;
+    }
+    if (mode === "duplex") {
+      setAppState({ mode: "duplex", audio: { ...DEFAULT_AUDIO_STATE, source: "backend", message: "打开后端连接页面" } });
       return;
     }
     const startRoomId = params.get("startRoomId") || undefined;

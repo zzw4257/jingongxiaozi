@@ -448,6 +448,7 @@ button {
   display: grid;
   align-content: start;
   gap: 14px;
+  overflow: auto;
 }
 
 .duplex-page-heading {
@@ -534,6 +535,91 @@ button {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.duplex-voice-select {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  color: #5d708b;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.duplex-voice-select-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.duplex-voice-select-heading strong {
+  min-width: 0;
+  color: #172b46;
+  font-size: 12px;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplex-voice-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.duplex-voice-option {
+  display: grid;
+  min-height: 46px;
+  gap: 2px;
+  padding: 8px 10px;
+  color: #244566;
+  text-align: left;
+  background: rgba(255, 255, 255, 0.82);
+  border: 1px solid #cfe0f3;
+  border-radius: 12px;
+  box-shadow: 0 8px 18px rgba(35, 80, 130, 0.08);
+}
+
+.duplex-voice-option span {
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 950;
+  line-height: 1.1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplex-voice-option small {
+  overflow: hidden;
+  color: #6a7b92;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duplex-voice-option.active {
+  color: #ffffff;
+  background: linear-gradient(135deg, #2f7df6, #1e56d8);
+  border-color: rgba(30, 86, 216, 0.7);
+  box-shadow: 0 12px 24px rgba(47, 125, 246, 0.22);
+}
+
+.duplex-voice-option.active small {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.duplex-voice-option:disabled {
+  opacity: 0.55;
+}
+
+.duplex-voice-select small {
+  color: #6a7b92;
+  font-size: 11px;
+  line-height: 1.35;
 }
 
 .duplex-page-actions .directive-button {
@@ -879,6 +965,47 @@ button {
   color: #5a6e88;
   font-size: 16px;
   line-height: 1.7;
+}
+
+.spoken-answer {
+  display: block;
+  max-width: min(760px, 100%);
+  max-height: min(34vh, 260px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 6px 4px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.spoken-answer-short {
+  font-size: 22px;
+  line-height: 1.78;
+}
+
+.spoken-answer-medium {
+  font-size: 18px;
+  line-height: 1.72;
+}
+
+.spoken-answer-dense {
+  font-size: 15px;
+  line-height: 1.64;
+}
+
+.spoken-token {
+  border-radius: 6px;
+  transition: background-color 140ms ease, color 140ms ease, box-shadow 140ms ease;
+}
+
+.spoken-token.active {
+  color: #0a49a8;
+  background: rgba(109, 183, 255, 0.28);
+  box-shadow: 0 0 0 3px rgba(109, 183, 255, 0.16);
+}
+
+.spoken-answer.is-speaking .spoken-token.speakable {
+  color: #2a4668;
 }
 
 .big-action-button,
@@ -5403,9 +5530,9 @@ button {
   white-space: nowrap;
 }
 
-@media (orientation: landscape) and (max-height: 460px) {
+@media (orientation: landscape) and (max-height: 520px) {
   .kiosk-shell.mode-duplex .duplex-page {
-    grid-template-columns: minmax(300px, 0.9fr) minmax(260px, 1fr);
+    grid-template-columns: minmax(360px, 0.96fr) minmax(260px, 1fr);
     gap: 10px;
     padding-top: 10px;
     padding-bottom: 10px;
@@ -5413,38 +5540,68 @@ button {
 
   .kiosk-shell.mode-duplex .duplex-connection-card,
   .kiosk-shell.mode-duplex .duplex-turn-list {
-    padding: 12px;
+    gap: 8px;
+    padding: 10px 12px;
   }
 
   .kiosk-shell.mode-duplex .duplex-page-heading {
-    grid-template-columns: 42px 1fr;
-    gap: 10px;
+    grid-template-columns: 38px 1fr;
+    gap: 9px;
   }
 
   .kiosk-shell.mode-duplex .duplex-page-icon {
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
+    width: 38px;
+    height: 38px;
+    border-radius: 11px;
   }
 
   .kiosk-shell.mode-duplex .duplex-page-heading h2 {
-    font-size: 20px;
+    font-size: 19px;
   }
 
   .kiosk-shell.mode-duplex .duplex-page-heading p,
   .kiosk-shell.mode-duplex .duplex-connection-note {
-    font-size: 12px;
+    margin-top: 1px;
+    font-size: 11px;
   }
 
   .kiosk-shell.mode-duplex .duplex-status-row,
   .kiosk-shell.mode-duplex .duplex-form-grid input {
-    min-height: 38px;
+    min-height: 34px;
   }
 
   .kiosk-shell.mode-duplex .duplex-page-actions .directive-button,
   .kiosk-shell.mode-duplex .duplex-voice-toggle,
   .kiosk-shell.mode-duplex .duplex-disconnect-toggle {
+    min-height: 34px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-form-grid label {
+    gap: 4px;
+    font-size: 11px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-voice-select {
+    gap: 6px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-voice-options {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-voice-option {
     min-height: 38px;
+    padding: 6px 8px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-voice-option span {
+    font-size: 11px;
+  }
+
+  .kiosk-shell.mode-duplex .duplex-voice-option small,
+  .kiosk-shell.mode-duplex .duplex-voice-select > small {
+    font-size: 9px;
   }
 
   .kiosk-shell.immersive-mode .directive-panel.floating {

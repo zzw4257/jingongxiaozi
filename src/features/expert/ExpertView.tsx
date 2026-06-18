@@ -1,5 +1,6 @@
 import robotExpert from "../../assets/ui/robot-expert.png";
 import { AudioStatus } from "../../shared/AudioStatus";
+import { SpokenAnswer } from "../../shared/SpokenAnswer";
 import type { AudioChainState, Citation } from "../../shared/appTypes";
 
 type Props = {
@@ -16,7 +17,7 @@ export function ExpertView({ answer, keywords, citations, audio }: Props) {
       <article className="response-card expert-answer-card">
         <span className="eyebrow">专家问答</span>
         <h2>工程训练知识回答</h2>
-        <p className="spoken-answer">{answer}</p>
+        <SpokenAnswer text={answer} audio={audio} />
         <div className="keyword-row">
           {keywords.map((keyword) => (
             <span key={keyword}>{keyword}</span>

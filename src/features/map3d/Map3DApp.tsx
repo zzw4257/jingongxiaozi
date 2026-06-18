@@ -4008,7 +4008,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         ? "启用中"
         : headingState.permissionState === "denied"
           ? "朝向不可用"
-        : "启用朝向"
+        : headingState.calibrated
+          ? "读取朝向"
+          : "启用朝向"
       : headingState.calibrated
         ? "重校朝向"
         : "校准朝向";
@@ -4018,13 +4020,21 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
         ? "当前环境不可用"
         : headingState.permissionState === "requesting"
           ? "正在读取"
-          : "未启用"
+          : headingState.calibrated
+            ? "已保存校准"
+            : "未启用"
       : headingState.calibrated
         ? "已校准"
         : "待校准";
   const headingStatusHint =
     headingState.statusMessage ??
-    (headingState.heading === undefined ? "点按钮读取手机朝向" : activeLeg ? "按当前导引段校准" : "按当前视图校准");
+    (headingState.heading === undefined
+      ? headingState.calibrated
+        ? "已保留上次校准，等待手机传感器返回朝向。"
+        : "点按钮读取手机朝向"
+      : activeLeg
+        ? "按当前导引段校准"
+        : "按当前视图校准");
   const debugPhysicalModeLabel =
     session.layerMode === "exploded"
       ? "分层总览"
@@ -4185,7 +4195,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
             aria-hidden="true"
           >
             <Navigation2 size={18} />
-            <span>{headingState.calibrated ? "朝向" : "未校准"}</span>
+            <span>{headingState.calibrated ? "朝向" : "待校准"}</span>
           </div>
         )}
         <div

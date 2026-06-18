@@ -1,5 +1,6 @@
 import robotSpeaking from "../../assets/ui/robot-speaking.png";
 import { AudioStatus } from "../../shared/AudioStatus";
+import { SpokenAnswer } from "../../shared/SpokenAnswer";
 import type { AudioChainState } from "../../shared/appTypes";
 
 type Props = {
@@ -16,7 +17,7 @@ export function ChatView({ answer, keywords, audio }: Props) {
       </div>
       <article className="response-card spoken-card">
         <span className="eyebrow">常态对话</span>
-        <p className="spoken-answer">{answer}</p>
+        <SpokenAnswer text={answer} audio={audio} />
         <div className="keyword-row">
           {keywords.map((keyword) => (
             <span key={keyword}>{keyword}</span>

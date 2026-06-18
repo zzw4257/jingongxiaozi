@@ -75,6 +75,8 @@ PDF 渲染记录：
 | Android 触控迭代板 | `../assets/evidence/process/android-touch-iteration-strip.png` | 待机入口、地图入口、面板、最终 3D 地图 |
 | 地图几何迭代板 | `../assets/evidence/process/map-geometry-iteration-strip.png` | 楼梯、202 平台、端点标注、分层视图 |
 | 小程序一致性迭代板 | `../assets/evidence/process/miniprogram-parity-iteration-strip.png` | 微信开发者工具、宿主 UI、路线、H5 golden 对照 |
+| 终端最终状态拼图 | `../assets/evidence/process/final-terminal-state-strip.png` | 待机、聆听、常态对话、专家问答最终横屏状态 |
+| 地图路线最终状态拼图 | `../assets/evidence/process/final-map-route-strip.png` | 地图总览、202-5、104-2F01、208 关键路线最终横屏状态 |
 | 应用生成资产板 | `../assets/evidence/process/app-generated-assets-strip.png` | 表情、地图、楼梯等应用内视觉资产 |
 | 设计方案 contact sheet | `../assets/evidence/process/contact-design-scheme.png` | 7 页语音机器人方案总览 |
 | 项目实践 contact sheet | `../assets/evidence/process/contact-project-practice.png` | 20 页课程资料总览 |
@@ -90,6 +92,8 @@ PDF 渲染记录：
 | H5 图层面板 | `../assets/evidence/h5-layers-panel.png` | 图层浮层验证 |
 | Android 地图面板 | `../assets/evidence/android-map-panel-final.png` | Android 模拟器横屏验证 |
 | 202 平台修复 | `../assets/evidence/map-raised202-wall-fix.png` | 二层半承托结构验证 |
+| 终端最终状态拼图 | `../assets/evidence/process/final-terminal-state-strip.png` | 2026-06-18 H5 横屏 Playwright 截图合成 |
+| 地图路线最终状态拼图 | `../assets/evidence/process/final-map-route-strip.png` | 2026-06-18 H5 横屏 Playwright 截图合成 |
 
 ## 小程序截图
 
@@ -99,7 +103,7 @@ PDF 渲染记录：
 | 小程序 208 路线 | `../assets/evidence/miniprogram-route-208.png` | 小程序 WebGL/宿主验证截图 |
 | H5 对照路线 | `../assets/evidence/h5-miniprogram-baseline-route-208.png` | 移动端 golden 对照 |
 
-小程序截图只证明迁移过程和对齐目标，不能单独证明发布级完全一致。发布级验收需要 `check:miniprogram:parity`、真实 AppID、包内 Three 场景和微信开发者工具/真机截图共同通过。
+小程序截图只证明迁移过程和对齐目标，不能单独证明发布级完全一致。当前发布级验收以 `check:miniprogram`、`check:miniprogram:parity`、`check:miniprogram:release`、真实 AppID `wx160ad5f2d6c16281`、包内 Three 场景和微信开发者工具预览共同约束。
 
 ## 生成概念图
 
@@ -115,3 +119,5 @@ PDF 渲染记录：
 | `../assets/generated/map-shared-scene-concept-v3.png` | `gpt-image-2` | 1536 x 1024 | 1672 x 941 | 过程图，存在局部乱码房号 |
 
 生成图只表达抽象架构、流程和概念关系。房间数量、模型参数、路线约束、构建结果以源码、QA JSON、发布记录和真实截图为准。
+
+本次收尾没有新增 RightCode 生成图。原因是当前报告缺口主要是“真实状态证据”和“后端/小程序契约更新”，更适合使用 Playwright 截图、验证日志和已有概念图；新增生成图容易引入与实际 UI 不一致的视觉信息。

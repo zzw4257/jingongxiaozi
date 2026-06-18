@@ -1,0 +1,87 @@
+[
+  {
+    "name": "final-standby",
+    "file": "docs/design-report/assets/evidence/final/final-standby-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-standby immersive-mode ",
+    "text": "",
+    "canvasCount": 0,
+    "imageCount": 4,
+    "buttonCount": 12
+  },
+  {
+    "name": "final-listening",
+    "file": "docs/design-report/assets/evidence/final/final-listening-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-listening immersive-mode ",
+    "text": "我在听，请说出需求 我在听，请说出需求",
+    "canvasCount": 0,
+    "imageCount": 4,
+    "buttonCount": 11
+  },
+  {
+    "name": "final-chat",
+    "file": "docs/design-report/assets/evidence/final/final-chat-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-chat immersive-mode ",
+    "text": "我可以回答工程训练中心的课程、设备、安全规范和路线问题，也可以根据你的需求打开地图导航。 对话回答",
+    "canvasCount": 0,
+    "imageCount": 1,
+    "buttonCount": 7
+  },
+  {
+    "name": "final-expert",
+    "file": "docs/design-report/assets/evidence/final/final-expert-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-expert immersive-mode ",
+    "text": "工程训练中心的学习安排通常需要结合课程任务、设备能力和安全要求判断；涉及具体位置时可继续打开地图定位。 专家回答",
+    "canvasCount": 0,
+    "imageCount": 1,
+    "buttonCount": 7
+  },
+  {
+    "name": "final-map-overview",
+    "file": "docs/design-report/assets/evidence/final/final-map-overview-844x390.png",
+    "messages": [
+      "warning: [.WebGL-0x12400566600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x12400566600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x12400566600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels",
+      "warning: [.WebGL-0x12400566600]GL Driver Message (OpenGL, Performance, GL_CLOSE_PATH_NV, High): GPU stall due to ReadPixels (this message will no longer repeat)"
+    ],
+    "modeClass": "app-shell kiosk-shell mode-map immersive-mode ",
+    "text": "202-5 108 107 104-1F01 101 106 208 210 1F 真北 返回 路线 图层 视角 总览",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "buttonCount": 20
+  },
+  {
+    "name": "final-route-202",
+    "file": "docs/design-report/assets/evidence/final/final-route-202-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-map immersive-mode ",
+    "text": "现在 101 房间内 过道 202 终点 202-5 3D 打印 过道 过道 门 1F 真北 1/9 当前 101 房间内 到门口 101 门口 5m 图层 视角 聚焦 到达 返回 路线 图层 视角 总览",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "buttonCount": 23
+  },
+  {
+    "name": "final-route-104",
+    "file": "docs/design-report/assets/evidence/final/final-route-104-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-map immersive-mode ",
+    "text": "现在 101 房间内 终点 104-2F01 精密测量 过道 过道 门 1F 真北 1/8 当前 101 房间内 到门口 101 门口 5m 图层 视角 聚焦 到达 返回 路线 图层 视角 总览",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "buttonCount": 21
+  },
+  {
+    "name": "final-route-208",
+    "file": "docs/design-report/assets/evidence/final/final-route-208-844x390.png",
+    "messages": [],
+    "modeClass": "app-shell kiosk-shell mode-map immersive-mode ",
+    "text": "现在 101 房间内 终点 208 多媒体教室 过道 过道 门 1F 真北 1/10 当前 101 房间内 到门口 101 门口 5m 图层 视角 聚焦 到达 返回 路线 图层 视角 总览",
+    "canvasCount": 1,
+    "imageCount": 0,
+    "buttonCount": 21
+  }
+]

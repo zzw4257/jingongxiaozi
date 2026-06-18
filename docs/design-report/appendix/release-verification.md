@@ -15,6 +15,41 @@
 | `npm run check:miniprogram:release` | AppID、发布配置和正式限制门禁 |
 | `npm run build` | TypeScript + Vite 生产构建 |
 | `npm run qa:mobile` | 可选 Playwright 横屏布局 QA |
+| `npm run check:backend` | DuplexKit typecheck、测试和导航进度 smoke |
+| `npm run check:fullstack:contracts` | 后端远端、锁定提交、工具声明和发布脚本一致性 |
+| `npm run check:fullstack:release` | 串联地图、小程序、H5 构建、后端和小程序发布门禁 |
+
+## 2026-06-18 收尾全栈门禁
+
+本次文档收尾前在干净 worktree 执行：
+
+```bash
+npm run check:fullstack:release
+```
+
+结果：
+
+| 检查项 | 结果 |
+| --- | --- |
+| DuplexKit remote | `https://github.com/ElysiaFollower/DuplexKit.git` |
+| DuplexKit HEAD | `167b6a8861666b63c3bdcbf91567ef12fac5e7fd` |
+| 后端版本锁定 | pass |
+| 工具声明 | `map.open`、`navigation.start`、`navigation.next`、`navigation.previous`、`navigation.status` |
+| 地图数据 | 53 rooms、53 doors、80 spaces、16 centerlines |
+| 几何闭合 | 80 spaces、53 valid doors、4 stair portals |
+| 模型资产 | 主模型 47 meshes / 5000 vertices，fallback 1 mesh / 3591 vertices |
+| 模型对齐 | 16 control points，max error 0.000，avg error 0.000 |
+| DuplexKit 房间目录 | 53 rooms，5 access rules |
+| 小程序壳 | pass |
+| 小程序后端 bridge | pass |
+| 小程序 parity | pass |
+| 小程序 release gate | pass |
+| H5 构建 | pass |
+| DuplexKit typecheck | pass |
+| DuplexKit tests | 6 files / 49 tests passed |
+| 导航进度 smoke | pass，当前段 `101 门口 -> 走廊入口` |
+
+本次补充 H5 横屏截图：待机、聆听、对话、专家、地图总览、202-5、104-2F01、208，并合成为 `final-terminal-state-strip.png` 和 `final-map-route-strip.png`。
 
 ## Android v36 smoke
 
@@ -48,6 +83,8 @@ v36 自动校验记录：
 | primary model | 47 meshes / 5000 vertices |
 | alignment max error | 0.074 |
 | alignment average error | 0.037 |
+
+> v36 是 Android 构建节点记录，保留其历史数值。当前 main 的 `check:map` 已更新为 80 spaces 且模型对齐误差 max/avg 0.000。
 
 v36 截图证据：
 
@@ -135,6 +172,8 @@ shasum -a 256 build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-a
 | 104 路线对照 | `qa/screenshots/miniprogram-parity/h5-current-route-104-844x390.png` |
 | 108 路线对照 | `qa/screenshots/miniprogram-parity/h5-current-route-108-844x390.png` |
 | 208 路线对照 | `qa/screenshots/miniprogram-parity/h5-current-route-208-844x390.png` |
+| 终端最终状态拼图 | `../assets/evidence/process/final-terminal-state-strip.png` |
+| 地图路线最终状态拼图 | `../assets/evidence/process/final-map-route-strip.png` |
 
 ## 小程序验证
 
@@ -144,9 +183,9 @@ shasum -a 256 build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-a
 
 | 项 | 状态 |
 | --- | --- |
-| `check:miniprogram` | 用于检查小程序壳和自包含结构 |
-| `check:miniprogram:parity` | 真实 Three parity 完成前应保持失败或阻塞 |
-| `check:miniprogram:release` | 缺 AppID、缺 HTTPS 域名或缺 Three parity 时必须失败 |
+| `check:miniprogram` | 当前通过，用于检查小程序壳、自包含结构、入口和 MapDirect |
+| `check:miniprogram:parity` | 当前通过，用于阻止小程序与移动端地图语义分叉 |
+| `check:miniprogram:release` | 当前通过，校验 AppID、发布配置和正式限制 |
 | 发布目标 | 微信 `canvas type="webgl"` + Three 适配层 + 包内模型 |
 | 禁止发布路线 | WebView、localhost、`5173`、公网临时 H5、全图 PNG 贴图、自绘多边形冒充一致 |
 
@@ -161,19 +200,20 @@ shasum -a 256 build/android-release/jingong-xiaozi-2026-05-31-precision-mobile-a
 
 小程序不能凭单张截图验收。发布前必须满足：
 
-1. 真实 AppID。
+1. 真实 AppID：当前为 `wx160ad5f2d6c16281`。
 2. 真实发布配置。
 3. 不依赖 localhost 或 `5173`。
 4. 不使用全图 PNG / 截图贴图冒充地图。
 5. Three 场景与移动端 golden 对照通过。
 6. 触控旋转、缩放、平移、回正、图层和路线均可用。
+7. 起终点选择不局限于固定 demo，53 个房间全量组合路径覆盖通过。
 
 ## 剩余风险
 
 | 风险 | 当前处理 |
 | --- | --- |
 | 真实机器人传感器 | Android 模拟器无法验证真实方向传感器，设备集成阶段验证 |
-| 小程序 Three parity | 继续用移动端 golden 约束，不把旧自绘路线作为发布目标 |
+| 小程序 Three parity | 已通过发布级门禁；继续用移动端 golden 防止回退 |
 | Vite 大 chunk | 当前可构建，后续按地图模块拆包 |
-| 真实后端音频链路 | 前端契约已稳定，待后端接入后做端到端测试 |
+| 真实后端音频链路 | DuplexKit 契约、工具声明和导航进度 smoke 已通过；真机麦克风、扬声器和传感器仍需设备阶段验证 |
 | 模型语义自动识别 | 当前采用人工语义拓扑，后续用 CAD/SKP 逐步提高门洞来源可信度 |

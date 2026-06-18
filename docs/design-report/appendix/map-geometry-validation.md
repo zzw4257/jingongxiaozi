@@ -37,7 +37,7 @@ model > cad > reference > inferred
 | 指标 | 数值 |
 | --- | --- |
 | rooms | 53 |
-| spaces | 72 |
+| spaces | 80 |
 | doors | 53 |
 | stairs | 4 |
 | centerlines | 16 |
@@ -46,7 +46,7 @@ model > cad > reference > inferred
 | physicalFloorOffsetXZ | 一层 `[0, 0]`，二层 `[0, 0]` |
 | explodedFloorOffsetXZ | 一层 `[0.16, 0.13]`，二层 `[-0.46, -0.38]` |
 | 1F rooms / spaces | 26 / 36 |
-| 2F rooms / spaces | 27 / 36 |
+| 2F rooms / spaces | 27 / 44 |
 | corridor spaces | 一层 3，二层 3 |
 
 空间分类：
@@ -60,6 +60,7 @@ model > cad > reference > inferred
 | service | 1 |
 | storage | 1 |
 | reserved | 1 |
+| support | 8 |
 
 门洞来源：
 
@@ -107,9 +108,9 @@ model > cad > reference > inferred
 | --- | --- |
 | `controlPointCount` | 16 |
 | `floorCounts` | `1F: 8`，`2F: 8` |
-| `declaredMaxError` | 0.24 |
-| `declaredAverageError` | 0.09 |
-| Android smoke v36 | max error 0.074，average error 0.037 |
+| `declaredMaxError` | 0.000 |
+| `declaredAverageError` | 0.000 |
+| 最新 `check:map` | max error 0.000，average error 0.000 |
 
 ## 楼层模式
 
@@ -182,4 +183,4 @@ model > cad > reference > inferred
 | `source: inferred` 门洞较多 | 后续用 CAD/SKP 和现场复核替换 |
 | 模型自动识别房间语义尚未完成 | 当前采用模型参照 + 手工语义拓扑 |
 | 真实机器人方向传感器未实测 | 设备集成阶段验证权限和校准 |
-| 小程序 Three parity 未完全发布验收 | 继续以移动端截图作为 golden 收敛 |
+| 小程序 Three parity 回退风险 | 已纳入 `check:miniprogram:parity` 和 `check:miniprogram:release`，禁止 WebView、localhost、全图 PNG 贴图回退 |

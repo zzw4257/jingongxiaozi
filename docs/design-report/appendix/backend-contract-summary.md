@@ -2,7 +2,7 @@
 
 ## 职责边界
 
-前端负责展示、地图、触控和状态切换。后端负责麦克风、唤醒过滤、语音识别、意图识别、知识检索、LLM 生成、TTS 和扬声器输出。
+前端负责展示、地图、触控、路线计算和状态切换。后端负责麦克风、唤醒过滤、语音识别、意图识别、知识检索、LLM 生成、TTS、工具规划和导航事实播报。
 
 | 链路 | 后端职责 | 前端职责 |
 | --- | --- | --- |
@@ -11,9 +11,23 @@
 | 意图识别 | 判断问答、专家检索、地图导航 | 接收明确 `BackendDirective` |
 | 普通问答 | 生成回答、TTS 播放 | 展示回答和关键词 |
 | 专家问答 | 检索知识库、生成引用 | 展示答案、关键词和引用卡片 |
-| 地图导航 | 解析房间意图、生成 roomId | 打开地图、计算路线、支持手动继续操作 |
+| 地图导航 | 解析房间意图、生成 roomId，消费导航进度事实 | 打开地图、计算路线、支持手动/语音继续操作 |
 
-前端不反向控制后端音频链路，不持有麦克风，不决定语音意图。
+前端不反向控制后端音频链路，不持有麦克风，不决定语音意图。后端也不直接编造路线距离、预计时间和下一节点；这些事实由前端地图根据当前路线回传。
+
+## 后端版本锁定
+
+当前后端以 DuplexKit 子模块接入，并由主仓库锁定版本：
+
+| 项 | 内容 |
+| --- | --- |
+| 仓库 | `https://github.com/ElysiaFollower/DuplexKit.git` |
+| 分支 | `main` |
+| 锁定提交 | `167b6a8861666b63c3bdcbf91567ef12fac5e7fd` |
+| 锁定文件 | `docs/backend-duplexkit-version.json` |
+| 验证脚本 | `npm run check:fullstack:contracts` |
+
+更新后端时必须先提交并推送 DuplexKit，再更新锁定文件，不能把后端当作未版本化的本地目录。
 
 ## 应用状态
 
@@ -89,9 +103,14 @@ window.dispatchEvent(
 H5 / 小程序调试参数：
 
 ```text
+/?mode=listening&hint=我在听，请说出需求
+/?mode=chat
+/?mode=expert
 /?mode=map&targetRoomId=202-5&announce=summary,distance,direction,floorChange
 /?mode=map&startRoomId=108-lobby&targetRoomId=104-2F01&announce=summary,distance
 ```
+
+`mode=chat / expert / listening / map` 都是稳定 smoke-test 入口，用于后端联调、H5 验证和发布检查。
 
 ## 地图参数
 
@@ -102,6 +121,40 @@ H5 / 小程序调试参数：
 | `announce` | 进入地图时默认展示的播报重点 |
 
 后端只传房间 ID，不传几何坐标。坐标、门洞、走廊、楼梯、路线由前端地图拓扑服务计算。
+
+## 后端工具声明
+
+DuplexKit 对应用端公开的地图与导航工具至少包含：
+
+| 工具 | 说明 |
+| --- | --- |
+| `map.open` | 打开地图，可带起点、终点和播报选项 |
+| `map.close` | 关闭地图或回到主状态 |
+| `map.set_origin` | 设置起点 |
+| `map.set_destination` | 设置终点 |
+| `navigation.start` | 启动导航 |
+| `navigation.next` | 用户确认到达当前段下一节点后进入下一段 |
+| `navigation.previous` | 回退上一段 |
+| `navigation.status` | 查询当前段、下一节点、剩余距离和方向状态 |
+
+这些工具由 `check:fullstack:contracts` 校验，不允许在后端演进中静默删除。
+
+## 导航事实
+
+前端地图在路线执行过程中回传 `navigation_progress`。后端回答“还要走多远”“下一步去哪”“现在到哪一段”等问题时，只能依据该结构化事实：
+
+| 字段 | 含义 |
+| --- | --- |
+| `activeLegIndex` / `totalLegs` | 当前第几段和总段数 |
+| `fromLabel` | 当前节点 |
+| `checkpointLabel` | 下一门、楼梯口、转折点或目标 |
+| `checkpointKind` | door / corridor / stair / room / destination |
+| `distanceMeters` | 当前段距离 |
+| `remainingMeters` / `remainingSeconds` | 剩余距离和预计时间 |
+| `instruction` | 当前段简短导引 |
+| `heading` | 方向传感器或真北反馈 |
+
+当前 smoke 记录显示：当前段为 `101 门口 -> 走廊入口`，下一节点为 `走廊入口`，支持手动推进和语音推进。
 
 ## 房间 ID 约束
 
@@ -139,13 +192,16 @@ H5 / 小程序调试参数：
 | 内部楼梯 | `104-2F01` 和 `108-2F04` 路线不走公共楼梯直达 |
 | 无后端输入 | 保持纯待机表情展示 |
 | 小程序入口 | query 参数和移动端 `MapDirectRequest` 行为一致 |
+| 导航进退 | `navigation.next`、`navigation.previous`、`navigation.status` 都能基于当前路线事实响应 |
+| 房间目录 | 后端房间目录与前端 53 个房间保持一致 |
+| 工具契约 | DuplexKit 远端、锁定提交和工具声明通过 `check:fullstack:contracts` |
 
 ## 后续接口扩展
 
 | 方向 | 建议 |
 | --- | --- |
 | 语音打断 | 后端发送 `processing` 或新指令前先停止 TTS，前端只展示状态 |
-| 当前位置 | 后续可扩展 `MapProgressUpdate`，由机器人定位或用户点击推进 |
+| 当前位置 | 当前支持用户点击/语音推进路线段；后续可接入机器人定位自动推进 |
 | 方向传感器 | 前端显示方向，后端可提供机器人朝向校准值 |
 | 任务动作 | 机器人动作控制保持后端闭环，前端只显示动作状态 |
-| 小程序 postMessage | 复杂状态后续通过小程序消息桥同步，不通过 localhost |
+| 小程序消息桥 | 小程序 bridge 已支持工具请求和结果回传；复杂状态继续通过消息桥扩展，不通过 localhost |

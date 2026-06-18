@@ -1,6 +1,15 @@
 # 金工小子后端接入契约
 
-本文档定义后端接入当前前端应用的最小稳定接口。前端负责展示和触控交互，后端负责麦克风、唤醒过滤、意图识别、问答、专家检索、TTS 和扬声器输出。
+本文档定义后端接入当前应用的稳定接口。前端负责展示、触控、地图路线和导航事实回传；后端负责麦克风、唤醒过滤、意图识别、问答、专家检索、TTS、工具规划和播报。
+
+当前后端以 DuplexKit 子模块接入，锁定到：
+
+| 项 | 内容 |
+| --- | --- |
+| 仓库 | `https://github.com/ElysiaFollower/DuplexKit.git` |
+| 分支 | `main` |
+| 提交 | `167b6a8861666b63c3bdcbf91567ef12fac5e7fd` |
+| 锁定文件 | `docs/backend-duplexkit-version.json` |
 
 ## 总原则
 
@@ -9,6 +18,7 @@
 - 普通问答进入 `chat`，专家检索进入 `expert`，导航进入 `map`。
 - 地图指令只是“打开地图并预填状态”，用户进入地图后仍可改起点、终点、图层、视角或清除路线。
 - 若后端还在轮询或等待完整语音，不要提前打开地图；只发送 `listening` 或 `processing`。
+- 导航过程中的距离、预计时间、当前段和下一节点必须来自应用端 `navigation_progress`，后端不能自行猜测。
 
 ## 运行时入口
 
@@ -39,9 +49,14 @@ window.dispatchEvent(
 调试或小程序 WebView 入口也可通过 URL 预填地图：
 
 ```text
+/?mode=listening&hint=我在听，请说出需求
+/?mode=chat
+/?mode=expert
 /?mode=map&targetRoomId=202-5&announce=summary,distance,direction,floorChange
 /?mode=map&startRoomId=108-lobby&targetRoomId=104-2F01&announce=summary,distance
 ```
+
+`mode=chat / expert / listening / map` 都是稳定 smoke-test 入口。
 
 ## 指令类型
 
@@ -177,17 +192,43 @@ type AudioChainState = {
 
 后端不得假设公共楼梯能直达 `104 / 106 / 108` 独立二层。路线拓扑由前端地图服务计算。
 
-## 后端服务建议
+## 应用工具与导航事实
 
-首轮可以让后端本地服务启动在随机端口，但前端接入层应固定成一个很小的适配器：
+DuplexKit 公开的应用工具至少包括：
 
-1. 后端完成麦克风过滤和意图识别。
-2. 后端生成 `BackendDirective`。
-3. 适配器把指令注入到 WebView：
-   - Tauri 内可调用 WebView eval。
-   - H5 调试可用浏览器控制台或 mock panel。
-   - 小程序 WebView 用 URL 参数打开地图；复杂状态以后通过 `postMessage` 扩展。
-4. 前端收到指令后只切换展示状态，不反向控制后端音频链路。
+| 工具 | 作用 |
+| --- | --- |
+| `map.open` / `map.close` | 打开或关闭地图 |
+| `map.set_origin` / `map.set_destination` | 设置导航起点或终点 |
+| `navigation.start` | 启动导航 |
+| `navigation.next` / `navigation.previous` | 进入下一段或回退上一段 |
+| `navigation.status` | 获取当前段、下一节点和剩余距离 |
+
+前端地图会回传 `navigation_progress`，至少包含：
+
+| 字段 | 说明 |
+| --- | --- |
+| `activeLegIndex` / `totalLegs` | 当前段序号和总段数 |
+| `fromLabel` | 当前节点 |
+| `checkpointLabel` | 下一门、楼梯口、转折点或目标 |
+| `checkpointKind` | 节点类型 |
+| `distanceMeters` | 当前段距离 |
+| `remainingMeters` / `remainingSeconds` | 剩余距离和预计时间 |
+| `instruction` | 当前段导引 |
+
+后端播报导航时只能使用这些事实。当前 smoke 已验证 `navigation.next` 可推进到下一段，并支持手动与语音两种推进方式。
+
+## 后端服务方式
+
+移动端和 H5 通过 `BackendDirective` 切换展示状态；小程序通过页面 query、包内地图数据和 bridge 接入。小程序不得依赖 localhost、`5173` 或公网临时 H5 服务。
+
+当前发布门禁：
+
+```bash
+npm run check:fullstack:contracts
+npm run check:backend
+npm run check:fullstack:release
+```
 
 ## 接入验收
 
@@ -198,3 +239,5 @@ type AudioChainState = {
 - `map` 指令可打开 `202-5` 路线，且用户能继续手动改目标。
 - `104-2F01` 和 `108-2F04` 路线不走公共楼梯直达独立二层。
 - 后端不发送任何指令时，前端保持纯待机表情展示。
+- `navigation.next`、`navigation.previous`、`navigation.status` 都基于当前路线事实响应。
+- 后端房间目录与前端 53 个房间保持一致。

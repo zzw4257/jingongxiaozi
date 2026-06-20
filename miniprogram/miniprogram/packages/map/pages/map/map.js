@@ -5,7 +5,7 @@ const mapData = mapDataModule.default || mapDataModule;
 const mapRuntime = mapRuntimeModule.default || mapRuntimeModule;
 
 const defaultStartRoomId = mapData.defaultStartRoomId || "101";
-const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, overviewLabelRoomIds, palette } = mapRuntime;
+const { floorOrder, floorTitles, layerHints, quickTargets, layerOptions, viewOptions, palette } = mapRuntime;
 const hostRailGutter = 0;
 const routePickerPageSize = 8;
 const routeTargetShortcutIds = ["104-2F01", "202-5", "108-2F04", "106-2F", "208", "210", "107-core", "104-1F01"];
@@ -184,12 +184,27 @@ function spaceColor(space) {
   return palette.other;
 }
 
+function compactRoomLabel(roomNo) {
+  if (typeof mapRuntime.compactRoomLabel === "function") return mapRuntime.compactRoomLabel(roomNo);
+  const value = String(roomNo || "").trim();
+  const floorRoom = value.match(/^(\d{3})-(\d)F0?(\d+)$/);
+  if (floorRoom) return `${floorRoom[1]}·${floorRoom[2]}F${floorRoom[3]}`;
+  return value;
+}
+
 function labelForRoom(room, density, onRoute) {
-  const keyRoom = overviewLabelRoomIds.has(room.id);
-  if (density === "sparse") return onRoute || keyRoom ? room.roomNo : "";
-  if (density === "medium") return onRoute || keyRoom ? room.roomNo : "";
-  const name = room.name.length > 5 ? `${room.name.slice(0, 5)}…` : room.name;
-  return `${room.roomNo}\n${name}`;
+  const compact = compactRoomLabel(room.roomNo);
+  if (density === "sparse") return onRoute ? compact : "";
+  if (density === "medium") return onRoute ? compact : "";
+  if (room.roomNo === room.name) return room.roomNo;
+  return `${room.roomNo}\n${room.name}`;
+}
+
+function roomLabelDensityForState(state, zoom) {
+  if (!state.all) return "dense";
+  if (zoom >= 1.45) return "dense";
+  if (zoom >= 1.2) return "medium";
+  return "sparse";
 }
 
 function nodeTitle(node, nodeId) {
@@ -292,7 +307,7 @@ function routePickerRoomSource() {
     .map((room) => ({
       id: room.id,
       title: room.roomNo,
-      subtitle: `${displayFloorForRoom(room)} · ${room.name.length > 5 ? `${room.name.slice(0, 5)}…` : room.name}`,
+      subtitle: `${displayFloorForRoom(room)} · ${room.name}`,
       floor: displayFloorForRoom(room),
       roomNo: room.roomNo,
       name: room.name,
@@ -1025,11 +1040,10 @@ function buildNativeMapVisual(route, activeStepIndex = 0, layerMode = "allFloors
   const nativeRooms = mapData.rooms.filter((room) => visibleFloors.has(displayFloorForRoom(room))).map((room) => {
     const floorId = displayFloorForRoom(room);
     const onRoute = route && (route.targetRoomId === room.id || routeNodeIds.has(`center-${room.id}`) || routeNodeIds.has(room.doorNodeId));
-    const keyRoom = overviewLabelRoomIds.has(room.id);
     return {
       id: room.id,
       area: room.area || "other",
-      label: denseLabels || onRoute || keyRoom ? room.roomNo : "",
+      label: denseLabels || onRoute ? room.roomNo : "",
       activeClass: onRoute ? "native-room-on-route" : "",
       style: styleRect(nativeRectForPolygon(room.polygon, floorId, 0, layerMode))
     };
@@ -2094,16 +2108,21 @@ Page({
 
   drawLabel(ctx, text, point, state, options = {}) {
     if (!text) return;
-    const density = state.all && this.transform.zoom < 1.15 ? "sparse" : state.all ? "medium" : "dense";
+    const density = roomLabelDensityForState(state, this.transform.zoom);
     if (options.priority === "low" && density === "sparse") return;
     const p = this.project(point, state);
-    const lines = String(text).split("\n");
     const fontSize = options.small ? 11 : density === "sparse" ? 12 : 13;
     ctx.save();
     setFont(ctx, fontSize, "700");
     setTextAlign(ctx, "center");
     setTextBaseline(ctx, "middle");
-    const width = Math.min(96, Math.max(...lines.map((line) => measureTextWidth(ctx, line, fontSize))) + 12);
+    const maxWidth = options.maxWidth || 104;
+    let lines = String(text).split("\n");
+    const lineWidth = () => Math.max(...lines.map((line) => measureTextWidth(ctx, line, fontSize)));
+    if (options.compactText && lineWidth() + 12 > maxWidth) {
+      lines = String(options.compactText).split("\n");
+    }
+    const width = Math.min(maxWidth, lineWidth() + 12);
     const height = lines.length * (fontSize + 2) + 7;
     setFillStyle(ctx, options.badge === false ? "transparent" : "rgba(255,255,255,0.9)");
     if (options.badge !== false) {
@@ -2206,8 +2225,13 @@ Page({
       const onRoute = Boolean(route && (route.targetRoomId === room.id || route.nodeIds.includes(`center-${room.id}`) || route.nodeIds.includes(room.doorNodeId)));
       this.drawPolygon(ctx, room.polygon, state, onRoute ? "#dbeafe" : roomColor(room), selectedRoom && selectedRoom.id === room.id ? "#17253a" : palette.wall, onRoute ? 4.2 : 2.6);
       const labelPoint = room.labelPoint || room.center;
-      const density = state.all && this.transform.zoom < 1.15 ? "sparse" : state.all ? "medium" : "dense";
-      this.drawLabel(ctx, labelForRoom(room, density, onRoute), labelPoint, state, { color: onRoute ? "#0b4fb3" : palette.text, priority: onRoute ? "normal" : density === "sparse" ? "low" : "normal" });
+      const density = roomLabelDensityForState(state, this.transform.zoom);
+      this.drawLabel(ctx, labelForRoom(room, density, onRoute), labelPoint, state, {
+        color: onRoute ? "#0b4fb3" : palette.text,
+        priority: onRoute ? "normal" : density === "sparse" ? "low" : "normal",
+        compactText: compactRoomLabel(room.roomNo),
+        maxWidth: onRoute ? 136 : 112
+      });
       lastTapTargets.push({ id: room.id, floorId, polygon: room.polygon, state });
     });
   },

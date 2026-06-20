@@ -30,6 +30,7 @@ import type { MapDirectRequest } from "../../shared/appTypes";
 import { postMiniProgramMessage } from "../../shared/miniProgramBridge";
 import { areaLabels, jingongMapData } from "../map/data/mapData";
 import { buildNavigationProgressSnapshot, calculateRoute, formatSeconds, getRoomById } from "../map/routeService";
+import { compactRoomLabel } from "../map/runtime";
 import type { AreaType, ClosedSpace, DoorSegment, FloorGeometry, FloorId, MapProgressUpdate, MapRoom, MapSessionState, NavigationCommand, NavigationProgressSnapshot, Point, RouteProgressState, RouteResult, StairGeometry } from "../map/types";
 import {
   floorBaseY,
@@ -389,16 +390,6 @@ const visibleRoomsForSession = (session: MapSessionState): MapRoom[] =>
     return true;
   });
 
-const overviewLabelRoomIds = new Set([
-  "101",
-  "104-1F01",
-  "106",
-  "107-core",
-  "108-lobby",
-  "202-5",
-  "208",
-  "210",
-]);
 const routeTargetShortcutIds = ["104-2F01", "202-5", "108-2F04", "106-2F", "208", "210", "107-core", "104-1F01"];
 const routeStartShortcutIds = ["101", "108-lobby", "104-1F01", "106", "107-core", "208", "202-5", "104-2F01"];
 const roomPickerPageSize = 8;
@@ -413,13 +404,12 @@ const roomPickerGroups: Array<{ id: RoomPickerGroup; label: string }> = [
 function shouldShowRoomLabel(room: MapRoom, session: MapSessionState, startRoomId?: string) {
   if (room.id === session.selectedRoomId || room.id === session.targetRoomId || room.id === startRoomId) return true;
   if (session.layerMode === "single" || session.layerMode === "section" || session.layerMode === "raised202") return true;
-  return true;
+  return session.layerMode === "allFloors" || session.layerMode === "twoFloor" || session.layerMode === "exploded";
 }
 
 function roomMinDensity(room: MapRoom, session: MapSessionState, startRoomId?: string, hasRoute = false): LabelDensity {
   if (room.id === session.selectedRoomId || room.id === session.targetRoomId || room.id === startRoomId) return "far";
-  if (hasRoute && !overviewLabelRoomIds.has(room.id)) return "mid";
-  if (overviewLabelRoomIds.has(room.id)) return "far";
+  if (hasRoute) return "mid";
   if (session.layerMode === "raised202") return "mid";
   if (session.layerMode === "single" || session.layerMode === "section") return "mid";
   return "near";
@@ -3168,8 +3158,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       const showRoomOutline =
         (!modelFirstOverview && !modelAuthorityView) ||
         emphasizedRoom ||
-        roomIsRouteContext ||
-        (!route && session.layerMode === "allFloors" && overviewLabelRoomIds.has(room.id));
+        roomIsRouteContext;
       if (showRoomOutline) {
         const outlineMaterial = floorEdgeMaterial.clone();
         if (!(active || target || start || roomIsRouteContext) && room.floor === "2F" && (singleFocus || session.layerMode === "raised202")) {
@@ -3220,9 +3209,9 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
       }
 
       if (!hideRoomLabelForRouteEndpoint && shouldKeepRoomLabelDuringRoute(room, session, route, startRoomId) && shouldShowRoomLabel(room, session, startRoomId)) {
-        const forceFullLabel = active || target || start || overviewLabelRoomIds.has(room.id);
+        const forceFullLabel = active || target || start;
         const fullLabel = `${target ? "终点 " : start ? "起点 " : ""}${compactRoomName(room)}`;
-        const compactLabel = target ? "终点" : start ? "起点" : room.roomNo;
+        const compactLabel = target ? "终点" : start ? "起点" : compactRoomLabel(room.roomNo);
         labels.push({
           roomId: room.id,
           text: forceFullLabel ? fullLabel : room.roomNo,
@@ -3230,7 +3219,7 @@ export function Map3DApp({ initialRequest, entrySource, onExit, onOpenLegacy }: 
           fullText: fullLabel,
           minDensity: singleFocus ? "far" : roomMinDensity(room, session, startRoomId, Boolean(route)),
           floor: room.floor,
-          priority: active || target || start ? 100 : singleFocus ? 62 : isRaised202RoomId(room.id) ? 68 : overviewLabelRoomIds.has(room.id) ? 60 : 34,
+          priority: active || target || start ? 100 : singleFocus ? 62 : isRaised202RoomId(room.id) ? 68 : 34,
           active,
           start,
           target,

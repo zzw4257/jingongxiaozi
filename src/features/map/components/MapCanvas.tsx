@@ -1,4 +1,5 @@
 import { jingongMapData } from "../data/mapData";
+import { compactRoomLabel } from "../runtime";
 import type {
   DoorSegment,
   FloorGeometry,
@@ -100,6 +101,27 @@ const compactText = (value: string): string =>
 
 const ellipsize = (value: string, maxLength: number): string =>
   value.length > maxLength ? `${value.slice(0, maxLength - 1)}…` : value;
+
+function roomLabelVisibility(
+  layerMode: Props["layerMode"],
+  viewMode: Props["viewMode"],
+  zoom: number,
+  room: MapRoom,
+  routeNodeIds: Set<string>,
+  isSelected: boolean,
+  isTarget: boolean,
+  isStart: boolean,
+) {
+  const onRoute = Boolean(routeNodeIds.has(`center-${room.id}`) || routeNodeIds.has(room.doorNodeId));
+  const important = isSelected || isTarget || isStart || onRoute;
+  const singleFloor = layerMode === "single" || layerMode === "raised202";
+  const numberThreshold = viewMode === "2d" ? 1.18 : 1.32;
+  const nameThreshold = viewMode === "2d" ? 1.42 : 1.58;
+  const showNumber = important || singleFloor || zoom >= numberThreshold;
+  const largeEnoughForName = viewMode === "2d" ? room.rect.width > 76 && room.rect.height > 52 : room.rect.width > 120 && room.rect.height > 64;
+  const showName = (important || (singleFloor && zoom >= 1.08) || zoom >= nameThreshold) && largeEnoughForName;
+  return { showNumber, showName };
+}
 
 const visibleFloorIds = (rooms: MapRoom[]): FloorId[] => {
   const ids = new Set(rooms.map((room) => room.floor));
@@ -416,9 +438,8 @@ export function MapCanvas({
             const isTarget = targetRoomId === room.id;
             const isStart = startRoomId === room.id;
             const compactName = compactText(room.name);
-            const showName = viewMode === "2d" ? room.rect.width > 76 && room.rect.height > 52 : room.rect.width > 120 && room.rect.height > 64;
-            const shortNo = room.roomNo.length > 8 ? room.roomNo.replace("-2F", "·2").replace("-1F", "·1") : room.roomNo;
-            const labelRoomNo = ellipsize(room.roomNo, viewMode === "2d" ? 9 : 7);
+            const { showNumber, showName } = roomLabelVisibility(layerMode, viewMode, zoom, room, routeNodeIds, isSelected, isTarget, isStart);
+            const labelRoomNo = showName || isSelected || isTarget || isStart ? room.roomNo : compactRoomLabel(room.roomNo);
             const labelName = ellipsize(compactName, viewMode === "2d" ? 7 : 5);
             return (
               <g
@@ -428,12 +449,14 @@ export function MapCanvas({
                 onDoubleClick={() => onRoomDoubleClick(room)}
               >
                 <polygon points={pointList(points)} className={areaClass(room)} filter={viewMode === "2_5d" ? "url(#roomShadow)" : undefined} />
-                <text x={label[0]} y={label[1] - (showName ? 7 : 0)} className="room-no upright-label">
-                  {viewMode === "2_5d" ? shortNo : labelRoomNo}
-                </text>
+                {showNumber && (
+                  <text x={label[0]} y={label[1] - (showName ? 7 : 0)} className="room-no upright-label">
+                    {labelRoomNo}
+                  </text>
+                )}
                 {showName && (
                   <text x={label[0]} y={label[1] + 12} className="room-name upright-label">
-                  {labelName}
+                    {labelName}
                   </text>
                 )}
               </g>

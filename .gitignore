@@ -12,6 +12,9 @@ env.txt
 *.p12
 *.idsig
 .playwright-mcp/
+.playwright-cli/
+output/
+miniprogram/project.private.config.json
 src-tauri/gen/android/app/build/
 src-tauri/gen/android/app/.cxx/
 src-tauri/gen/android/app/src/main/jniLibs/

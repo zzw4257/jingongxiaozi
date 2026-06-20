@@ -301,6 +301,70 @@ function ellipsize(ctx, text, maxWidth) {
   return `${value}${suffix}`;
 }
 
+function uniqueLabelTexts(values) {
+  const seen = new Set();
+  return values
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      if (!value || seen.has(value)) return false;
+      seen.add(value);
+      return true;
+    });
+}
+
+function compactRoomLabel(text) {
+  if (typeof mapRuntime.compactRoomLabel === "function") {
+    const runtimeLabel = mapRuntime.compactRoomLabel(text);
+    if (runtimeLabel) return runtimeLabel;
+  }
+  const value = String(text || "").trim();
+  const floorRoom = value.match(/^(\d{3})-(\d)F0?(\d+)$/);
+  if (floorRoom) return `${floorRoom[1]}·${floorRoom[2]}F${floorRoom[3]}`;
+  const numberedRoom = value.match(/^(\d{3})-(\d+)$/);
+  if (numberedRoom) return value.length <= 6 ? value : `${numberedRoom[1]}-${numberedRoom[2]}`;
+  const firstToken = value.split(/\s+/)[0] || value;
+  if (/^\d/.test(firstToken)) return firstToken.replace(/[^\dA-Za-z]/g, "").slice(0, 4) || firstToken;
+  return firstToken.length > 3 ? firstToken.slice(0, 2) : firstToken;
+}
+
+function labelTextForDensity(label, density) {
+  if (label.active || label.start || label.target) {
+    return label.fullText || label.text || label.mediumText || label.compactText || "";
+  }
+  const near = uniqueLabelTexts([label.fullText, label.text, label.mediumText, label.compactText]);
+  const mid = uniqueLabelTexts([label.mediumText, label.compactText, label.text]);
+  const far = uniqueLabelTexts([label.compactText, label.mediumText, label.text]);
+  const candidates = density === "near" ? near : density === "mid" ? mid : far;
+  return candidates[0] || "";
+}
+
+function labelTextCandidates(label) {
+  return uniqueLabelTexts([
+    label.text,
+    label.mediumText,
+    label.compactText,
+    compactRoomLabel(label.compactText || label.text)
+  ]);
+}
+
+function fittingLabelText(ctx, label, maxWidth) {
+  const candidates = labelTextCandidates(label);
+  for (const value of candidates) {
+    if (ctx.measureText(value).width <= maxWidth) return value;
+  }
+  return candidates[0] || "";
+}
+
+function estimateLabelTextWidth(text, size = 11) {
+  return String(text || "").split("").reduce((sum, char) => {
+    const code = char.charCodeAt(0);
+    if (code > 0x2e80) return sum + size;
+    if (/[A-Z0-9]/.test(char)) return sum + size * 0.68;
+    if (char === " ") return sum + size * 0.36;
+    return sum + size * 0.56;
+  }, 0);
+}
+
 function drawText(ctx, text, x, y, options = {}) {
   const size = options.size || 12;
   const weight = options.weight || 900;
@@ -340,12 +404,16 @@ function drawLabelPill(ctx, label) {
   ctx.shadowColor = "transparent";
   strokeRoundRect(ctx, x + 0.5, y + 0.5, width - 1, height - 1, Math.min(999, height / 2), style.border, 1);
   const compact = height <= 23 || width <= 64;
-  drawText(ctx, label.text, label.x, label.y + 0.5, {
+  const textSize = compact ? 9 : label.variant === "compact-room" || label.variant === "door" ? 10 : 11;
+  const maxWidth = width - (compact ? 10 : 14);
+  ctx.font = `900 ${textSize}px sans-serif`;
+  const text = fittingLabelText(ctx, label, maxWidth);
+  drawText(ctx, text, label.x, label.y + 0.5, {
     color: style.text,
-    size: compact ? 9 : label.variant === "compact-room" || label.variant === "door" ? 10 : 11,
+    size: textSize,
     weight: 900,
     align: "center",
-    maxWidth: width - (compact ? 10 : 14),
+    maxWidth,
   });
   ctx.restore();
 }
@@ -434,16 +502,6 @@ function guidanceMetrics(width, height, hasRoute, safeInsets = {}) {
     y: Math.max(8, height - panelHeight - bottom),
     width: Math.min(panelWidth, Math.max(168, width - x - (compact ? 10 : 14))),
     height: panelHeight,
-  };
-}
-
-function labelMetrics(label) {
-  const pad = label.variant === "route" ? 14 : 8;
-  return {
-    x: label.x - (label.boxW || 92) / 2 - pad,
-    y: label.y - (label.boxH || 26) / 2 - pad,
-    width: (label.boxW || 92) + pad * 2,
-    height: (label.boxH || 26) + pad * 2,
   };
 }
 
@@ -1440,7 +1498,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   controls.minDistance = 1.35;
   controls.maxDistance = 42;
   controls.minPolarAngle = 0.12;
-  controls.maxPolarAngle = Math.PI * 0.62;
+  controls.maxPolarAngle = Math.PI * 0.49;
   controls.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
 
   scene.add(new THREE.HemisphereLight(0xffffff, 0x879ab2, 1.14));
@@ -1461,8 +1519,11 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   scene.add(modelGroup);
   let semanticRoot = new THREE.Group();
   let routeRoot = new THREE.Group();
+  const sceneLabelRoot = new THREE.Group();
+  sceneLabelRoot.name = "mini-scene-labels";
   scene.add(semanticRoot);
   scene.add(routeRoot);
+  scene.add(sceneLabelRoot);
   let state = {
     layerMode: options.layerMode || "allFloors",
     route: options.route || null,
@@ -1503,6 +1564,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   let lastHudSignature = "";
   let lastHudCameraSignature = "";
   let lastHudRebuildAt = 0;
+  let lastSceneLabelSignature = "";
   let lastRenderedAt = 0;
   let lastInteractionAt = 0;
   let lastPublishedLabelSignature = "";
@@ -1598,7 +1660,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
   }
 
   function applyCameraFromSpherical(target, spherical) {
-    spherical.phi = clamp(spherical.phi, controls.minPolarAngle || 0.12, controls.maxPolarAngle || Math.PI * 0.62);
+    spherical.phi = clamp(spherical.phi, controls.minPolarAngle || 0.12, controls.maxPolarAngle || Math.PI * 0.49);
     spherical.radius = clamp(spherical.radius, controls.minDistance || 1.35, controls.maxDistance || 42);
     spherical.makeSafe();
     if (semanticBounds && !semanticBounds.isEmpty()) {
@@ -1662,6 +1724,14 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       if (widget.userData?.texture?.dispose) widget.userData.texture.dispose();
     });
     hudWidgets = [];
+  }
+
+  function clearSceneLabels() {
+    sceneLabelRoot.children.slice().forEach((label) => {
+      sceneLabelRoot.remove(label);
+      disposeObject(label);
+    });
+    lastSceneLabelSignature = "";
   }
 
   function createHudMaterial(texture) {
@@ -1778,17 +1848,112 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     };
   }
 
-  function projectedHudLabels() {
-    const compact = isCompactHud(hudWidth, hudHeight);
-    return projectLabels().map((label) => {
-      const w = compact
-        ? label.variant === "route" ? 58 : label.variant === "floor" ? 52 : label.variant === "door" ? 28 : label.variant === "stair" ? 68 : label.variant === "corridor" ? 72 : label.variant === "compact-room" ? 34 : 54
-        : label.variant === "route" ? 112 : label.variant === "floor" ? 86 : label.variant === "door" ? 42 : label.variant === "compact-room" ? 52 : 92;
-      const h = compact
-        ? label.variant === "route" ? 22 : label.variant === "compact-room" ? 18 : 21
-        : label.variant === "route" ? 30 : label.variant === "compact-room" ? 24 : 26;
-      return { ...label, boxW: w, boxH: h };
+  function cameraLabelDensity() {
+    const compact = isCompactHud(renderWidth, renderHeight);
+    const distance = camera.position.distanceTo(controls.target);
+    return compact
+      ? distance <= 6.6 ? "near" : distance <= 8.8 ? "mid" : "far"
+      : distance <= 7.4 ? "near" : distance <= 10.0 ? "mid" : "far";
+  }
+
+  function labelBoxSize(label, density, compact) {
+    const variant = label.variant === "room" && density !== "near" && !label.active ? "compact-room" : label.variant;
+    const text = labelTextForDensity(label, density);
+    const w = label.start || label.target || label.active
+      ? compact ? 70 : 128
+      : variant === "compact-room"
+        ? compact ? 34 : 54
+        : variant === "note"
+          ? compact ? 86 : 138
+          : variant === "route"
+            ? compact ? 72 : 126
+            : variant === "corridor"
+              ? compact ? 76 : 112
+              : variant === "floor"
+                ? compact ? 52 : 86
+                : variant === "door"
+                  ? compact ? 28 : 42
+                  : compact ? 54 : 92;
+    const boxW = variant === "room" && density === "near"
+      ? Math.min(compact ? 104 : 152, Math.max(w, Math.ceil(estimateLabelTextWidth(text, compact ? 10 : 11) + (compact ? 14 : 18))))
+      : w;
+    const boxH = variant === "compact-room" ? (compact ? 18 : 24) : variant === "door" ? (compact ? 21 : 22) : variant === "route" ? (compact ? 24 : 32) : compact ? 21 : 30;
+    return { ...label, text, variant, boxW, boxH };
+  }
+
+  function visibleSceneLabels() {
+    const compact = isCompactHud(renderWidth, renderHeight);
+    const density = cameraLabelDensity();
+    const densityValue = labelDensityRank[density] || 0;
+    return labels
+      .filter((label) => densityValue >= (labelDensityRank[label.minDensity || "far"] || 0))
+      .map((label) => labelBoxSize(label, density, compact))
+      .sort((a, b) => (b.priority || 0) - (a.priority || 0));
+  }
+
+  function createSceneLabelSprite(label) {
+    const pad = label.variant === "route" ? 14 : 8;
+    const width = Math.max(18, Math.ceil(label.boxW || 92));
+    const height = Math.max(14, Math.ceil(label.boxH || 26));
+    const canvasWidth = Math.max(1, Math.round((width + pad * 2) * hudCanvasScale));
+    const canvasHeight = Math.max(1, Math.round((height + pad * 2) * hudCanvasScale));
+    const canvas = createHudCanvas(canvasWidth, canvasHeight);
+    const ctx = canvas && canvas.getContext ? canvas.getContext("2d", { alpha: true }) : null;
+    if (!canvas || !ctx) return null;
+    ctx.save();
+    ctx.setTransform(hudCanvasScale, 0, 0, hudCanvasScale, 0, 0);
+    if ("clearRect" in ctx) ctx.clearRect(0, 0, width + pad * 2, height + pad * 2);
+    drawLabelPill(ctx, {
+      ...label,
+      x: pad + width / 2,
+      y: pad + height / 2,
+      boxW: width,
+      boxH: height,
     });
+    ctx.restore();
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.minFilter = THREE.LinearFilter;
+    texture.magFilter = THREE.LinearFilter;
+    texture.generateMipmaps = false;
+    texture.needsUpdate = true;
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: true,
+      depthWrite: false,
+      alphaTest: 0.04,
+      sizeAttenuation: true,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.name = `scene-label-${label.id || label.roomId || label.text || "label"}`;
+    sprite.position.copy(label.position);
+    const worldScale = label.variant === "route" ? 0.0078 : label.variant === "floor" || label.variant === "note" ? 0.0068 : 0.0062;
+    sprite.scale.set((width + pad * 2) * worldScale, (height + pad * 2) * worldScale, 1);
+    sprite.renderOrder = 12 + Math.min(60, Math.max(0, label.priority || 0)) * 0.001;
+    sprite.userData.texture = texture;
+    sceneLabelRoot.add(sprite);
+    return sprite;
+  }
+
+  function rebuildSceneLabels(force = false) {
+    if (!ensureFiniteCamera("scene-labels")) return;
+    const visible = visibleSceneLabels();
+    const signature = visible
+      .map((label) => [
+        label.id || label.roomId || "",
+        label.text || "",
+        label.variant || "",
+        Math.round(label.position.x * 100),
+        Math.round(label.position.y * 100),
+        Math.round(label.position.z * 100),
+        Math.round((label.boxW || 0) * 10),
+        Math.round((label.boxH || 0) * 10),
+      ].join(":"))
+      .join("|");
+    if (!force && signature === lastSceneLabelSignature) return;
+    clearSceneLabels();
+    visible.forEach((label) => createSceneLabelSprite(label));
+    lastSceneLabelSignature = signature;
   }
 
   function rebuildHudTexture(force = false) {
@@ -1810,24 +1975,14 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       ].join(",");
       const cameraChanged = cameraSignature !== lastHudCameraSignature;
       if (!force && cameraChanged && now - lastHudRebuildAt < 520) return;
-      const labelSnapshot = projectedHudLabels();
       const signature = JSON.stringify({
         revision: hudLayoutRevision,
         width: hudWidth,
         height: hudHeight,
         hud,
-        labels: labelSnapshot.map((label) => [label.id, label.text, label.variant, Math.round(label.x), Math.round(label.y)]),
       });
       if (!force && signature === lastHudSignature) return;
       clearHudWidgets();
-      labelSnapshot.forEach((label, index) => {
-        addHudWidget(
-          labelMetrics(label),
-          (ctx) => drawLabelPill(ctx, label),
-          `hud-label-${label.id || index}`,
-          90 + index * 0.001,
-        );
-      });
       if (!state.disableFixedHud) {
         addFixedHudWidgets(addLocalHudWidget, hud, hudWidth, hudHeight);
       }
@@ -2023,7 +2178,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     );
   }
 
-  function rebuildSemantic() {
+  function rebuildSemantic(options = {}) {
     scene.remove(semanticRoot);
     disposeObject(semanticRoot);
     semanticRoot = new THREE.Group();
@@ -2189,6 +2344,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     mapData.rooms.forEach((room) => {
       if (!visibleForLayer(room.floor, layerMode, { roomId: room.id, point: room.center, polygon: room.polygon, semanticId: room.id })) return;
       const onRoute = Boolean(state.route && (state.route.targetRoomId === room.id || routeNodeIds.has(`center-${room.id}`) || routeNodeIds.has(room.doorNodeId)));
+      const selectedRoom = state.selectedRoomId === room.id;
       const mesh = extrudedPolygonMesh(
         room.polygon,
         room.floor,
@@ -2205,27 +2361,28 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       mesh.userData.roomId = room.id;
       interactiveObjects.push(mesh);
       semanticRoot.add(mesh);
-      if (state.route || focused || mapRuntime.overviewLabelRoomIds?.has?.(room.id)) {
+      if (state.route || focused || selectedRoom || layerMode === "allFloors") {
         addPolygonOutline(semanticRoot, room.polygon, room.floor, layerMode, room.id, SLAB_THICKNESS + 0.105 + (isRaised202Room(room.id) ? RAISED_202_HEIGHT : 0), 0.008, roomEdgeMat, `room-outline-${room.id}`);
       }
-      const keyRoom = mapRuntime.overviewLabelRoomIds?.has?.(room.id);
       const routeEndpointRoom = Boolean(state.route && (state.route.startRoomId === room.id || state.route.targetRoomId === room.id));
       const shouldShowRoomLabel = state.route
         ? Boolean((focused || layerMode === "raised202") && !routeEndpointRoom && !onRoute)
-        : Boolean(focused || keyRoom);
+        : Boolean(selectedRoom || focused || layerMode === "allFloors");
       if (shouldShowRoomLabel) {
         labels.push({
           id: `room-${room.id}`,
           roomId: room.id,
-          text: focused ? roomLabel(room) : room.roomNo,
-          compactText: room.roomNo,
+          text: selectedRoom || focused ? roomLabel(room) : room.roomNo,
+          compactText: compactRoomLabel(room.roomNo),
+          mediumText: compactRoomLabel(room.roomNo),
           fullText: roomLabel(room),
-          minDensity: keyRoom ? "far" : focused ? "mid" : "near",
+          minDensity: selectedRoom ? "far" : focused ? "mid" : "near",
           variant: "room",
-          priority: keyRoom ? 62 : 32,
-          position: mapPointToModel(room.labelPoint || room.center, room.floor, {
+          priority: selectedRoom ? 96 : focused ? 36 : 26,
+          active: selectedRoom,
+          position: mapPointToModel(room.center, room.floor, {
             layerMode,
-            lift: 0.28 + (isRaised202Room(room.id) ? RAISED_202_HEIGHT : 0),
+            lift: (selectedRoom ? 0.46 : 0.28) + (isRaised202Room(room.id) ? RAISED_202_HEIGHT : 0),
             semanticId: room.id,
           }),
         });
@@ -2324,7 +2481,8 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     });
     scene.add(semanticRoot);
     semanticBounds = new THREE.Box3().setFromObject(semanticRoot);
-    if (!semanticBounds.isEmpty()) fitCameraToSemanticBounds("semantic-rebuild");
+    if (!semanticBounds.isEmpty() && options.fitCamera !== false) fitCameraToSemanticBounds("semantic-rebuild");
+    rebuildSceneLabels(true);
     publishLabels();
   }
 
@@ -2335,6 +2493,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     routeRoot.name = "mini-route";
     if (!state.route) {
       scene.add(routeRoot);
+      rebuildSceneLabels(true);
       publishLabels();
       return;
     }
@@ -2409,22 +2568,19 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       });
     });
     scene.add(routeRoot);
+    rebuildSceneLabels(true);
     publishLabels();
   }
 
   function projectLabels() {
     const compact = isCompactHud(renderWidth, renderHeight);
-    const distance = camera.position.distanceTo(controls.target);
-    const density = compact
-      ? distance <= 4.8 ? "near" : distance <= 7.2 ? "mid" : "far"
-      : distance <= 5.8 ? "near" : distance <= 8.8 ? "mid" : "far";
+    const density = cameraLabelDensity();
     const projected = labels.map((label) => {
+      const densityLabel = labelBoxSize(label, density, compact);
       const vector = label.position.clone().project(camera);
       const nudge = routeLabelNudge(label.id || label.roomId || "");
       return {
-        ...label,
-        text: density === "near" ? (label.fullText || label.text) : (label.compactText || label.text),
-        variant: label.variant === "room" && density !== "near" && !label.active ? "compact-room" : label.variant,
+        ...densityLabel,
         x: Math.round((vector.x * 0.5 + 0.5) * renderWidth + nudge.x),
         y: Math.round((-vector.y * 0.5 + 0.5) * renderHeight + nudge.y),
         visible: vector.z > -1 && vector.z < 1,
@@ -2434,23 +2590,9 @@ function createMiniProgramThreeMap(canvas, options = {}) {
     return projected.map((label) => {
       const required = labelDensityRank[label.minDensity || "far"] || 0;
       const densityValue = labelDensityRank[density] || 0;
-      const w = label.start || label.target || label.active
-        ? compact ? 70 : 128
-        : label.variant === "compact-room"
-          ? compact ? 34 : 54
-          : label.variant === "note"
-            ? compact ? 86 : 138
-            : label.variant === "route"
-              ? compact ? 72 : 126
-              : label.variant === "corridor"
-                ? compact ? 76 : 112
-                : label.variant === "floor"
-                  ? compact ? 52 : 86
-                  : label.variant === "door"
-                    ? compact ? 28 : 42
-                    : compact ? 54 : 92;
-      const h = label.variant === "compact-room" ? (compact ? 18 : 24) : label.variant === "door" ? (compact ? 21 : 22) : label.variant === "route" ? (compact ? 24 : 32) : compact ? 21 : 30;
-      const box = { x: label.x - w / 2, y: label.y - h / 2, w, h };
+      const textW = label.boxW || 92;
+      const h = label.boxH || 26;
+      const box = { x: label.x - textW / 2, y: label.y - h / 2, w: textW, h };
       const rightGuard = density === "near" && (label.variant === "room" || label.variant === "compact-room") ? 42 : compact ? 56 : 64;
       const edgeGuard = density === "near" ? 4 : 8;
       const outside = box.x < edgeGuard || box.y < edgeGuard || box.x + box.w > renderWidth - rightGuard || box.y + box.h > renderHeight - edgeGuard;
@@ -2490,6 +2632,7 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       ensureFiniteCamera("before-controls");
       controls.update();
       ensureFiniteCamera("after-controls");
+      rebuildSceneLabels(false);
       rebuildHudTexture(false);
       renderer.clear(true, true, true);
       renderer.render(scene, camera);
@@ -2535,12 +2678,16 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       const previousRouteId = state.route?.id;
       const previousActiveStepIndex = state.activeStepIndex || 0;
       const previousViewPreset = state.viewPreset || "overview";
+      const previousSelectedRoomId = state.selectedRoomId || "";
       state = { ...state, ...next };
       const nextActiveStepIndex = state.activeStepIndex || 0;
       modelGroup.visible = true;
       if (previousLayer !== state.layerMode || previousRouteId !== state.route?.id || previousActiveStepIndex !== nextActiveStepIndex) {
         lastAppliedPreset = "";
         rebuildSemantic();
+        rebuildRoute();
+      } else if (previousSelectedRoomId !== (state.selectedRoomId || "")) {
+        rebuildSemantic({ fitCamera: false });
         rebuildRoute();
       }
       const nextViewPreset = state.viewPreset || "overview";
@@ -2565,6 +2712,8 @@ function createMiniProgramThreeMap(canvas, options = {}) {
       hudCamera.bottom = 0;
       hudCamera.updateProjectionMatrix();
       clearHudWidgets();
+      clearSceneLabels();
+      lastSceneLabelSignature = "";
       lastHudSignature = "";
       lastAppliedPreset = "";
       renderer.setPixelRatio(Math.min(nextDpr, 2));

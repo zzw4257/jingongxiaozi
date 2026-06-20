@@ -9,35 +9,53 @@
     "enhance": true,
     "postcss": true,
     "minified": true,
-    "minifyWXML": true
+    "minifyWXML": true,
+    "compileWorklet": false,
+    "uglifyFileName": false,
+    "uploadWithSourceMap": true,
+    "packNpmManually": false,
+    "packNpmRelationList": [],
+    "minifyWXSS": true,
+    "localPlugins": false,
+    "disableUseStrict": false,
+    "useCompilerPlugins": false,
+    "condition": false,
+    "swc": false,
+    "disableSWC": true,
+    "babelSetting": {
+      "ignore": [],
+      "disablePlugins": [],
+      "outputPath": ""
+    }
   },
   "packOptions": {
     "ignore": [
       {
-        "type": "glob",
-        "value": "**/.DS_Store"
+        "value": "**/.DS_Store",
+        "type": "glob"
       },
       {
-        "type": "folder",
-        "value": "assets/ui/generated-icons"
+        "value": "assets/ui/generated-icons",
+        "type": "folder"
       },
       {
-        "type": "file",
-        "value": "assets/ui/jingong-xiaozi-icon-1024.png"
+        "value": "assets/ui/jingong-xiaozi-icon-1024.png",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "packages/map/data/map-data.json"
+        "value": "packages/map/data/map-data.json",
+        "type": "file"
       },
       {
-        "type": "file",
-        "value": "packages/map/map-models/jingong.glb"
+        "value": "packages/map/map-models/jingong.glb",
+        "type": "file"
       },
       {
-        "type": "folder",
-        "value": "packages/map/map-models/textures"
+        "value": "packages/map/map-models/textures",
+        "type": "folder"
       }
-    ]
+    ],
+    "include": []
   },
   "condition": {
     "miniprogram": {
@@ -80,5 +98,7 @@
         }
       ]
     }
-  }
+  },
+  "simulatorPluginLibVersion": {},
+  "editorSetting": {}
 }

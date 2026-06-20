@@ -56,8 +56,6 @@ export const viewOptions = [
   { id: "reset", label: "复位", desc: "回到默认" },
 ];
 
-export const overviewLabelRoomIds = new Set(["101", "104-1F01", "106", "107-core", "108-lobby", "202-5", "208", "210"]);
-
 export const palette = {
   floor: "#f1f8ff",
   floorEdge: "#58708b",
@@ -86,6 +84,15 @@ export const palette = {
 };
 
 export const defaultStartRoomId = "101";
+
+export function compactRoomLabel(roomNo?: string): string {
+  const value = String(roomNo || "").trim();
+  const floorRoom = value.match(/^(\d{3})-(\d)F0?(\d+)$/);
+  if (floorRoom) return `${floorRoom[1]}·${floorRoom[2]}F${floorRoom[3]}`;
+  const numberedRoom = value.match(/^(\d{3})-(\d+)$/);
+  if (numberedRoom) return value.length <= 6 ? value : `${numberedRoom[1]}-${numberedRoom[2]}`;
+  return value;
+}
 
 function getRoom(data: MapData, roomId?: string): MapRoom | undefined {
   return data.rooms.find((room) => room.id === roomId);

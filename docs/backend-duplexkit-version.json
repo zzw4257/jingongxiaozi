@@ -2,8 +2,8 @@
   "name": "DuplexKit",
   "remote": "https://github.com/ElysiaFollower/DuplexKit.git",
   "branch": "main",
-  "commit": "167b6a8861666b63c3bdcbf91567ef12fac5e7fd",
-  "committedAtUnix": 1781494884,
-  "subject": "Ground navigation answers in app progress facts",
+  "commit": "e920607b5a3a9df01a994bd745ce1f8f94c7ec6d",
+  "committedAtUnix": 1781758466,
+  "subject": "Let embedded clients change realtime voice settings",
   "purpose": "Lock the backend integration point for Jingong Xiaozi full-stack release verification."
 }

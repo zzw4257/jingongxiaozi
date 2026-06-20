@@ -393,9 +393,14 @@ for (const token of ["ThomTh10.jpg", "ThomTh11.jpg", "Plaster_.png", "__L1.jpg",
     throw new Error(`embedded mini program GLB must not reference external texture data: ${token}`);
   }
 }
-for (const token of ["addHudWidget", "labelMetrics", "drawLabelPill", "hudReservedBoxes", "boxesOverlap", "isCompactHud"]) {
+for (const token of ["addHudWidget", "drawLabelPill", "isCompactHud"]) {
   if (!miniThreeScene.includes(token)) {
     throw new Error(`mini program HUD must use bounded WebGL widgets, missing token: ${token}`);
+  }
+}
+for (const token of ["sceneLabelRoot", "createSceneLabelSprite", "new THREE.SpriteMaterial", "depthTest: true", "sizeAttenuation: true", "mapPointToModel(room.center"]) {
+  if (!miniThreeScene.includes(token)) {
+    throw new Error(`mini program semantic labels must render as depth-tested scene billboards, missing token: ${token}`);
   }
 }
 for (const token of ["drawPanel", "drawGuidance", "panelMetrics", "drawGuidanceLocal", "drawRailStackLocal", "drawNorthIndicatorLocal", "图层", "视角", "202 平台", "总览", "真北"]) {

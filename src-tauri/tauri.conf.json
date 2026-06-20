@@ -12,6 +12,7 @@
   "app": {
     "windows": [
       {
+        "create": false,
         "title": "金工小子",
         "width": 1366,
         "height": 768,

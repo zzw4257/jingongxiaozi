@@ -13,6 +13,7 @@ env.txt
 *.idsig
 .playwright-mcp/
 .playwright-cli/
+.codex/
 output/
 miniprogram/project.private.config.json
 src-tauri/gen/android/app/build/
